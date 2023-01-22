@@ -110,25 +110,25 @@ enum
 typedef enum
 {
 	/* Real registers */
-	M68K_REG_D0,		/* Data registers */
-	M68K_REG_D1,
-	M68K_REG_D2,
-	M68K_REG_D3,
-	M68K_REG_D4,
-	M68K_REG_D5,
-	M68K_REG_D6,
-	M68K_REG_D7,
-	M68K_REG_A0,		/* Address registers */
-	M68K_REG_A1,
-	M68K_REG_A2,
-	M68K_REG_A3,
-	M68K_REG_A4,
-	M68K_REG_A5,
-	M68K_REG_A6,
-	M68K_REG_A7,
-	M68K_REG_PC,		/* Program Counter */
-	M68K_REG_SR,		/* Status Register */
-	M68K_REG_SP,		/* The current Stack Pointer (located in A7) */
+	M68K_REG_D0 = 0,		/* Data registers */
+	M68K_REG_D1 = 1,
+	M68K_REG_D2 = 2,
+	M68K_REG_D3 = 3,
+	M68K_REG_D4 = 4,
+	M68K_REG_D5 = 5,
+	M68K_REG_D6 = 6,
+	M68K_REG_D7 = 7,
+	M68K_REG_A0 = 8,		/* Address registers */
+	M68K_REG_A1 = 9,
+	M68K_REG_A2 = 10,
+	M68K_REG_A3 = 11,
+	M68K_REG_A4 = 12,
+	M68K_REG_A5 = 13,
+	M68K_REG_A6 = 14,
+	M68K_REG_A7 = 15,
+	M68K_REG_PC = 16,		/* Program Counter */
+	M68K_REG_SR = 17,		/* Status Register */
+	M68K_REG_SP = 18,		/* The current Stack Pointer (located in A7) */
 	M68K_REG_USP,		/* User Stack Pointer */
 	M68K_REG_ISP,		/* Interrupt Stack Pointer */
 	M68K_REG_MSP,		/* Master Stack Pointer */
