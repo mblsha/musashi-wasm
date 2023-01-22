@@ -25,3 +25,8 @@ m68kmake
 m68kops.?
 sim
 tags
+
+# emscpripten
+musashi.out.wasm.map
+musashi.out.js
+musashi.out.wasm
