@@ -162,7 +162,7 @@
  * instruction.
  */
 #define M68K_INSTRUCTION_HOOK       OPT_SPECIFY_HANDLER
-void my_instruction_hook_function(unsigned int pc);
+int my_instruction_hook_function(unsigned int pc);
 #define M68K_INSTRUCTION_CALLBACK(pc) my_instruction_hook_function(pc)
 
 

@@ -28,9 +28,8 @@ void m68k_write_memory_8(unsigned int address, unsigned int value) { _write_mem(
 void m68k_write_memory_16(unsigned int address, unsigned int value) { _write_mem(address, 2, value); }
 void m68k_write_memory_32(unsigned int address, unsigned int value) { _write_mem(address, 4, value); }
 
-void my_instruction_hook_function(unsigned int pc) {
-  if (_pc_hook(pc)) {
-    m68k_end_timeslice();
-    m68k_pulse_halt();
-  }
+int my_instruction_hook_function(unsigned int pc) {
+  return _pc_hook(pc);
+  // m68k_end_timeslice();
+  // m68k_pulse_halt();
 }

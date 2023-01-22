@@ -129,6 +129,7 @@ typedef enum
 	M68K_REG_PC = 16,		/* Program Counter */
 	M68K_REG_SR = 17,		/* Status Register */
 	M68K_REG_SP = 18,		/* The current Stack Pointer (located in A7) */
+	M68K_REG_PPC = 19,	/* Previous value in the program counter */
 	M68K_REG_USP,		/* User Stack Pointer */
 	M68K_REG_ISP,		/* Interrupt Stack Pointer */
 	M68K_REG_MSP,		/* Master Stack Pointer */
@@ -146,7 +147,6 @@ typedef enum
 	M68K_REG_PREF_DATA,	/* Last prefetch data */
 
 	/* Convenience registers */
-	M68K_REG_PPC,		/* Previous value in the program counter */
 	M68K_REG_IR,		/* Instruction register */
 	M68K_REG_CPU_TYPE	/* Type of CPU being run */
 } m68k_register_t;
