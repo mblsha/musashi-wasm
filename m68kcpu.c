@@ -1076,6 +1076,8 @@ void m68k_init(void)
 {
 	static uint emulation_initialized = 0;
 
+  m68k_set_cpu_type(M68K_CPU_TYPE_68000);
+
 	/* The first call to this function initializes the opcode handler jump table */
 	if(!emulation_initialized)
 		{

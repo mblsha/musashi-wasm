@@ -15,8 +15,8 @@ EXEPATH = ./
 # CC        = gcc
 CC        = emcc
 WARNINGS  = -Wall -Wextra -pedantic
-CFLAGS    = $(WARNINGS)
-LFLAGS    = $(WARNINGS)
+CFLAGS    = $(WARNINGS) -fsanitize=address -g
+LFLAGS    = $(WARNINGS) -fsanitize=address -g
 
 DELETEFILES = $(MUSASHIGENCFILES) $(MUSASHIGENHFILES) $(.OFILES) $(TARGET) $(MUSASHIGENERATOR)$(EXE)
 

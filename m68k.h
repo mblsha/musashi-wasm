@@ -93,8 +93,8 @@ extern "C" {
 /* CPU types for use in m68k_set_cpu_type() */
 enum
 {
-	M68K_CPU_TYPE_INVALID,
-	M68K_CPU_TYPE_68000,
+	M68K_CPU_TYPE_INVALID = -1,
+	M68K_CPU_TYPE_68000 = 0,
 	M68K_CPU_TYPE_68010,
 	M68K_CPU_TYPE_68EC020,
 	M68K_CPU_TYPE_68020,
