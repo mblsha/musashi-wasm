@@ -13,10 +13,11 @@ EXEPATH = ./
 .OFILES   = $(.CFILES:%.c=%.o)
 
 # CC        = gcc
-CC        = emcc
+CC        = em++
+# CC        = emcc
 WARNINGS  = -Wall -Wextra -pedantic
-CFLAGS    = $(WARNINGS) -fsanitize=address -g
-LFLAGS    = $(WARNINGS) -fsanitize=address -g
+# CFLAGS    = $(WARNINGS) -fsanitize=address -g
+# LFLAGS    = $(WARNINGS) -fsanitize=address -g
 
 DELETEFILES = $(MUSASHIGENCFILES) $(MUSASHIGENHFILES) $(.OFILES) $(TARGET) $(MUSASHIGENERATOR)$(EXE)
 
