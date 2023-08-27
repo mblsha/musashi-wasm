@@ -18,8 +18,8 @@ CC        = em++
 WARNINGS  = -Wall -Wextra -pedantic
 # CFLAGS    = $(WARNINGS) -fsanitize=address -g
 # LFLAGS    = $(WARNINGS) -fsanitize=address -g
-CFLAGS    = $(WARNINGS) -O3 -flto
-LFLAGS    = $(WARNINGS) -O3 -flto
+CFLAGS    = $(WARNINGS) -O3 -flto -fno-rtti -fno-exceptions
+LFLAGS    = $(WARNINGS) -O3 -flto -fno-rtti -fno-exceptions
 
 DELETEFILES = $(MUSASHIGENCFILES) $(MUSASHIGENHFILES) $(.OFILES) $(TARGET) $(MUSASHIGENERATOR)$(EXE)
 
