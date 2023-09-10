@@ -10,6 +10,7 @@ typedef void (*write_mem_t)(unsigned int address, int size, unsigned int value);
 typedef int (*pc_hook_t)(unsigned int pc);
 } // extern "C"
 
+static bool _enable_printf_logging = false;
 static read_mem_t _read_mem = 0;
 static write_mem_t _write_mem = 0;
 static pc_hook_t _pc_hook = 0;
@@ -48,24 +49,33 @@ struct Region {
 static std::vector<Region> _regions;
 
 extern "C" {
+  void enable_printf_logging() {
+    printf("enable_printf_logging\n");
+    _enable_printf_logging = true;
+  }
   void set_read_mem_func(read_mem_t func) {
-    printf("set_read_mem_func: %p\n", (void*)func);
+    if (_enable_printf_logging)
+      printf("set_read_mem_func: %p\n", (void*)func);
      _read_mem = func;
   }
   void set_write_mem_func(write_mem_t func) {
-    printf("set_write_mem_func: %p\n", (void*)func);
+    if (_enable_printf_logging)
+      printf("set_write_mem_func: %p\n", (void*)func);
     _write_mem = func;
   }
   void set_pc_hook_func(pc_hook_t func) {
-    printf("set_pc_hook_func: %p\n", (void*)func);
+    if (_enable_printf_logging)
+      printf("set_pc_hook_func: %p\n", (void*)func);
     _pc_hook = func;
   }
   void add_pc_hook_addr(unsigned int addr) {
-    printf("add_pc_hook_addr: %p\n", (void*)addr);
+    if (_enable_printf_logging)
+      printf("add_pc_hook_addr: %p\n", (void*)addr);
     _pc_hook_addrs.insert(addr);
   }
   void add_region(unsigned int start, unsigned int size, void* data) {
-    printf("add_region: %p %p %p\n", (void*)start, (void*)size, data);
+    if (_enable_printf_logging)
+      printf("add_region: %p %p %p\n", (void*)start, (void*)size, data);
     _regions.emplace_back(start, size, data);
   }
 } // extern "C"
