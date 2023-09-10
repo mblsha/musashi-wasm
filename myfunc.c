@@ -10,6 +10,7 @@ typedef void (*write_mem_t)(unsigned int address, int size, unsigned int value);
 typedef int (*pc_hook_t)(unsigned int pc);
 } // extern "C"
 
+static bool _initialized = false;
 static bool _enable_printf_logging = false;
 static read_mem_t _read_mem = 0;
 static write_mem_t _write_mem = 0;
@@ -49,6 +50,11 @@ struct Region {
 static std::vector<Region> _regions;
 
 extern "C" {
+  int my_initialize() {
+    int result = _initialized;
+    _initialized = true;
+    return result;
+  }
   void enable_printf_logging() {
     printf("enable_printf_logging\n");
     _enable_printf_logging = true;
