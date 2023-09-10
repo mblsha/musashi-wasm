@@ -90,13 +90,13 @@ void m68k_write_memory_32(unsigned int address, unsigned int value) { _write_mem
 
 int my_instruction_hook_function(unsigned int pc) {
   // neogeo doesn't have any instructions before 0x122
-  if (pc < 0x122) {
+  /* if (pc < 0x122) { */
     return _pc_hook(pc);
-  }
-  if (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end()) {
-    return _pc_hook(pc);
-  }
-  return 0;
+  /* } */
+  /* if (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end()) { */
+  /*   return _pc_hook(pc); */
+  /* } */
+  /* return 0; */
   // m68k_end_timeslice();
   // m68k_pulse_halt();
 }
