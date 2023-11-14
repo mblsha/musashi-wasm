@@ -30,3 +30,6 @@ tags
 musashi.out.wasm.map
 musashi.out.js
 musashi.out.wasm
+musashi-node.out.wasm.map
+musashi-node.out.js
+musashi-node.out.wasm
