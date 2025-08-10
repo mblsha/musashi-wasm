@@ -391,8 +391,7 @@ int M68kPerfettoTracer::handle_instruction_event(uint32_t pc, uint16_t opcode, u
 
     /* Create slice for instruction execution on its own track */
     trace_builder_->begin_slice(instr_thread_track_id_, disasm_buf, start_ns)
-        .add_annotation("pc", format_hex(pc))
-        .add_annotation("opcode", format_hex(opcode));
+        .add_annotation("pc", format_hex(pc));
 
     trace_builder_->end_slice(instr_thread_track_id_, end_ns);
 
