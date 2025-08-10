@@ -163,3 +163,32 @@ The Fish script build process:
 - **wasm-ci.yml**: Tests Fish script WASM build
 - All M68k CPU tests are now enabled and passing (previously 7 of 9 were disabled)
 - Sanitizer builds catch memory issues like alloc-dealloc mismatches and uninitialized reads
+
+## Known Issues
+
+### GoogleTest Linking Issue on macOS ARM64
+There is a known linking issue with GoogleTest on macOS ARM64 (Apple Silicon) systems that prevents tests from building locally. The issue manifests as:
+```
+Undefined symbols for architecture arm64:
+  "testing::internal::MakeAndRegisterTestInfo(std::__1::basic_string<char, ...>)"
+```
+
+**Root Cause**: C++ ABI mismatch between GoogleTest and test code:
+- Test code expects `std::__1::basic_string` (libc++, LLVM's standard library)
+- GoogleTest provides `char const*` signatures
+- This is due to different C++ standard library implementations or compilation flags
+
+**Attempted Solutions**:
+- Added `-stdlib=libc++` flags for consistency (already in CMakeLists.txt)
+- Tested GoogleTest versions: v1.14.0, v1.13.0, v1.12.1, and recommended commit
+- Issue is pre-existing and affects all test targets, not just Perfetto tests
+
+**Workarounds**:
+1. Build and run tests on Linux (GitHub Actions CI works correctly)
+2. Use system-installed GoogleTest: `brew install googletest` and use `find_package(GTest REQUIRED)`
+3. Consider alternative testing frameworks like Catch2 for local development
+
+**References**:
+- [GoogleTest Issue #2021](https://github.com/google/googletest/issues/2021)
+- [GoogleTest Issue #3802](https://github.com/google/googletest/issues/3802) (Apple M1 specific)
+- [Stack Overflow: GoogleTest undefined symbols](https://stackoverflow.com/questions/38802547/googletest-undefined-symbols-for-architecture-x86-64-error)
