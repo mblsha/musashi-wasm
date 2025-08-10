@@ -228,6 +228,7 @@ if(BUILD_TESTS)
     # Assemble test program with vasm
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/tests/test_program.bin
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/tests
         COMMAND ${CMAKE_SOURCE_DIR}/third_party/vasm/vasmm68k_mot 
                 -Fbin 
                 -o ${CMAKE_CURRENT_BINARY_DIR}/tests/test_program.bin
