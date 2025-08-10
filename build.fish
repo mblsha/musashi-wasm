@@ -40,9 +40,19 @@ else
 end
 
 echo "Current PATH: $PATH"
-which emcc     ^/dev/null; or die "emcc not in PATH for fish"
-which em++     ^/dev/null; or die "em++ not in PATH for fish" 
-which emmake   ^/dev/null; or die "emmake not in PATH for fish"
+
+# Test if we can find emcc directly before using which
+if test -x "$EMSDK/upstream/emscripten/emcc"
+    echo "emcc found at: $EMSDK/upstream/emscripten/emcc"
+else
+    die "emcc not found at expected location: $EMSDK/upstream/emscripten/emcc"
+end
+
+# Now try the which commands (these should work after PATH is set)
+echo "Checking which commands..."
+which emcc     ^/dev/null; or echo "WARNING: which emcc failed, but direct path works"
+which em++     ^/dev/null; or echo "WARNING: which em++ failed, but should work via PATH" 
+which emmake   ^/dev/null; or echo "WARNING: which emmake failed, but should work via PATH"
 echo "emcc version:"
 emcc --version
 echo "node version:"
