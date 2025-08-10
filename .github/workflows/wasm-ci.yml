@@ -54,15 +54,15 @@ jobs:
         # List all generated files
         ls -la *.out.* *.wasm *.map 2>/dev/null || true
         
-        # Verify Perfetto functions are exported
-        echo "Checking for Perfetto function exports..."
-        for func in perfetto_init perfetto_destroy perfetto_enable_flow \
-                    perfetto_enable_memory perfetto_enable_instructions \
-                    perfetto_export_trace perfetto_is_initialized; do
+        # Check standard M68k exports are present
+        echo "Checking for core M68k function exports..."
+        for func in m68k_init m68k_execute m68k_get_reg m68k_set_reg \
+                    m68k_disassemble; do
           if grep -q "_${func}" musashi.out.js; then
             echo "✓ ${func} exported"
           else
-            echo "✗ ${func} NOT exported (expected with Perfetto integration)"
+            echo "✗ ${func} NOT exported"
+            exit 1
           fi
         done
         
@@ -70,6 +70,87 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: wasm-modules
+        path: |
+          musashi.out.js
+          musashi.out.wasm
+          musashi-node.out.js
+          musashi-node.out.wasm
+        retention-days: 7
+
+  # WebAssembly build with Perfetto tracing enabled
+  wasm-perfetto-build:
+    name: WebAssembly Build with Perfetto
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Setup Emscripten
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: 'latest'
+    
+    - name: Install Fish shell
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fish
+        
+    - name: Build protobuf and abseil for WebAssembly
+      run: |
+        chmod +x build_protobuf_wasm.sh
+        ./build_protobuf_wasm.sh
+        
+    - name: Build WASM modules with Perfetto enabled
+      run: |
+        chmod +x build.fish
+        ENABLE_PERFETTO=1 fish build.fish
+        
+    - name: Verify Perfetto WASM outputs
+      run: |
+        # Check that WebAssembly modules were created
+        test -f musashi.out.js
+        test -f musashi.out.wasm
+        test -f musashi-node.out.js
+        test -f musashi-node.out.wasm
+        
+        # Check file sizes (should be larger with Perfetto)
+        for wasm_file in musashi.out.wasm musashi-node.out.wasm; do
+          wasm_size=$(stat -c%s "$wasm_file")
+          if [ "$wasm_size" -lt 1000000 ]; then
+            echo "ERROR: $wasm_file seems too small for Perfetto build: $wasm_size bytes"
+            exit 1
+          fi
+          echo "$wasm_file size: $wasm_size bytes"
+        done
+        
+        # Verify Perfetto functions are exported
+        echo "Checking for Perfetto function exports..."
+        for func in m68k_perfetto_init m68k_perfetto_destroy m68k_perfetto_enable_flow \
+                    m68k_perfetto_enable_memory m68k_perfetto_enable_instructions \
+                    m68k_perfetto_export_trace m68k_perfetto_is_initialized \
+                    m68k_perfetto_save_trace m68k_perfetto_free_trace_data; do
+          if grep -q "_${func}" musashi.out.js; then
+            echo "✓ ${func} exported"
+          else
+            echo "✗ ${func} NOT exported"
+            exit 1
+          fi
+        done
+        
+    - name: Test Perfetto WASM functionality
+      run: |
+        # Make test script executable
+        chmod +x test_perfetto_wasm.js
+        
+        # Run the Perfetto functionality test
+        node test_perfetto_wasm.js
+        
+    - name: Upload Perfetto WASM artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: wasm-perfetto-modules
         path: |
           musashi.out.js
           musashi.out.wasm
