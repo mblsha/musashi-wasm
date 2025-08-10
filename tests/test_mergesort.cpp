@@ -1,6 +1,7 @@
 /* Comprehensive merge sort tests with verification and analysis */
 
 #include "m68k_test_base.h"
+#include "test_helpers.h"
 
 /* Disassembler memory access functions */
 extern "C" {
@@ -166,7 +167,7 @@ protected:
 
 TEST_F(MergeSortTest, ExecuteAndVerifyBehavior) {
     /* Load the assembled merge sort binary */
-    ASSERT_TRUE(LoadBinaryFile("../tests/test_mergesort.bin", 0x400));
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_mergesort.bin"), 0x400));;
     
     /* Enable instruction tracing */
     enable_tracing = true;
@@ -226,7 +227,7 @@ TEST_F(MergeSortTest, ExecuteAndVerifyBehavior) {
 
 TEST_F(MergeSortTest, ExactTraceVerification) {
     /* Load the assembled merge sort binary */
-    ASSERT_TRUE(LoadBinaryFile("../tests/test_mergesort.bin", 0x400));
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_mergesort.bin"), 0x400));;
     
     /* Enable instruction tracing */
     enable_tracing = true;
@@ -324,7 +325,7 @@ TEST_F(MergeSortTest, ExactTraceVerification) {
 
 TEST_F(MergeSortTest, RecursionDepthAnalysis) {
     /* Load the assembled merge sort binary */
-    ASSERT_TRUE(LoadBinaryFile("../tests/test_mergesort.bin", 0x400));
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_mergesort.bin"), 0x400));;
     
     /* Enable instruction tracing */
     enable_tracing = true;

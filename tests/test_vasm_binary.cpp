@@ -1,6 +1,7 @@
 /* Refactored vasm binary tests - eliminates ~150 lines of duplication */
 
 #include "m68k_test_common.h"
+#include "test_helpers.h"
 #include "m68k_perfetto.h"
 #include "m68ktrace.h"
 
@@ -19,7 +20,7 @@ DECLARE_M68K_TEST(VasmBinaryTest) {};
 
 TEST_F(VasmBinaryTest, LoadAndValidateBinary) {
     /* Load the assembled binary */
-    ASSERT_TRUE(LoadBinaryFile("../tests/test_program.bin", 0x400));
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));
     
     /* Verify the binary was loaded correctly by checking first few instructions */
     EXPECT_EQ(0x303C, read_word(0x400));  /* MOVE.W #5,D0 */
@@ -33,7 +34,7 @@ TEST_F(VasmBinaryTest, LoadAndValidateBinary) {
 
 TEST_F(VasmBinaryTest, ExecuteBinaryWithPerfettoTrace) {
     /* Load the assembled binary */
-    ASSERT_TRUE(LoadBinaryFile("../tests/test_program.bin", 0x400));
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));;
     
     /* Enable M68K tracing */
     m68k_trace_enable(1);
@@ -106,7 +107,7 @@ TEST_F(VasmBinaryTest, ExecuteBinaryWithPerfettoTrace) {
 
 TEST_F(VasmBinaryTest, ValidateInstructionEncoding) {
     /* Load the assembled binary */
-    ASSERT_TRUE(LoadBinaryFile("../tests/test_program.bin", 0x400));
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));;
     
     /* Validate specific instruction encodings */
     struct InstructionCheck {
@@ -137,7 +138,7 @@ TEST_F(VasmBinaryTest, ValidateInstructionEncoding) {
 
 TEST_F(VasmBinaryTest, ExecuteFactorial) {
     /* Load the assembled binary */
-    ASSERT_TRUE(LoadBinaryFile("../tests/test_program.bin", 0x400));
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));;
     
     /* Set up to call factorial(5) directly */
     write_long(4, 0x41C);  /* Set PC to factorial function */
@@ -164,7 +165,7 @@ TEST_F(VasmBinaryTest, ExecuteFactorial) {
 
 TEST_F(VasmBinaryTest, ExecuteFibonacci) {
     /* Load the assembled binary */
-    ASSERT_TRUE(LoadBinaryFile("../tests/test_program.bin", 0x400));
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));;
     
     /* Set up to call fibonacci(5) directly */
     write_long(4, 0x434);  /* Set PC to fibonacci function */
@@ -191,7 +192,7 @@ TEST_F(VasmBinaryTest, ExecuteFibonacci) {
 
 TEST_F(VasmBinaryTest, BubbleSortExecution) {
     /* Load the assembled binary */
-    ASSERT_TRUE(LoadBinaryFile("../tests/test_program.bin", 0x400));
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));;
     
     /* Verify initial array is unsorted */
     uint16_t initial[] = {8, 3, 7, 1, 5, 2, 6, 4};
