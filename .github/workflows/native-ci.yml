@@ -52,7 +52,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y protobuf-compiler libprotobuf-dev
+        sudo apt-get install -y protobuf-compiler libprotobuf-dev jq
     
     - name: Configure CMake with Perfetto
       run: |
@@ -67,6 +67,16 @@ jobs:
       run: |
         cd build
         cmake --build . -j$(nproc)
+    
+    - name: Run Perfetto unit tests
+      run: |
+        cd build
+        # List all available tests to verify test_perfetto is included
+        echo "Available tests:"
+        ctest --show-only=json-v1 | jq -r '.tests[].name' || ctest -N
+        
+        # Run all tests including test_perfetto
+        ctest --output-on-failure
     
     - name: Build and test example
       run: |
