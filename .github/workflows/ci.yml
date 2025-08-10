@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, wasm ]
+  pull_request:
+    branches: [ main, master, wasm ]
+  workflow_dispatch:
+
+jobs:
+  # Native build and test job
+  native-tests:
+    name: Native Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        build_type: [Debug, Release]
+        include:
+          - os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+          - os: macos-latest
+            cc: clang
+            cxx: clang++
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure CMake
+      run: |
+        mkdir -p build
+        cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+          -DBUILD_TESTS=ON
+
+    - name: Build
+      run: |
+        cd build
+        cmake --build . --config ${{ matrix.build_type }} -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+
+    - name: Run tests
+      run: |
+        cd build
+        ctest --output-on-failure -C ${{ matrix.build_type }}
+
+  # WebAssembly build job
+  wasm-build:
+    name: WebAssembly Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Emscripten
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: 'latest'
+    
+    - name: Build m68kmake
+      run: |
+        gcc -o m68kmake m68kmake.c
+        ./m68kmake
+    
+    - name: Build WebAssembly
+      run: |
+        emmake make -j$(nproc)
+        
+    - name: Check WASM output
+      run: |
+        # Check that key object files were created
+        test -f m68kcpu.o
+        test -f m68kops.o
+        test -f myfunc.o
+        
+    - name: Build WASM modules with Fish script
+      if: runner.os == 'Linux'
+      run: |
+        # Install Fish shell
+        sudo apt-get update
+        sudo apt-get install -y fish
+        
+        # Make script executable and run it
+        chmod +x build.fish
+        fish build.fish
+        
+    - name: Verify WASM outputs
+      if: runner.os == 'Linux'
+      run: |
+        # Check that WebAssembly modules were created
+        test -f musashi.out.js
+        test -f musashi.out.wasm
+        test -f musashi-node.out.js
+        test -f musashi-node.out.wasm
+        
+        # Check file sizes are reasonable
+        wasm_size=$(stat -c%s musashi.out.wasm 2>/dev/null || stat -f%z musashi.out.wasm)
+        if [ "$wasm_size" -lt 100000 ]; then
+          echo "WASM file seems too small: $wasm_size bytes"
+          exit 1
+        fi
+        echo "WASM module size: $wasm_size bytes"
+
+  # Sanitizer build job (Linux only)
+  sanitizer-tests:
+    name: Sanitizer Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Configure CMake with Sanitizers
+      run: |
+        mkdir -p build
+        cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DBUILD_TESTS=ON \
+          -DENABLE_SANITIZERS=ON
+    
+    - name: Build with Sanitizers
+      run: |
+        cd build
+        cmake --build . -j$(nproc)
+    
+    - name: Run tests with Sanitizers
+      run: |
+        cd build
+        ASAN_OPTIONS=detect_leaks=1:check_initialization_order=1 \
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+        ctest --output-on-failure
+      continue-on-error: true  # Sanitizers may find issues, don't fail the workflow
