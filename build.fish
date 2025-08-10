@@ -3,6 +3,33 @@
 # Note: Perfetto tracing can be enabled by setting ENABLE_PERFETTO=1 environment variable
 # Requires running ./build_protobuf_wasm.sh first to build protobuf and abseil dependencies
 
+# === Fail-fast helpers (Fish doesn't have "set -e") ===
+function die
+    set -l code $status
+    if test (count $argv) -gt 0
+        echo (string join ' ' $argv) >&2
+    end
+    exit (test $code -ne 0; and echo $code; or echo 1)
+end
+
+function run
+    echo
+    echo ">>> $argv"
+    command $argv
+    or die "FAILED ($status): $argv"
+end
+
+# === Environment sanity: show the toolchain we actually see in this shell ===
+echo "==== TOOLCHAIN VERIFICATION ===="
+which emcc     ^/dev/null; or die "emcc not in PATH for fish"
+which em++     ^/dev/null; or die "em++ not in PATH for fish" 
+which emmake   ^/dev/null; or die "emmake not in PATH for fish"
+echo "emcc version:"
+emcc --version
+echo "node version:"
+node --version
+echo "================================"
+
 # Check if we should enable Perfetto
 set -l enable_perfetto (set -q ENABLE_PERFETTO; and echo $ENABLE_PERFETTO; or echo "0")
 
@@ -13,8 +40,8 @@ else
     echo "Building without Perfetto tracing (set ENABLE_PERFETTO=1 to enable)..."
 end
 
-# Build with correct flags
-emmake make -j20 ENABLE_PERFETTO=$enable_perfetto
+# Build with correct flags (limit parallelism for CI stability)
+run emmake make -j8 ENABLE_PERFETTO=$enable_perfetto
 
 set -l exported_functions \
     _malloc \
@@ -110,17 +137,38 @@ set -l emcc_options \
  -sDISABLE_EXCEPTION_CATCHING=0 \
  -Wl,--gc-sections
 
-# Add protobuf and abseil libraries if Perfetto is enabled
+# Add protobuf and abseil libraries if Perfetto is enabled  
 if test "$enable_perfetto" = "1"
-    # Make pkg-config aware of WASM-installed .pc files
-    set -x PKG_CONFIG_PATH third_party/protobuf-wasm-install/lib/pkgconfig:third_party/abseil-wasm-install/lib/pkgconfig
+    echo "==== PERFETTO LINKING SETUP ===="
     
-    # Link protobuf libraries directly
-    set emcc_options $emcc_options \
-        third_party/protobuf-wasm-install/lib/libprotobuf.a
+    # Fish treats *_PATH variables as lists, so set as a list (exported as colon-separated)
+    set -gx PKG_CONFIG_PATH third_party/protobuf-wasm-install/lib/pkgconfig \
+                            third_party/abseil-wasm-install/lib/pkgconfig
+    
+    echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+    
+    # Verify protobuf pkg-config works
+    echo "Testing pkg-config for protobuf..."
+    pkg-config --exists protobuf; or die "protobuf.pc not found or invalid"
+    
+    # Get protobuf linking flags and split them properly (CRITICAL for Fish)
+    echo "Getting protobuf link flags..."
+    set -l protobuf_libs (pkg-config --static --libs protobuf | string split -n ' ')
+    
+    echo "protobuf libs (split):"
+    for lib in $protobuf_libs
+        echo "  $lib"
+    end
+    
+    # Add the properly split protobuf libraries to emcc options
+    set emcc_options $emcc_options $protobuf_libs
+    
+    echo "================================="
 end
 
-emcc \
+# Build Node.js version
+echo "==== BUILDING NODE.JS VERSION ===="
+run emcc \
  $emcc_options \
  -s ENVIRONMENT=node \
  -o musashi-node.out.js
@@ -128,7 +176,9 @@ emcc \
 cat post.js >> musashi-node.out.js
 echo "Written to musashi-node.out.js"
 
-emcc \
+# Build Web version  
+echo "==== BUILDING WEB VERSION ===="
+run emcc \
  $emcc_options \
  -s ENVIRONMENT=web \
  -o musashi.out.js
