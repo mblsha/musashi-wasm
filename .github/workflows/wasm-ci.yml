@@ -23,28 +23,28 @@ jobs:
       with:
         version: '4.0.12'  # Pin version for consistency
     
-    - name: Install Fish shell and build WASM (single step for env consistency)
+    - name: Install Fish shell
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fish
+        
+    - name: Build WASM with Fish script
       shell: bash
       run: |
         set -euo pipefail
         
-        # Install Fish
-        sudo apt-get update
-        sudo apt-get install -y fish
-        
-        # Activate Emscripten environment in this shell
-        source $EMSDK/emsdk_env.sh
-        
-        # Show environment for debugging
+        # Show environment for debugging (setup-emsdk should have set PATH)
         echo "==== EMSCRIPTEN ENVIRONMENT ===="
-        which emcc && emcc --version
-        which em++ && em++ --version  
-        which emmake && emmake --version
-        which node && node --version
-        echo "EMSDK=$EMSDK"
+        echo "PATH: $PATH"
+        echo "EMSDK: ${EMSDK:-not set}"
+        echo "Looking for Emscripten tools..."
+        which emcc && emcc --version || echo "emcc not found"
+        which em++ && em++ --version || echo "em++ not found"
+        which emmake && emmake --version || echo "emmake not found"
+        which node && node --version || echo "node not found"
         echo "================================"
         
-        # Run Fish script with inherited Emscripten environment
+        # Run Fish script with current environment
         chmod +x build.fish
         fish ./build.fish
         
@@ -107,34 +107,36 @@ jobs:
       with:
         version: '4.0.12'  # Pin version for consistency
     
-    - name: Install Fish shell, build protobuf, and build WASM (single step)
+    - name: Install Fish shell
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fish
+        
+    - name: Build protobuf and abseil for WebAssembly
       shell: bash
       run: |
         set -euo pipefail
         
-        # Install Fish
-        sudo apt-get update
-        sudo apt-get install -y fish
-        
-        # Activate Emscripten environment
-        source $EMSDK/emsdk_env.sh
-        
         # Show environment for debugging
         echo "==== EMSCRIPTEN ENVIRONMENT ===="
-        which emcc && emcc --version
-        which em++ && em++ --version
-        which emmake && emmake --version  
-        which node && node --version
-        echo "EMSDK=$EMSDK"
+        echo "PATH: $PATH"
+        echo "EMSDK: ${EMSDK:-not set}"
+        which emcc && emcc --version || echo "emcc not found"
+        which em++ && em++ --version || echo "em++ not found"
+        which emmake && emmake --version || echo "emmake not found"
+        which node && node --version || echo "node not found"
         echo "================================"
         
         # Build protobuf and abseil dependencies
-        echo "==== BUILDING PROTOBUF & ABSEIL ===="
         chmod +x build_protobuf_wasm.sh
         ./build_protobuf_wasm.sh
         
+    - name: Build WASM with Perfetto enabled
+      shell: bash
+      run: |
+        set -euo pipefail
+        
         # Build WASM with Perfetto enabled
-        echo "==== BUILDING WASM WITH PERFETTO ===="
         chmod +x build.fish
         ENABLE_PERFETTO=1 fish ./build.fish
         
