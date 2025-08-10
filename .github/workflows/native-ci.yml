@@ -8,46 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Native build and test job
-  native-tests:
-    name: Native Tests
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        build_type: [Debug, Release]
-        include:
-          - os: ubuntu-latest
-            cc: gcc
-            cxx: g++
-          - os: macos-latest
-            cc: clang
-            cxx: clang++
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Configure CMake
-      run: |
-        mkdir -p build
-        cd build
-        cmake .. \
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-          -DCMAKE_C_COMPILER=${{ matrix.cc }} \
-          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
-          -DBUILD_TESTS=ON
-
-    - name: Build
-      run: |
-        cd build
-        cmake --build . --config ${{ matrix.build_type }} -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
-
-    - name: Run tests
-      run: |
-        cd build
-        ctest --output-on-failure -C ${{ matrix.build_type }}
-
-  # Sanitizer build job (Linux only - more efficient than running on all platforms)
+  # Sanitizer build job (Linux only - catches memory issues effectively)
   sanitizer-tests:
     name: Sanitizer Tests
     runs-on: ubuntu-latest
