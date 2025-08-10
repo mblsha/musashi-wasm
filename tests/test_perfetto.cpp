@@ -11,6 +11,7 @@
 #include <vector>
 #include <memory>
 #include <cstdio>
+#include <cstdlib>
 
 /* Forward declarations for myfunc.cc wrapper functions */
 extern "C" {
@@ -627,8 +628,10 @@ TEST_F(PerfettoTest, ComplexProgramWithTraceFile) {
             
             EXPECT_GT(file_size, 1024) << "Trace file should have substantial content";
             
-            /* Clean up the file */
-            remove(trace_filename);
+            /* Clean up the file (unless in CI to preserve artifact) */
+            if (getenv("CI") == nullptr) {
+                remove(trace_filename);
+            }
         } else {
             ADD_FAILURE() << "Could not open trace file for verification";
         }

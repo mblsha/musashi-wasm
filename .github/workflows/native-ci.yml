@@ -78,6 +78,29 @@ jobs:
         # Run all tests including test_perfetto
         ctest --output-on-failure
     
+    - name: Generate Perfetto trace
+      run: |
+        cd build
+        # Run the specific test that generates the trace file
+        # The ComplexProgramWithTraceFile test saves to test_complex_trace.perfetto-trace
+        ./test_perfetto --gtest_filter=PerfettoTest.ComplexProgramWithTraceFile || true
+        
+        # Check if trace was generated
+        if [ -f test_complex_trace.perfetto-trace ]; then
+          echo "✓ Perfetto trace generated successfully"
+          ls -lh test_complex_trace.perfetto-trace
+        else
+          echo "✗ Perfetto trace file not found"
+        fi
+    
+    - name: Upload Perfetto trace
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: perfetto-trace
+        path: build/test_complex_trace.perfetto-trace
+        if-no-files-found: warn
+    
     - name: Build and test example
       run: |
         cd build
