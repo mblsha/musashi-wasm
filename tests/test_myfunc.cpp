@@ -13,6 +13,7 @@ void set_write_mem_func(void (*func)(unsigned int address, int size, unsigned in
 void set_pc_hook_func(int (*func)(unsigned int pc));
 void add_pc_hook_addr(unsigned int addr);
 void add_region(unsigned int start, unsigned int size, void* data);
+void clear_regions();
 
 // Memory access functions
 unsigned int m68k_read_memory_8(unsigned int address);
@@ -92,6 +93,7 @@ protected:
     
     void TearDown() override {
         instance = nullptr;
+        clear_regions();  // Clear all memory regions between tests
     }
 };
 
@@ -129,6 +131,9 @@ TEST_F(MyFuncTest, MemoryRegions) {
     // Test 32-bit reads
     EXPECT_EQ(m68k_read_memory_32(0x1000), 0x00010203);
     EXPECT_EQ(m68k_read_memory_32(0x1010), 0x10111213);
+    
+    // Clean up allocated memory
+    delete[] region_data;
 }
 
 // Test memory callbacks
@@ -213,4 +218,7 @@ TEST_F(MyFuncTest, MixedMemoryAccess) {
     EXPECT_EQ(write_log.size(), 1);
     EXPECT_EQ(write_log[0].first, 0x10);
     EXPECT_EQ(write_log[0].second, 0xFF);
+    
+    // Clean up allocated memory
+    delete[] low_mem;
 }

@@ -15,6 +15,7 @@ set -l exported_functions \
     _set_pc_hook_func \
     _add_pc_hook_addr \
     _add_region \
+    _clear_regions \
     _m68k_pulse_reset \
     _m68k_cycles_run \
     _enable_printf_logging \

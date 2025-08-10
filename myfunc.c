@@ -27,9 +27,7 @@ struct Region {
   Region(unsigned int start, unsigned int size, void* data)
     : start_(start), size_(size), data_(static_cast<uint8_t*>(data))
   {}
-  ~Region() {
-    delete data_;
-  }
+  // Note: Region does not own the memory, caller is responsible for cleanup
 
   std::optional<unsigned int> read(unsigned int addr, int size) {
     if (addr >= start_ && addr < start_ + size_) {
@@ -85,6 +83,9 @@ extern "C" {
     if (_enable_printf_logging)
       printf("add_region: %p %p %p\n", (void*)start, (void*)size, data);
     _regions.emplace_back(start, size, data);
+  }
+  void clear_regions() {
+    _regions.clear();
   }
 } // extern "C"
 

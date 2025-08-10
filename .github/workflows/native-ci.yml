@@ -75,4 +75,3 @@ jobs:
         ASAN_OPTIONS=detect_leaks=1:check_initialization_order=1 \
         UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
         ctest --output-on-failure
-      continue-on-error: true  # Sanitizers may find issues, don't fail the workflow
