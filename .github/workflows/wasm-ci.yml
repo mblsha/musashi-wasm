@@ -1,0 +1,94 @@
+name: WebAssembly CI
+
+on:
+  push:
+    branches: [ main, master, wasm ]
+  pull_request:
+    branches: [ main, master, wasm ]
+  workflow_dispatch:
+
+jobs:
+  # WebAssembly build job using Makefile
+  wasm-make-build:
+    name: WebAssembly Build (Makefile)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Emscripten
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: 'latest'
+    
+    - name: Build m68kmake
+      run: |
+        gcc -o m68kmake m68kmake.c
+        ./m68kmake
+    
+    - name: Build WebAssembly with emmake
+      run: |
+        emmake make -j$(nproc)
+        
+    - name: Check object files
+      run: |
+        # Check that key object files were created
+        test -f m68kcpu.o
+        test -f m68kops.o
+        test -f myfunc.o
+        ls -la *.o
+        
+  # WebAssembly build job using Fish script
+  wasm-fish-build:
+    name: WebAssembly Build (Fish Script)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Emscripten
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: 'latest'
+    
+    - name: Install Fish shell
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fish
+        
+    - name: Build WASM modules with Fish script
+      run: |
+        chmod +x build.fish
+        fish build.fish
+        
+    - name: Verify WASM outputs
+      run: |
+        # Check that WebAssembly modules were created
+        test -f musashi.out.js
+        test -f musashi.out.wasm
+        test -f musashi-node.out.js
+        test -f musashi-node.out.wasm
+        
+        # Check file sizes are reasonable
+        for wasm_file in musashi.out.wasm musashi-node.out.wasm; do
+          wasm_size=$(stat -c%s "$wasm_file")
+          if [ "$wasm_size" -lt 100000 ]; then
+            echo "ERROR: $wasm_file seems too small: $wasm_size bytes"
+            exit 1
+          fi
+          echo "$wasm_file size: $wasm_size bytes"
+        done
+        
+        # List all generated files
+        ls -la *.out.* *.wasm *.map 2>/dev/null || true
+        
+    - name: Upload WASM artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: wasm-modules
+        path: |
+          musashi.out.js
+          musashi.out.wasm
+          musashi-node.out.js
+          musashi-node.out.wasm
+        retention-days: 7

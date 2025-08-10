@@ -1,4 +1,4 @@
-name: CI
+name: Native CI
 
 on:
   push:
@@ -46,63 +46,6 @@ jobs:
       run: |
         cd build
         ctest --output-on-failure -C ${{ matrix.build_type }}
-
-  # WebAssembly build job
-  wasm-build:
-    name: WebAssembly Build
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Emscripten
-      uses: mymindstorm/setup-emsdk@v14
-      with:
-        version: 'latest'
-    
-    - name: Build m68kmake
-      run: |
-        gcc -o m68kmake m68kmake.c
-        ./m68kmake
-    
-    - name: Build WebAssembly
-      run: |
-        emmake make -j$(nproc)
-        
-    - name: Check WASM output
-      run: |
-        # Check that key object files were created
-        test -f m68kcpu.o
-        test -f m68kops.o
-        test -f myfunc.o
-        
-    - name: Build WASM modules with Fish script
-      if: runner.os == 'Linux'
-      run: |
-        # Install Fish shell
-        sudo apt-get update
-        sudo apt-get install -y fish
-        
-        # Make script executable and run it
-        chmod +x build.fish
-        fish build.fish
-        
-    - name: Verify WASM outputs
-      if: runner.os == 'Linux'
-      run: |
-        # Check that WebAssembly modules were created
-        test -f musashi.out.js
-        test -f musashi.out.wasm
-        test -f musashi-node.out.js
-        test -f musashi-node.out.wasm
-        
-        # Check file sizes are reasonable
-        wasm_size=$(stat -c%s musashi.out.wasm 2>/dev/null || stat -f%z musashi.out.wasm)
-        if [ "$wasm_size" -lt 100000 ]; then
-          echo "WASM file seems too small: $wasm_size bytes"
-          exit 1
-        fi
-        echo "WASM module size: $wasm_size bytes"
 
   # Sanitizer build job (Linux only)
   sanitizer-tests:
