@@ -1,7 +1,7 @@
 # Just a basic makefile to quickly test that everyting is working, it just
 # compiles the .o and the generator
 
-MUSASHIFILES     = m68kcpu.c myfunc.c m68kdasm.c m68ktrace.c softfloat/softfloat.c
+MUSASHIFILES     = m68kcpu.c myfunc.cc m68kdasm.c m68ktrace.cc softfloat/softfloat.c
 MUSASHIGENCFILES = m68kops.c
 MUSASHIGENHFILES = m68kops.h
 MUSASHIGENERATOR = m68kmake
@@ -9,8 +9,13 @@ MUSASHIGENERATOR = m68kmake
 EXE =
 EXEPATH = ./
 
-.CFILES   = $(MAINFILES) $(OSDFILES) $(MUSASHIFILES) $(MUSASHIGENCFILES)
-.OFILES   = $(.CFILES:%.c=%.o)
+.CFILES   = $(filter %.c,$(MUSASHIFILES)) $(MUSASHIGENCFILES)
+.CCFILES  = $(filter %.cc,$(MUSASHIFILES))
+.OFILES   = $(.CFILES:%.c=%.o) $(.CCFILES:%.cc=%.o)
+
+# Rule for compiling .cc files with the same compiler
+%.o: %.cc
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 # CC        = gcc
 CC        = em++
@@ -18,8 +23,8 @@ CC        = em++
 WARNINGS  = -Wall -Wextra -pedantic
 # CFLAGS    = $(WARNINGS) -fsanitize=address -g
 # LFLAGS    = $(WARNINGS) -fsanitize=address -g
-CFLAGS    = $(WARNINGS) -O3 -flto -fno-rtti -fno-exceptions
-LFLAGS    = $(WARNINGS) -O3 -flto -fno-rtti -fno-exceptions
+CFLAGS    = $(WARNINGS) -O3 -flto -fno-rtti -fno-exceptions -std=c++17
+LFLAGS    = $(WARNINGS) -O3 -flto -fno-rtti -fno-exceptions -std=c++17
 
 DELETEFILES = $(MUSASHIGENCFILES) $(MUSASHIGENHFILES) $(.OFILES) $(TARGET) $(MUSASHIGENERATOR)$(EXE)
 

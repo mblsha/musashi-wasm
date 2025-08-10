@@ -42,7 +42,7 @@ add_custom_command(
 add_library(musashi_core STATIC
     m68kcpu.c
     m68kdasm.c
-    m68ktrace.c
+    m68ktrace.cc
     softfloat/softfloat.c
     ${CMAKE_CURRENT_BINARY_DIR}/m68kops.c
 )
@@ -64,10 +64,10 @@ endif()
 
 # Create the myfunc library (C++ wrapper)
 add_library(musashi_api STATIC
-    myfunc.c
+    myfunc.cc
 )
 
-set_source_files_properties(myfunc.c PROPERTIES LANGUAGE CXX)
+set_source_files_properties(myfunc.cc m68ktrace.cc PROPERTIES LANGUAGE CXX)
 
 target_link_libraries(musashi_api PUBLIC musashi_core)
 
