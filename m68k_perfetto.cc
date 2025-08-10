@@ -5,6 +5,7 @@
 #ifdef ENABLE_PERFETTO
 
 #include "m68k_perfetto.h"
+#include "m68k.h"
 #include <retrobus/retrobus_perfetto.hpp>
 
 #include <algorithm>
@@ -44,9 +45,9 @@ extern "C" {
         return 0;
     }
 
-    static int perfetto_instruction_callback(uint32_t pc, uint16_t opcode, uint64_t cycles) {
+    static int perfetto_instruction_callback(uint32_t pc, uint16_t opcode, uint64_t start_cycles, int instr_cycles) {
         if (g_tracer) {
-            return g_tracer->handle_instruction_event(pc, opcode, cycles);
+            return g_tracer->handle_instruction_event(pc, opcode, start_cycles, instr_cycles);
         }
         return 0;
     }
@@ -181,7 +182,8 @@ M68kPerfettoTracer::M68kPerfettoTracer(const std::string& process_name)
     trace_builder_ = std::make_unique<retrobus::PerfettoTraceBuilder>(process_name);
     
     /* Create tracks for different event types */
-    cpu_thread_track_id_ = trace_builder_->add_thread("M68K_CPU");
+    cpu_thread_track_id_ = trace_builder_->add_thread("M68K_CPU (Flow)");
+    instr_thread_track_id_ = trace_builder_->add_thread("M68K_CPU (Instructions)");
     memory_counter_track_id_ = trace_builder_->add_counter_track("Memory_Access", "count");
     cycle_counter_track_id_ = trace_builder_->add_counter_track("CPU_Cycles", "cycles");
 }
@@ -315,25 +317,34 @@ int M68kPerfettoTracer::handle_memory_event(m68k_trace_mem_type type, uint32_t p
     return 0; /* Continue execution */
 }
 
-int M68kPerfettoTracer::handle_instruction_event(uint32_t pc, uint16_t opcode, uint64_t cycles) {
+int M68kPerfettoTracer::handle_instruction_event(uint32_t pc, uint16_t opcode, uint64_t start_cycles, int instr_cycles) {
     if (!instruction_enabled_) {
         return 0;
     }
 
-    uint64_t timestamp_ns = cycles_to_nanoseconds(cycles);
+    uint64_t start_ns = cycles_to_nanoseconds(start_cycles);
+    uint64_t end_ns = cycles_to_nanoseconds(start_cycles + instr_cycles);
+    
+    /* Ensure duration is at least 1ns to be visible */
+    if (start_ns == end_ns) {
+        end_ns++;
+    }
+
     total_instructions_++;
 
-    /* Create slice for instruction execution */
-    trace_builder_->begin_slice(cpu_thread_track_id_, "instr", timestamp_ns)
+    /* Get disassembled instruction for better readability */
+    char disasm_buf[100];
+    m68k_disassemble(disasm_buf, pc, M68K_CPU_TYPE_68000);
+
+    /* Create slice for instruction execution on its own track */
+    trace_builder_->begin_slice(instr_thread_track_id_, disasm_buf, start_ns)
         .add_annotation("pc", format_hex(pc))
-        .add_annotation("opcode", format_hex(opcode))
-        .add_annotation("instr_count", static_cast<int64_t>(total_instructions_));
+        .add_annotation("opcode", format_hex(opcode));
 
-    /* End immediately - instructions are typically very short */
-    trace_builder_->end_slice(cpu_thread_track_id_, timestamp_ns + 1000); /* 1μs duration */
+    trace_builder_->end_slice(instr_thread_track_id_, end_ns);
 
-    /* Update cycle counter */
-    trace_builder_->update_counter(cycle_counter_track_id_, static_cast<double>(cycles), timestamp_ns);
+    /* Update cycle counter on the main track */
+    trace_builder_->update_counter(cycle_counter_track_id_, static_cast<double>(start_cycles), start_ns);
 
     return 0; /* Continue execution */
 }

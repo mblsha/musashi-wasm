@@ -162,8 +162,8 @@
  * instruction.
  */
 #define M68K_INSTRUCTION_HOOK       OPT_SPECIFY_HANDLER
-int my_instruction_hook_function(unsigned int pc);
-#define M68K_INSTRUCTION_CALLBACK(pc) my_instruction_hook_function(pc)
+int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, unsigned int cycles);
+#define M68K_INSTRUCTION_CALLBACK(pc, ir, cycles) m68k_instruction_hook_wrapper(pc, ir, cycles)
 
 
 /* If ON, the CPU will emulate the 4-byte prefetch queue of a real 68000 */

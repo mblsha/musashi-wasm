@@ -83,7 +83,7 @@ public:
                            uint32_t address, uint32_t value, uint8_t size, 
                            uint64_t cycles);
 
-    int handle_instruction_event(uint32_t pc, uint16_t opcode, uint64_t cycles);
+    int handle_instruction_event(uint32_t pc, uint16_t opcode, uint64_t start_cycles, int instr_cycles);
 
     /* Export functionality */
     std::vector<uint8_t> serialize() const;
@@ -93,6 +93,7 @@ private:
     /* Trace builder and track IDs */
     std::unique_ptr<retrobus::PerfettoTraceBuilder> trace_builder_;
     uint64_t cpu_thread_track_id_;
+    uint64_t instr_thread_track_id_;
     uint64_t memory_counter_track_id_;
     uint64_t cycle_counter_track_id_;
 

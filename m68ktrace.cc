@@ -36,7 +36,7 @@ struct m68k_trace_state {
                                     const uint32_t*, const uint32_t*, uint64_t)>> flow_callback;
     std::optional<std::function<int(m68k_trace_mem_type, uint32_t, uint32_t, uint32_t,
                                     uint8_t, uint64_t)>> mem_callback;
-    std::optional<std::function<int(uint32_t, uint16_t, uint64_t)>> instr_callback;
+    std::optional<std::function<int(uint32_t, uint16_t, uint64_t, int)>> instr_callback;
     
     /* Memory regions to trace - no arbitrary limit */
     std::vector<m68k_trace_region> mem_regions;
@@ -171,23 +171,14 @@ void m68k_reset_total_cycles(void)
 /* These functions are called from the CPU core */
 
 /* Called before each instruction execution */
-int m68k_trace_instruction_hook(unsigned int pc)
+int m68k_trace_instruction_hook(unsigned int pc, uint16_t opcode, int cycles_executed)
 {
     int result = 0;
     
     /* Check all conditions before calling callback */
     if (g_trace.enabled && g_trace.instr_enabled && g_trace.instr_callback) {
-        /* Safely read the opcode at PC */
-        uint16_t opcode = 0;
-        
-        /* Protect against invalid PC */
-        constexpr uint32_t MAX_ADDRESS = 0x1000000; /* Reasonable 68k address space limit */
-        if (pc < MAX_ADDRESS) {
-            opcode = m68k_read_memory_16(pc);
-        }
-        
         /* Call callback with protection against exceptions */
-        result = (*g_trace.instr_callback)(pc, opcode, g_trace.total_cycles);
+        result = (*g_trace.instr_callback)(pc, opcode, g_trace.total_cycles, cycles_executed);
         
         /* Sanitize return value */
         if (result < 0) result = 0;

@@ -3,29 +3,7 @@
 #include "m68k_test_base.h"
 #include "test_helpers.h"
 
-/* Disassembler memory access functions */
-extern "C" {
-    unsigned int m68k_read_disassembler_8(unsigned int address) {
-        if (M68kTestBase::instance) {
-            return M68kTestBase::instance->read_memory(address, 1);
-        }
-        return 0;
-    }
-    
-    unsigned int m68k_read_disassembler_16(unsigned int address) {
-        if (M68kTestBase::instance) {
-            return M68kTestBase::instance->read_memory(address, 2);
-        }
-        return 0;
-    }
-    
-    unsigned int m68k_read_disassembler_32(unsigned int address) {
-        if (M68kTestBase::instance) {
-            return M68kTestBase::instance->read_memory(address, 4);
-        }
-        return 0;
-    }
-}
+/* Disassembler memory access functions are now provided by myfunc.cc */
 
 /* Expected instruction trace with annotations */
 struct ExpectedInstruction {

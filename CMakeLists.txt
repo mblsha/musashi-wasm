@@ -164,7 +164,15 @@ if(BUILD_TESTS)
     # For Windows: Prevent overriding the parent project's compiler/linker settings
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     
+    # Prevent installing gtest and building gmock
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+    
     FetchContent_MakeAvailable(googletest)
+    
+    # CRITICAL FIX: Force fetched GoogleTest headers to be used BEFORE any system headers
+    # This prevents mixing Homebrew's GoogleTest headers with FetchContent's library
+    get_target_property(GTEST_INCLUDES gtest INTERFACE_INCLUDE_DIRECTORIES)
     
     # Test executable for myfunc API
     add_executable(test_myfunc
@@ -176,6 +184,11 @@ if(BUILD_TESTS)
         GTest::gtest_main
     )
     
+    # Force fetched gtest headers BEFORE system headers
+    if(GTEST_INCLUDES)
+        target_include_directories(test_myfunc PRIVATE BEFORE ${GTEST_INCLUDES})
+    endif()
+    
     # Test executable for basic M68k functionality
     add_executable(test_m68k
         tests/test_m68k.cpp
@@ -185,6 +198,11 @@ if(BUILD_TESTS)
         musashi_api
         GTest::gtest_main
     )
+    
+    # Force fetched gtest headers BEFORE system headers
+    if(GTEST_INCLUDES)
+        target_include_directories(test_m68k PRIVATE BEFORE ${GTEST_INCLUDES})
+    endif()
     
     # Test executable for Perfetto integration (conditional)
     if(ENABLE_PERFETTO)
@@ -213,6 +231,11 @@ if(BUILD_TESTS)
             GTest::gtest_main
         )
         
+        # Force fetched gtest headers BEFORE system headers
+        if(GTEST_INCLUDES)
+            target_include_directories(test_perfetto PRIVATE BEFORE ${GTEST_INCLUDES})
+        endif()
+        
     endif()
     
     # Build test with vasm-assembled binary
@@ -225,6 +248,11 @@ if(BUILD_TESTS)
         GTest::gtest_main
     )
     
+    # Force fetched gtest headers BEFORE system headers
+    if(GTEST_INCLUDES)
+        target_include_directories(test_vasm_binary PRIVATE BEFORE ${GTEST_INCLUDES})
+    endif()
+    
     # Build consolidated merge sort test
     add_executable(test_mergesort
         tests/test_mergesort.cpp
@@ -235,6 +263,11 @@ if(BUILD_TESTS)
         GTest::gtest_main
     )
     
+    # Force fetched gtest headers BEFORE system headers
+    if(GTEST_INCLUDES)
+        target_include_directories(test_mergesort PRIVATE BEFORE ${GTEST_INCLUDES})
+    endif()
+    
     # Build example test showing new simplified approach
     add_executable(test_example_new
         tests/test_example_new.cpp
@@ -244,6 +277,11 @@ if(BUILD_TESTS)
         musashi_api
         GTest::gtest_main
     )
+    
+    # Force fetched gtest headers BEFORE system headers
+    if(GTEST_INCLUDES)
+        target_include_directories(test_example_new PRIVATE BEFORE ${GTEST_INCLUDES})
+    endif()
     
     # Assemble test program with vasm
     add_custom_command(

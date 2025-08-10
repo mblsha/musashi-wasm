@@ -45,6 +45,7 @@ extern unsigned char m68ki_cycles[][0x10000];
 extern void (*m68ki_instruction_jump_table[0x10000])(void); /* opcode handler jump table */
 extern void m68ki_build_opcode_table(void);
 
+#include "m68ktrace.h"
 #include "m68kops.h"
 #include "m68kcpu.h"
 
@@ -979,11 +980,6 @@ int m68k_execute(int num_cycles)
 			/* Set the address space for reads */
 			m68ki_use_data_space(); /* auto-disable (see m68kcpu.h) */
 
-			/* Call external hook to peek at CPU */
-			if (m68ki_instr_hook(REG_PC)) {
-        break;
-      }
-
 			/* Record previous program counter */
 			REG_PPC = REG_PC;
 
@@ -994,8 +990,18 @@ int m68k_execute(int num_cycles)
 
 			/* Read an instruction and call its handler */
 			REG_IR = m68ki_read_imm_16();
+			uint executed_cycles = CYC_INSTRUCTION[REG_IR]; /* Capture cycle cost */
+			
+			/* Call external hook to peek at CPU */
+			if (m68ki_instr_hook(REG_PC, REG_IR, executed_cycles)) {
+				break;
+			}
+			
 			m68ki_instruction_jump_table[REG_IR]();
-			USE_CYCLES(CYC_INSTRUCTION[REG_IR]);
+			USE_CYCLES(executed_cycles);
+			
+			/* THIS IS THE KEY FIX: Update the global trace cycle counter */
+			m68k_trace_update_cycles(executed_cycles);
 
 			/* Trace m68k_exception, if necessary */
 			m68ki_exception_if_trace(); /* auto-disable (see m68kcpu.h) */

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "m68k.h"
+#include "m68ktrace.h"
 #include "m68k_perfetto.h"
 
 #include <cstdint>
@@ -117,6 +118,19 @@ void m68k_write_memory_32(unsigned int address, unsigned int value) {
   if (_write_mem) _write_mem(address, 4, value); 
 }
 
+/* Disassembler memory read functions */
+unsigned int m68k_read_disassembler_8(unsigned int address) {
+  return m68k_read_memory_8(address);
+}
+
+unsigned int m68k_read_disassembler_16(unsigned int address) {
+  return m68k_read_memory_16(address);
+}
+
+unsigned int m68k_read_disassembler_32(unsigned int address) {
+  return m68k_read_memory_32(address);
+}
+
 int my_instruction_hook_function(unsigned int pc) {
   // Only call the hook if it's set and we want to break on this address
   if (_pc_hook) {
@@ -127,6 +141,18 @@ int my_instruction_hook_function(unsigned int pc) {
     return _pc_hook(pc);
   }
   return 0; // Return 0 to continue execution
+}
+
+// This is the new wrapper called by the core
+extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, unsigned int cycles) {
+    // Call the C++ tracing hook first
+    int trace_result = m68k_trace_instruction_hook(pc, ir, cycles);
+    if (trace_result != 0) {
+        return trace_result; // Tracing wants to stop execution
+    }
+
+    // Call the original JS-facing hook
+    return my_instruction_hook_function(pc);
 }
 
 /* ======================================================================== */

@@ -84,14 +84,16 @@ typedef int (*m68k_trace_mem_callback)(
  * Parameters:
  *   pc - Address of the instruction about to execute
  *   opcode - The instruction opcode (first word)
- *   cycles - Total CPU cycles executed so far
+ *   start_cycles - Total CPU cycles executed so far
+ *   cycles_executed - Number of cycles this instruction will take
  * Return:
  *   0 to continue execution, non-zero to break execution loop
  */
 typedef int (*m68k_trace_instr_callback)(
     uint32_t pc,
     uint16_t opcode,
-    uint64_t cycles
+    uint64_t start_cycles,
+    int cycles_executed
 );
 
 /* ======================================================================== */
@@ -146,7 +148,7 @@ void m68k_reset_total_cycles(void);
 /* ======================================================================== */
 /* These are called from the CPU core - not part of public API */
 
-int m68k_trace_instruction_hook(unsigned int pc);
+int m68k_trace_instruction_hook(unsigned int pc, uint16_t opcode, int cycles_executed);
 int m68k_trace_flow_hook(m68k_trace_flow_type type, uint32_t source_pc, 
                          uint32_t dest_pc, uint32_t return_addr);
 int m68k_trace_mem_hook(m68k_trace_mem_type type, uint32_t pc,
