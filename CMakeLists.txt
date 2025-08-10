@@ -225,6 +225,26 @@ if(BUILD_TESTS)
         GTest::gtest_main
     )
     
+    # Build merge sort tracing test
+    add_executable(test_mergesort_trace
+        tests/test_mergesort_trace.cpp
+    )
+    
+    target_link_libraries(test_mergesort_trace
+        musashi_api
+        GTest::gtest_main
+    )
+    
+    # Build merge sort verified test (with static expectations)
+    add_executable(test_mergesort_verified
+        tests/test_mergesort_verified.cpp
+    )
+    
+    target_link_libraries(test_mergesort_verified
+        musashi_api
+        GTest::gtest_main
+    )
+    
     # Assemble test program with vasm
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/tests/test_program.bin
@@ -241,11 +261,29 @@ if(BUILD_TESTS)
         DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/tests/test_program.bin
     )
     
+    # Assemble merge sort test program
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/tests/test_mergesort.bin
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/tests
+        COMMAND ${CMAKE_SOURCE_DIR}/third_party/vasm/vasmm68k_mot 
+                -Fbin 
+                -o ${CMAKE_CURRENT_BINARY_DIR}/tests/test_mergesort.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mergesort.s
+        DEPENDS vasm ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mergesort.s
+        COMMENT "Assembling M68k merge sort program with vasm"
+    )
+    
+    add_custom_target(test_mergesort_bin ALL
+        DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/tests/test_mergesort.bin
+    )
+    
     # Register tests with CTest
     include(GoogleTest)
     gtest_discover_tests(test_myfunc)
     gtest_discover_tests(test_m68k)
     gtest_discover_tests(test_vasm_binary)
+    gtest_discover_tests(test_mergesort_trace)
+    gtest_discover_tests(test_mergesort_verified)
     
     if(ENABLE_PERFETTO)
         gtest_discover_tests(test_perfetto)
