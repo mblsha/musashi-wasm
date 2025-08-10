@@ -39,6 +39,25 @@ else()
     message(STATUS "Perfetto tracing disabled")
 endif()
 
+# Note: vasm assembler integration is optional
+# The test includes a manually encoded version of the program
+# If you want to use vasm, uncomment the section below and ensure vasm builds correctly
+# 
+# if(BUILD_TESTS)
+#     include(ExternalProject)
+#     ExternalProject_Add(vasm
+#         GIT_REPOSITORY https://github.com/dbuchwald/vasm.git
+#         GIT_TAG master
+#         CMAKE_ARGS 
+#             -DVASM_CPU=m68k 
+#             -DVASM_SYNTAX=mot
+#             -DCMAKE_BUILD_TYPE=Release
+#         BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR>
+#         INSTALL_COMMAND ""
+#     )
+#     set(VASM_EXECUTABLE ${CMAKE_BINARY_DIR}/vasm-prefix/src/vasm-build/vasmm68k_mot)
+# endif()
+
 # Generate M68k operation files first
 add_executable(m68kmake m68kmake.c)
 
@@ -111,12 +130,17 @@ target_include_directories(musashi_api PUBLIC
 if(BUILD_TESTS)
     enable_testing()
     
+    # Force consistent C++ standard library on macOS
+    if(APPLE)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -stdlib=libc++")
+    endif()
+    
     # Find or fetch GoogleTest
     include(FetchContent)
     FetchContent_Declare(
-        googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG v1.14.0
+        googletest  # Use "googletest" not "GTest"
+        URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
     )
     
     # For Windows: Prevent overriding the parent project's compiler/linker settings
@@ -146,6 +170,22 @@ if(BUILD_TESTS)
     
     # Test executable for Perfetto integration (conditional)
     if(ENABLE_PERFETTO)
+        # Note: The test program is manually encoded in test_perfetto.cpp
+        # If vasm is available and you want to use the .s file, uncomment the section below:
+        #
+        # add_custom_command(
+        #     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/perfetto_test_program.h
+        #     COMMAND ${VASM_EXECUTABLE} -Fbin -o ${CMAKE_CURRENT_BINARY_DIR}/perfetto_test_program.bin
+        #             ${CMAKE_CURRENT_SOURCE_DIR}/tests/perfetto_test_program.s
+        #     COMMAND xxd -i perfetto_test_program.bin > ${CMAKE_CURRENT_BINARY_DIR}/perfetto_test_program.h
+        #     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/perfetto_test_program.s
+        #     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        #     COMMENT "Assembling M68k test program"
+        # )
+        # add_custom_target(perfetto_test_asm
+        #     DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/perfetto_test_program.h
+        # )
+        
         add_executable(test_perfetto
             tests/test_perfetto.cpp
         )

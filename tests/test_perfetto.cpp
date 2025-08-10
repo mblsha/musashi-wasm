@@ -10,6 +10,7 @@
 
 #include <vector>
 #include <memory>
+#include <cstdio>
 
 /* Forward declarations for myfunc.cc wrapper functions */
 extern "C" {
@@ -414,6 +415,223 @@ TEST_F(PerfettoTest, MultipleInitialization) {
         /* Should be able to initialize again after cleanup */
         int result3 = ::perfetto_init("Test3");
         EXPECT_EQ(result3, 0);
+    #endif
+    
+    PerfettoTest::current_test = nullptr;
+}
+
+/* ======================================================================== */
+/* ================ COMPREHENSIVE TRACE GENERATION TEST ================== */
+/* ======================================================================== */
+
+TEST_F(PerfettoTest, ComplexProgramWithTraceFile) {
+    PerfettoTest::current_test = this;
+    
+    if (::perfetto_init("M68K_Complex_Test") != 0) {
+        GTEST_SKIP() << "Perfetto not available, skipping complex trace test";
+    }
+    
+    /* Enable all tracing features */
+    ::perfetto_enable_flow(1);
+    ::perfetto_enable_memory(1);
+    ::perfetto_enable_instructions(1);
+    
+    /* Build complex program with merge sort, factorial, and nested functions */
+    uint32_t pc = 0x400;
+    
+    /* === Main program at 0x400 === */
+    /* Initialize stack pointer */
+    write_memory_16(pc, 0x2E7C); pc += 2;  /* MOVE.L #$1000,SP */
+    write_memory_32(pc, 0x00001000); pc += 4;
+    
+    /* Initialize test array at 0x2000 with unsorted data */
+    write_memory_16(pc, 0x41F8); pc += 2;  /* LEA $2000,A0 */
+    write_memory_16(pc, 0x2000); pc += 2;
+    
+    /* Store unsorted values */
+    write_memory_16(pc, 0x30FC); pc += 2;  /* MOVE.W #$0805,(A0)+ */
+    write_memory_16(pc, 0x0805); pc += 2;
+    write_memory_16(pc, 0x30FC); pc += 2;  /* MOVE.W #$0302,(A0)+ */
+    write_memory_16(pc, 0x0302); pc += 2;
+    write_memory_16(pc, 0x30FC); pc += 2;  /* MOVE.W #$0907,(A0)+ */
+    write_memory_16(pc, 0x0907); pc += 2;
+    write_memory_16(pc, 0x30FC); pc += 2;  /* MOVE.W #$0104,(A0)+ */
+    write_memory_16(pc, 0x0104); pc += 2;
+    write_memory_16(pc, 0x30FC); pc += 2;  /* MOVE.W #$0606,(A0)+ */
+    write_memory_16(pc, 0x0606); pc += 2;
+    write_memory_16(pc, 0x30FC); pc += 2;  /* MOVE.W #$0201,(A0)+ */
+    write_memory_16(pc, 0x0201); pc += 2;
+    write_memory_16(pc, 0x30FC); pc += 2;  /* MOVE.W #$0408,(A0)+ */
+    write_memory_16(pc, 0x0408); pc += 2;
+    write_memory_16(pc, 0x30FC); pc += 2;  /* MOVE.W #$0503,(A0)+ */
+    write_memory_16(pc, 0x0503); pc += 2;
+    
+    /* Call simulated merge sort (simplified version) */
+    write_memory_16(pc, 0x6100); pc += 2;  /* BSR merge_sort_sim */
+    write_memory_16(pc, 0x01B6); pc += 2;  /* offset to 0x600 */
+    
+    /* Call factorial(5) */
+    write_memory_16(pc, 0x303C); pc += 2;  /* MOVE.W #5,D0 */
+    write_memory_16(pc, 0x0005); pc += 2;
+    write_memory_16(pc, 0x6100); pc += 2;  /* BSR factorial */
+    write_memory_16(pc, 0x02B0); pc += 2;  /* offset to 0x700 */
+    
+    /* Store factorial result */
+    write_memory_16(pc, 0x31C0); pc += 2;  /* MOVE.W D0,$3000 */
+    write_memory_16(pc, 0x3000); pc += 2;
+    
+    /* Call nested function chain */
+    write_memory_16(pc, 0x6100); pc += 2;  /* BSR func_a */
+    write_memory_16(pc, 0x03A6); pc += 2;  /* offset to 0x800 */
+    
+    /* Memory pattern write loop */
+    write_memory_16(pc, 0x41F8); pc += 2;  /* LEA $3100,A0 */
+    write_memory_16(pc, 0x3100); pc += 2;
+    write_memory_16(pc, 0x303C); pc += 2;  /* MOVE.W #15,D0 */
+    write_memory_16(pc, 0x000F); pc += 2;
+    
+    /* Pattern loop */
+    uint32_t loop_start = pc;
+    write_memory_16(pc, 0x3200); pc += 2;  /* MOVE.W D0,D1 */
+    write_memory_16(pc, 0xE149); pc += 2;  /* LSL.W #8,D1 */
+    write_memory_16(pc, 0x8240); pc += 2;  /* OR.W D0,D1 */
+    write_memory_16(pc, 0x30C1); pc += 2;  /* MOVE.W D1,(A0)+ */
+    write_memory_16(pc, 0x51C8); pc += 2;  /* DBF D0,loop */
+    write_memory_16(pc, 0xFFF6); pc += 2;  /* -10 bytes back */
+    
+    /* STOP */
+    write_memory_16(pc, 0x4E72); pc += 2;  /* STOP #$2000 */
+    write_memory_16(pc, 0x2000); pc += 2;
+    
+    /* === Simplified merge sort simulation at 0x600 === */
+    pc = 0x600;
+    /* Simulate recursive calls with BSR */
+    write_memory_16(pc, 0x48E7); pc += 2;  /* MOVEM.L D0-D3/A0-A2,-(SP) */
+    write_memory_16(pc, 0xF0E0); pc += 2;
+    
+    /* First recursive call */
+    write_memory_16(pc, 0x6100); pc += 2;  /* BSR to self (simplified) */
+    write_memory_16(pc, 0x0010); pc += 2;
+    
+    /* Second recursive call */
+    write_memory_16(pc, 0x6100); pc += 2;  /* BSR to self */
+    write_memory_16(pc, 0x000A); pc += 2;
+    
+    /* Some memory operations to simulate merge */
+    write_memory_16(pc, 0x2038); pc += 2;  /* MOVE.L $2000,D0 */
+    write_memory_16(pc, 0x2000); pc += 2;
+    write_memory_16(pc, 0x2238); pc += 2;  /* MOVE.L $2004,D1 */
+    write_memory_16(pc, 0x2004); pc += 2;
+    write_memory_16(pc, 0xB041); pc += 2;  /* CMP.W D1,D0 */
+    
+    /* Return point for recursive calls */
+    write_memory_16(pc, 0x4CDF); pc += 2;  /* MOVEM.L (SP)+,D0-D3/A0-A2 */
+    write_memory_16(pc, 0x070F); pc += 2;
+    write_memory_16(pc, 0x4E75); pc += 2;  /* RTS */
+    
+    /* === Factorial at 0x700 === */
+    pc = 0x700;
+    write_memory_16(pc, 0x0C40); pc += 2;  /* CMP.W #1,D0 */
+    write_memory_16(pc, 0x0001); pc += 2;
+    write_memory_16(pc, 0x6F08); pc += 2;  /* BLE base_case */
+    
+    write_memory_16(pc, 0x3F00); pc += 2;  /* MOVE.W D0,-(SP) */
+    write_memory_16(pc, 0x5340); pc += 2;  /* SUBQ.W #1,D0 */
+    write_memory_16(pc, 0x61F2); pc += 2;  /* BSR factorial (self) */
+    write_memory_16(pc, 0x321F); pc += 2;  /* MOVE.W (SP)+,D1 */
+    write_memory_16(pc, 0xC0C1); pc += 2;  /* MULU D1,D0 */
+    write_memory_16(pc, 0x4E75); pc += 2;  /* RTS */
+    
+    /* base_case: */
+    write_memory_16(pc, 0x303C); pc += 2;  /* MOVE.W #1,D0 */
+    write_memory_16(pc, 0x0001); pc += 2;
+    write_memory_16(pc, 0x4E75); pc += 2;  /* RTS */
+    
+    /* === Nested functions at 0x800 === */
+    pc = 0x800;
+    /* func_a */
+    write_memory_16(pc, 0x203C); pc += 2;  /* MOVE.L #$AAAA,D0 */
+    write_memory_32(pc, 0x0000AAAA); pc += 4;
+    write_memory_16(pc, 0x21C0); pc += 2;  /* MOVE.L D0,$3004 */
+    write_memory_16(pc, 0x3004); pc += 2;
+    write_memory_16(pc, 0x6100); pc += 2;  /* BSR func_b */
+    write_memory_16(pc, 0x0010); pc += 2;
+    write_memory_16(pc, 0x0680); pc += 2;  /* ADD.L #$1111,D0 */
+    write_memory_32(pc, 0x00001111); pc += 4;
+    write_memory_16(pc, 0x21C0); pc += 2;  /* MOVE.L D0,$3008 */
+    write_memory_16(pc, 0x3008); pc += 2;
+    write_memory_16(pc, 0x4E75); pc += 2;  /* RTS */
+    
+    /* func_b at offset */
+    write_memory_16(pc, 0x223C); pc += 2;  /* MOVE.L #$BBBB,D1 */
+    write_memory_32(pc, 0x0000BBBB); pc += 4;
+    write_memory_16(pc, 0x21C1); pc += 2;  /* MOVE.L D1,$300C */
+    write_memory_16(pc, 0x300C); pc += 2;
+    write_memory_16(pc, 0x6100); pc += 2;  /* BSR func_c */
+    write_memory_16(pc, 0x0010); pc += 2;
+    write_memory_16(pc, 0xD081); pc += 2;  /* ADD.L D1,D0 */
+    write_memory_16(pc, 0x4E75); pc += 2;  /* RTS */
+    
+    /* func_c with loop */
+    write_memory_16(pc, 0x243C); pc += 2;  /* MOVE.L #$CCCC,D2 */
+    write_memory_32(pc, 0x0000CCCC); pc += 4;
+    write_memory_16(pc, 0x21C2); pc += 2;  /* MOVE.L D2,$3010 */
+    write_memory_16(pc, 0x3010); pc += 2;
+    write_memory_16(pc, 0x363C); pc += 2;  /* MOVE.W #3,D3 */
+    write_memory_16(pc, 0x0003); pc += 2;
+    
+    /* Loop in func_c */
+    uint32_t func_c_loop = pc;
+    write_memory_16(pc, 0x0682); pc += 2;  /* ADD.L #$0101,D2 */
+    write_memory_32(pc, 0x00000101); pc += 4;
+    write_memory_16(pc, 0x21C2); pc += 2;  /* MOVE.L D2,$3014 */
+    write_memory_16(pc, 0x3014); pc += 2;
+    write_memory_16(pc, 0x51CB); pc += 2;  /* DBF D3,loop */
+    write_memory_16(pc, 0xFFF2); pc += 2;  /* -14 bytes back */
+    
+    write_memory_16(pc, 0x2002); pc += 2;  /* MOVE.L D2,D0 */
+    write_memory_16(pc, 0x4E75); pc += 2;  /* RTS */
+    
+    /* Reset CPU to execute the program */
+    m68k_pulse_reset();
+    
+    /* Execute the program - run enough cycles for all operations */
+    int total_cycles = 0;
+    int max_iterations = 1000;  /* Prevent infinite loops */
+    
+    for (int i = 0; i < max_iterations; i++) {
+        int cycles = m68k_execute(100);
+        total_cycles += cycles;
+        
+        /* Check if CPU halted (STOP instruction) */
+        if (cycles == 0 || m68k_get_reg(NULL, M68K_REG_PC) >= 0x900) {
+            break;
+        }
+    }
+    
+    EXPECT_GT(total_cycles, 0) << "Program should have executed some cycles";
+    
+    /* Save trace to file */
+    const char* trace_filename = "test_complex_trace.perfetto-trace";
+    int save_result = ::perfetto_save_trace(trace_filename);
+    
+    #ifdef ENABLE_PERFETTO
+        EXPECT_EQ(save_result, 0) << "Should successfully save trace";
+        
+        /* Verify file exists and has content */
+        FILE* fp = fopen(trace_filename, "rb");
+        if (fp) {
+            fseek(fp, 0, SEEK_END);
+            long file_size = ftell(fp);
+            fclose(fp);
+            
+            EXPECT_GT(file_size, 1024) << "Trace file should have substantial content";
+            
+            /* Clean up the file */
+            remove(trace_filename);
+        } else {
+            ADD_FAILURE() << "Could not open trace file for verification";
+        }
     #endif
     
     PerfettoTest::current_test = nullptr;
