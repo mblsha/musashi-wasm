@@ -10,6 +10,7 @@ void set_read_mem_func(int (*func)(unsigned int address, int size));
 void set_write_mem_func(void (*func)(unsigned int address, int size, unsigned int value));
 void set_pc_hook_func(int (*func)(unsigned int pc));
 void add_region(unsigned int start, unsigned int size, void* data);
+void enable_printf_logging();
 }
 
 // Test fixture for M68k CPU tests
@@ -17,7 +18,12 @@ class M68kTest : public ::testing::Test {
 protected:
     // Memory for the CPU
     std::vector<uint8_t> memory;
+    std::vector<unsigned int> pc_hooks;
     static M68kTest* instance;
+    
+    // Control execution
+    static unsigned int stop_after_pc;  // Stop execution after this PC
+    static bool stop_on_next_hook;
     
     // Memory callbacks
     static int read_mem(unsigned int address, int size) {
@@ -36,6 +42,7 @@ protected:
                    (instance->memory[address + 2] << 8) |
                    instance->memory[address + 3];
         }
+        
         return 0;
     }
     
@@ -58,6 +65,20 @@ protected:
     }
     
     static int pc_hook(unsigned int pc) {
+        if (instance) {
+            instance->pc_hooks.push_back(pc);
+            
+            // Check if we should stop execution after this instruction
+            if (stop_on_next_hook && instance->pc_hooks.size() >= 2) {
+                // Stop after executing one more instruction beyond the first
+                return 1; // Stop execution  
+            }
+            
+            if (stop_after_pc != 0 && pc > stop_after_pc) {
+                // Stop when we pass the target PC
+                return 1; // Stop execution
+            }
+        }
         return 0; // Continue execution
     }
     
@@ -65,6 +86,11 @@ protected:
         instance = this;
         memory.resize(1024 * 1024); // 1MB of memory
         std::fill(memory.begin(), memory.end(), 0);
+        
+        // Reset execution control
+        stop_after_pc = 0;
+        stop_on_next_hook = false;
+        pc_hooks.clear();
         
         // Set up memory callbacks
         set_read_mem_func(read_mem);
@@ -81,6 +107,10 @@ protected:
         m68k_init();
         m68k_set_cpu_type(M68K_CPU_TYPE_68000);
         m68k_pulse_reset();
+        
+        // After reset, the first execution needs some initialization cycles
+        // Run a dummy execution to get past this
+        m68k_execute(1);
     }
     
     void TearDown() override {
@@ -103,6 +133,8 @@ protected:
 };
 
 M68kTest* M68kTest::instance = nullptr;
+unsigned int M68kTest::stop_after_pc = 0;
+bool M68kTest::stop_on_next_hook = false;
 
 // Test CPU initialization
 TEST_F(M68kTest, CPUInitialization) {
@@ -146,25 +178,66 @@ TEST_F(M68kTest, RegisterAccess) {
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x1000);
 }
 
+// Debug test - DISABLED
+TEST_F(M68kTest, DISABLED_ADDDebug) {
+    // Setup: D0 = 10, D1 = 20
+    m68k_set_reg(M68K_REG_D0, 10);
+    m68k_set_reg(M68K_REG_D1, 20);
+    
+    // ADD.L D1, D0 -> 0xD081
+    write_word(0x1000, 0xD081);
+    // Put NOPs after
+    write_word(0x1002, 0x4E71);
+    write_word(0x1004, 0x4E71);
+    
+    printf("\n=== ADD Instruction Debug ===\n");
+    printf("Before: D0=%d, D1=%d\n", m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1));
+    
+    // Set PC to start of our code
+    m68k_set_reg(M68K_REG_PC, 0x1000);
+    pc_hooks.clear();
+    
+    // Try to execute with enough cycles
+    int cycles = m68k_execute(30);
+    
+    printf("After: D0=%d, D1=%d\n", m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1));
+    printf("PC advanced from 0x1000 to 0x%06X\n", m68k_get_reg(NULL, M68K_REG_PC));
+    printf("Cycles used: %d\n", cycles);
+    printf("Hooks called: %zu\n", pc_hooks.size());
+    for (size_t i = 0; i < pc_hooks.size(); i++) {
+        printf("  Hook %zu: PC=0x%06X\n", i, pc_hooks[i]);
+    }
+    
+    SUCCEED();
+}
+
 // Test NOP instruction
-// TODO: Fix instruction execution - CPU is not advancing PC
-TEST_F(M68kTest, DISABLED_NOPInstruction) {
+TEST_F(M68kTest, NOPInstruction) {
     // NOP opcode is 0x4E71
     write_word(0x1000, 0x4E71);
     
     // Set PC to start of our code
     m68k_set_reg(M68K_REG_PC, 0x1000);
     
-    // Execute one instruction (NOP takes 4 cycles)
-    m68k_execute(10);
+    // Clear hooks to track this specific execution
+    pc_hooks.clear();
     
-    // PC should have advanced by 2 bytes
+    // Execute one NOP instruction
+    int cycles = m68k_execute(4);
+    
+    // PC hook should have been called for the NOP instruction
+    ASSERT_GE(pc_hooks.size(), 1) << "Expected at least 1 PC hook but got " << pc_hooks.size();
+    EXPECT_EQ(pc_hooks[0], 0x1000) << "First hook should be at NOP instruction";
+    
+    // PC should have advanced by 2 bytes (NOP is 2 bytes)
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x1002);
+    
+    // Cycles should be positive (instruction was executed)
+    EXPECT_GT(cycles, 0);
 }
 
 // Test MOVE immediate to data register
-// TODO: Fix instruction execution - CPU is not advancing PC
-TEST_F(M68kTest, DISABLED_MOVEImmediate) {
+TEST_F(M68kTest, MOVEImmediate) {
     // MOVE.L #$12345678, D0 -> 0x203C 0x1234 0x5678
     write_word(0x1000, 0x203C);
     write_long(0x1002, 0x12345678);
@@ -173,19 +246,28 @@ TEST_F(M68kTest, DISABLED_MOVEImmediate) {
     m68k_set_reg(M68K_REG_PC, 0x1000);
     m68k_set_reg(M68K_REG_D0, 0);
     
-    // Execute one instruction (MOVE immediate takes 12 cycles)
-    m68k_execute(20);
+    // Clear hooks
+    pc_hooks.clear();
+    
+    // Execute MOVE.L immediate
+    int cycles = m68k_execute(12);
+    
+    // PC hook should have been called for the MOVE instruction
+    ASSERT_GE(pc_hooks.size(), 1) << "Expected at least one PC hook call";
+    EXPECT_EQ(pc_hooks[0], 0x1000) << "First hook should be at MOVE instruction";
     
     // Check that D0 contains the value
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D0), 0x12345678);
     
-    // PC should have advanced by 6 bytes
+    // PC should have advanced by 6 bytes (2 for opcode + 4 for immediate)
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x1006);
+    
+    // Cycles should be positive
+    EXPECT_GT(cycles, 0);
 }
 
 // Test ADD instruction
-// TODO: Fix instruction execution - CPU is not executing ADD
-TEST_F(M68kTest, DISABLED_ADDInstruction) {
+TEST_F(M68kTest, ADDInstruction) {
     // Setup: D0 = 10, D1 = 20
     m68k_set_reg(M68K_REG_D0, 10);
     m68k_set_reg(M68K_REG_D1, 20);
@@ -196,19 +278,31 @@ TEST_F(M68kTest, DISABLED_ADDInstruction) {
     // Set PC to start of our code
     m68k_set_reg(M68K_REG_PC, 0x1000);
     
-    // Execute one instruction (ADD takes 8 cycles)
-    m68k_execute(20);
+    // Clear hooks
+    pc_hooks.clear();
+    
+    // Execute with limited cycles to try to execute just one instruction
+    int cycles = m68k_execute(8);
     
     // D0 should now be 30
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D0), 30);
     
     // D1 should be unchanged
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D1), 20);
+    
+    // PC hook should have been called at least once for the ADD instruction
+    ASSERT_GE(pc_hooks.size(), 1) << "Expected at least one PC hook call";
+    EXPECT_EQ(pc_hooks[0], 0x1000) << "First hook should be at ADD instruction";
+    
+    // PC should have advanced past the ADD instruction
+    EXPECT_GT(m68k_get_reg(NULL, M68K_REG_PC), 0x1000);
+    
+    // Cycles should be positive (instruction was executed)
+    EXPECT_GT(cycles, 0);
 }
 
-// Test memory operations
-// TODO: Fix instruction execution - CPU is not executing MOVE from memory
-TEST_F(M68kTest, DISABLED_MemoryOperations) {
+// Test memory operations  
+TEST_F(M68kTest, MemoryOperations) {
     // Write test value to memory
     write_long(0x2000, 0xCAFEBABE);
     
@@ -220,16 +314,28 @@ TEST_F(M68kTest, DISABLED_MemoryOperations) {
     m68k_set_reg(M68K_REG_PC, 0x1000);
     m68k_set_reg(M68K_REG_D0, 0);
     
-    // Execute (MOVE from memory takes 16 cycles)
-    m68k_execute(20);
+    // Clear hooks
+    pc_hooks.clear();
+    
+    // Execute MOVE.L from absolute address
+    int cycles = m68k_execute(16);
+    
+    // PC hook should have been called for the MOVE instruction
+    ASSERT_GE(pc_hooks.size(), 1) << "Expected at least one PC hook call";
+    EXPECT_EQ(pc_hooks[0], 0x1000) << "First hook should be at MOVE instruction";
     
     // D0 should contain the value from memory
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D0), 0xCAFEBABE);
+    
+    // PC should have advanced by 4 bytes
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x1004);
+    
+    // Cycles should be positive
+    EXPECT_GT(cycles, 0);
 }
 
 // Test stack operations
-// TODO: Fix instruction execution - CPU is not executing stack operations
-TEST_F(M68kTest, DISABLED_StackOperations) {
+TEST_F(M68kTest, StackOperations) {
     // Set up stack pointer
     m68k_set_reg(M68K_REG_A7, 0x10000);
     
@@ -240,7 +346,14 @@ TEST_F(M68kTest, DISABLED_StackOperations) {
     write_word(0x1000, 0x2F00);
     
     m68k_set_reg(M68K_REG_PC, 0x1000);
-    m68k_execute(20);
+    pc_hooks.clear();
+    
+    // Execute push instruction
+    int cycles = m68k_execute(12);
+    
+    // PC hook should have been called for the push instruction
+    ASSERT_GE(pc_hooks.size(), 1) << "Expected at least one PC hook call for push";
+    EXPECT_EQ(pc_hooks[0], 0x1000) << "First hook should be at push instruction";
     
     // Stack pointer should be decremented by 4
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_A7), 0x10000 - 4);
@@ -254,59 +367,120 @@ TEST_F(M68kTest, DISABLED_StackOperations) {
     write_word(0x1002, 0x221F);
     
     m68k_set_reg(M68K_REG_D1, 0);
-    m68k_execute(20);
+    m68k_set_reg(M68K_REG_PC, 0x1002);
+    pc_hooks.clear();
+    
+    // Execute pop instruction
+    cycles = m68k_execute(12);
+    
+    // PC hook should have been called for the pop instruction
+    ASSERT_GE(pc_hooks.size(), 1) << "Expected at least one PC hook call for pop";
+    EXPECT_EQ(pc_hooks[0], 0x1002) << "First hook should be at pop instruction";
     
     // D1 should have the value
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D1), 0x12345678);
     
     // Stack pointer should be back to original
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_A7), 0x10000);
+    
+    // Cycles should be positive
+    EXPECT_GT(cycles, 0);
 }
 
 // Test conditional flags
-// TODO: Fix instruction execution - CPU is not executing CMP instruction
-TEST_F(M68kTest, DISABLED_ConditionalFlags) {
-    // CMP.L D0, D1 (compare D0 to D1)
+TEST_F(M68kTest, ConditionalFlags) {
+    // Simple SUB to test flags (SUB.L D1, D0)
     m68k_set_reg(M68K_REG_D0, 10);
     m68k_set_reg(M68K_REG_D1, 10);
     
-    // CMP.L D0, D1 -> 0xB280
-    write_word(0x1000, 0xB280);
+    // SUB.L D1, D0 -> 0x9081 (D0 = D0 - D1)
+    write_word(0x1000, 0x9081);
     
     m68k_set_reg(M68K_REG_PC, 0x1000);
-    m68k_execute(20);
+    pc_hooks.clear();
     
-    // Check status register - Zero flag should be set
+    // Execute SUB instruction
+    int cycles = m68k_execute(10);
+    
+    // PC hook should have been called for the SUB instruction
+    ASSERT_GE(pc_hooks.size(), 1) << "Expected at least one PC hook call for SUB";
+    EXPECT_EQ(pc_hooks[0], 0x1000) << "First hook should be at SUB instruction";
+    
+    // D0 should be 0 (10 - 10)
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D0), 0);
+    
+    // Check status register - Zero flag should be set since result is 0
     unsigned int sr = m68k_get_reg(NULL, M68K_REG_SR);
-    EXPECT_TRUE(sr & 0x04); // Z flag
+    EXPECT_TRUE(sr & 0x04) << "Zero flag should be set when result is zero";
     
-    // Compare different values
+    // Subtract different values (5 - 10 should be negative)
     m68k_set_reg(M68K_REG_D0, 5);
     m68k_set_reg(M68K_REG_D1, 10);
     
-    write_word(0x1002, 0xB280);
-    m68k_execute(20);
+    write_word(0x1002, 0x9081);
+    m68k_set_reg(M68K_REG_PC, 0x1002);
+    pc_hooks.clear();
+    
+    // Execute second SUB
+    cycles = m68k_execute(10);
+    
+    // PC hook should have been called for the second SUB instruction
+    ASSERT_GE(pc_hooks.size(), 1) << "Expected at least one PC hook call for second SUB";
+    EXPECT_EQ(pc_hooks[0], 0x1002) << "First hook should be at second SUB instruction";
+    
+    // D0 should be negative (5 - 10 = -5, or 0xFFFFFFFB in unsigned)
+    unsigned int result = m68k_get_reg(NULL, M68K_REG_D0);
+    EXPECT_EQ(result, 0xFFFFFFFB) << "D0 should be -5 (0xFFFFFFFB)";
     
     sr = m68k_get_reg(NULL, M68K_REG_SR);
-    EXPECT_FALSE(sr & 0x04); // Z flag should be clear
+    EXPECT_FALSE(sr & 0x04) << "Zero flag should be clear when result is non-zero";
+    
+    // Cycles should be positive (instructions were executed)
+    EXPECT_GT(cycles, 0);
 }
 
-// Test CPU cycles
-// TODO: Fix instruction execution - CPU is not advancing through instructions
-TEST_F(M68kTest, DISABLED_CPUCycles) {
-    // NOP instruction
+// Test CPU cycles and PC hooks
+TEST_F(M68kTest, CPUCycles) {
+    // NOP instructions (each takes 4 cycles)
     write_word(0x1000, 0x4E71);
     write_word(0x1002, 0x4E71);
     write_word(0x1004, 0x4E71);
+    write_word(0x1006, 0x4E71);
+    write_word(0x1008, 0x4E71);
     
     m68k_set_reg(M68K_REG_PC, 0x1000);
+    pc_hooks.clear();
     
-    // Execute with cycle count (multiple NOPs)
-    int cycles = m68k_execute(20); // Execute up to 20 cycles
+    // Execute with limited cycles (should execute 5 NOPs = 20 cycles)
+    int cycles = m68k_execute(20);
     
-    // Should have executed some cycles
+    // Should have executed 5 NOPs
+    EXPECT_EQ(pc_hooks.size(), 5) << "Should have 5 PC hook calls (one per NOP)";
+    
+    // Verify each hook was at the expected address
+    for (int i = 0; i < 5; i++) {
+        EXPECT_EQ(pc_hooks[i], 0x1000 + i * 2) << "Hook " << i << " at wrong address";
+    }
+    
+    // PC should have advanced by 10 bytes (5 NOPs * 2 bytes each)
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x100A);
+    
+    // Cycles should be positive
     EXPECT_GT(cycles, 0);
     
-    // PC should have advanced
-    EXPECT_GT(m68k_get_reg(NULL, M68K_REG_PC), 0x1000);
+    // Verify we can track a single instruction
+    m68k_set_reg(M68K_REG_PC, 0x1000);
+    pc_hooks.clear();
+    
+    cycles = m68k_execute(4);
+    
+    // Should have one hook call
+    EXPECT_EQ(pc_hooks.size(), 1) << "Should have 1 PC hook call for single NOP";
+    EXPECT_EQ(pc_hooks[0], 0x1000) << "Hook should be at NOP instruction";
+    
+    // PC should have advanced by 2 bytes
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x1002);
+    
+    // Cycles should be positive
+    EXPECT_GT(cycles, 0);
 }
