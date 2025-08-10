@@ -42,6 +42,7 @@ add_custom_command(
 add_library(musashi_core STATIC
     m68kcpu.c
     m68kdasm.c
+    m68ktrace.c
     softfloat/softfloat.c
     ${CMAKE_CURRENT_BINARY_DIR}/m68kops.c
 )
