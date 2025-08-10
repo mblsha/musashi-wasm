@@ -30,6 +30,12 @@ extern "C" {
     void perfetto_free_trace_data(uint8_t* data);
     int perfetto_save_trace(const char* filename);
     int perfetto_is_initialized(void);
+    
+    /* Symbol naming functions from myfunc.cc */
+    void register_function_name(unsigned int address, const char* name);
+    void register_memory_name(unsigned int address, const char* name);
+    void register_memory_range(unsigned int start, unsigned int size, const char* name);
+    void clear_registered_names(void);
 }
 
 class PerfettoTest : public ::testing::Test {
@@ -433,6 +439,14 @@ TEST_F(PerfettoTest, ComplexProgramWithTraceFile) {
         GTEST_SKIP() << "Perfetto not available, skipping complex trace test";
     }
     
+    /* Register function names for the complex test program */
+    ::register_function_name(0x400, "main_complex");
+    ::register_function_name(0x600, "loop_function");
+    ::register_function_name(0x700, "subroutine_1");
+    ::register_function_name(0x800, "subroutine_2");
+    ::register_memory_name(0x900, "data_buffer");
+    ::register_memory_name(0x2000, "test_array");
+    
     /* Enable all tracing features */
     ::perfetto_enable_flow(1);
     ::perfetto_enable_memory(1);
@@ -648,6 +662,17 @@ TEST_F(PerfettoTest, RealMergeSortWithPerfettoTrace) {
     if (::perfetto_init("M68K_Real_MergeSort") != 0) {
         GTEST_SKIP() << "Perfetto not available, skipping real merge sort trace test";
     }
+    
+    /* Register function names for better trace readability */
+    /* Note: These are approximate addresses based on binary layout */
+    ::register_function_name(0x400, "main");
+    ::register_function_name(0x418, "mergesort");  /* Main merge sort function */
+    ::register_function_name(0x450, "merge");      /* Merge helper function */
+    
+    /* Register memory names for data sections */
+    ::register_memory_name(0x4F4, "array_data");      /* The array being sorted */
+    ::register_memory_name(0x504, "sorted_flag");     /* Completion flag ($CAFE) */
+    ::register_memory_range(0x506, 32, "workspace");  /* Merge workspace */
     
     /* Enable all tracing features for beautiful flame graphs */
     ::perfetto_enable_flow(1);

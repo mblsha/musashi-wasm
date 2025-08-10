@@ -6,6 +6,8 @@
 #define M68K_PERFETTO_H
 
 #include "m68ktrace.h"
+#include <stddef.h>  /* For size_t */
+#include <stdint.h>  /* For uint8_t */
 
 /* Only enable if explicitly requested and not in WASM by default */
 #ifdef ENABLE_PERFETTO

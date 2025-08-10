@@ -5,8 +5,10 @@
 
 #include <cstdint>
 #include <unordered_set>
+#include <unordered_map>
 #include <optional>
 #include <vector>
+#include <string>
 
 extern "C" {
 typedef int (*read_mem_t)(unsigned int address, int size);
@@ -88,6 +90,57 @@ extern "C" {
   }
   void clear_regions() {
     _regions.clear();
+  }
+  
+  /* ======================================================================== */
+  /* ==================== SYMBOL NAMING FOR PERFETTO ====================== */
+  /* ======================================================================== */
+  
+  static std::unordered_map<unsigned int, std::string> _function_names;
+  static std::unordered_map<unsigned int, std::string> _memory_names;
+  
+  void register_function_name(unsigned int address, const char* name) {
+    if (name) {
+      _function_names[address] = name;
+      if (_enable_printf_logging)
+        printf("register_function_name: 0x%08X = '%s'\n", address, name);
+    }
+  }
+  
+  void register_memory_name(unsigned int address, const char* name) {
+    if (name) {
+      _memory_names[address] = name;
+      if (_enable_printf_logging)
+        printf("register_memory_name: 0x%08X = '%s'\n", address, name);
+    }
+  }
+  
+  void register_memory_range(unsigned int start, unsigned int size, const char* name) {
+    if (name) {
+      /* Register the base address and optionally key addresses within the range */
+      _memory_names[start] = name;
+      /* Also register the range name with size suffix for clarity */
+      _memory_names[start] = std::string(name) + "[" + std::to_string(size) + "]";
+      if (_enable_printf_logging)
+        printf("register_memory_range: 0x%08X-0x%08X = '%s'\n", start, start + size - 1, name);
+    }
+  }
+  
+  void clear_registered_names() {
+    _function_names.clear();
+    _memory_names.clear();
+    if (_enable_printf_logging)
+      printf("clear_registered_names: cleared all names\n");
+  }
+  
+  const char* get_function_name(unsigned int address) {
+    auto it = _function_names.find(address);
+    return (it != _function_names.end()) ? it->second.c_str() : nullptr;
+  }
+  
+  const char* get_memory_name(unsigned int address) {
+    auto it = _memory_names.find(address);
+    return (it != _memory_names.end()) ? it->second.c_str() : nullptr;
   }
 } // extern "C"
 

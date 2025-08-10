@@ -19,6 +19,12 @@
 
 static std::unique_ptr<m68k_perfetto::M68kPerfettoTracer> g_tracer;
 
+/* External symbol name lookups from myfunc.cc */
+extern "C" {
+    const char* get_function_name(unsigned int address);
+    const char* get_memory_name(unsigned int address);
+}
+
 /* ======================================================================== */
 /* ======================= CALLBACK IMPLEMENTATIONS ====================== */
 /* ======================================================================== */
@@ -229,12 +235,19 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
     switch (type) {
         case M68K_TRACE_FLOW_CALL: {
             /* Begin a slice for the call and track it on call stack */
-            auto call_name = std::string("call_") + format_hex(dest_pc);
+            /* Use registered function name if available */
+            const char* func_name = get_function_name(dest_pc);
+            auto call_name = func_name ? std::string(func_name) : (std::string("call_") + format_hex(dest_pc));
             
             auto event = trace_builder_->begin_slice(cpu_thread_track_id_, call_name, timestamp_ns)
                 .add_pointer("source_pc", source_pc)
                 .add_pointer("target_pc", dest_pc)
                 .add_pointer("return_addr", return_addr);
+            
+            /* Add function name as annotation if available */
+            if (func_name) {
+                event.add_annotation("func_name", func_name);
+            }
             
             /* Add registers as a nested dictionary under "r" */
             if (d_regs && a_regs) {
@@ -343,11 +356,17 @@ int M68kPerfettoTracer::handle_memory_event(m68k_trace_mem_type type, uint32_t p
         std::string write_name = std::string("write_") + std::to_string(size) + "B";
         
         /* Create instant slice for memory write */
-        trace_builder_->add_instant_event(memory_writes_track_id_, write_name, timestamp_ns)
+        auto mem_event = trace_builder_->add_instant_event(memory_writes_track_id_, write_name, timestamp_ns)
             .add_pointer("pc", pc)
             .add_pointer("address", address)
             .add_pointer("value", value)
             .add_annotation("size", static_cast<int64_t>(size));
+        
+        /* Add memory name annotation if available */
+        const char* mem_name = get_memory_name(address);
+        if (mem_name) {
+            mem_event.add_annotation("name", mem_name);
+        }
     }
 
     /* Update counter track */
