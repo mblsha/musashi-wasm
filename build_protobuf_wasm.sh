@@ -114,6 +114,9 @@ cd ../../../..
 # Generate the perfetto.pb.cc and perfetto.pb.h from the proto file
 echo "Generating perfetto protobuf files..."
 
+# Create output directory if it doesn't exist
+mkdir -p third_party/retrobus-perfetto/cpp/proto
+
 # Use the protoc we just built for version compatibility
 ${BUILD_DIR}/protobuf/build_native/protoc --cpp_out=third_party/retrobus-perfetto/cpp/proto \
     -I third_party/retrobus-perfetto/proto \
