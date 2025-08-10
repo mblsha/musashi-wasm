@@ -258,14 +258,8 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
             FlowState flow_state;
             flow_state.slice_id = 0; /* Not needed for this API */
             flow_state.source_pc = source_pc;
-            flow_state.flow_name = std::string("flow_") + format_hex(source_pc) + "_to_" + format_hex(dest_pc);
+            flow_state.flow_name = std::string("call_") + format_hex(dest_pc);
             call_stack_.push_back(flow_state);
-
-
-            /* Begin flow event */
-            uint64_t flow_id = source_pc; /* Use source PC as flow ID */
-            auto flow_event = trace_builder_->add_flow(cpu_thread_track_id_, flow_state.flow_name, timestamp_ns, flow_id, false);
-            (void)flow_event; /* Suppress unused warning */
             break;
         }
 
@@ -280,11 +274,6 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
                 
                 /* End the slice with proper timestamp */
                 trace_builder_->end_slice(cpu_thread_track_id_, timestamp_ns);
-
-                /* End flow event */
-                uint64_t flow_id = flow_state.source_pc;
-                auto end_flow_event = trace_builder_->add_flow(cpu_thread_track_id_, flow_state.flow_name, timestamp_ns, flow_id, true);
-                (void)end_flow_event; /* Suppress unused warning */
                 call_stack_.pop_back();
             } else {
                 /* WARNING: Return without matching call - this shouldn't happen if flow tracing is correct */
