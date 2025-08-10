@@ -194,8 +194,9 @@ M68kPerfettoTracer::M68kPerfettoTracer(const std::string& process_name)
     trace_builder_ = std::make_unique<retrobus::PerfettoTraceBuilder>(process_name);
     
     /* Create tracks for different event types */
-    cpu_thread_track_id_ = trace_builder_->add_thread("M68K_CPU (Flow)");
-    instr_thread_track_id_ = trace_builder_->add_thread("M68K_CPU (Instructions)");
+    cpu_thread_track_id_ = trace_builder_->add_thread("Flow");
+    instr_thread_track_id_ = trace_builder_->add_thread("Instructions");
+    memory_writes_track_id_ = trace_builder_->add_thread("Writes");
     memory_counter_track_id_ = trace_builder_->add_counter_track("Memory_Access", "count");
     cycle_counter_track_id_ = trace_builder_->add_counter_track("CPU_Cycles", "cycles");
 }
@@ -356,6 +357,18 @@ int M68kPerfettoTracer::handle_memory_event(m68k_trace_mem_type type, uint32_t p
 
     uint64_t timestamp_ns = cycles_to_nanoseconds(cycles);
     total_memory_accesses_++;
+
+    /* Create slice for memory writes on dedicated Writes thread */
+    if (type == M68K_TRACE_MEM_WRITE) {
+        std::string write_name = std::string("write_") + std::to_string(size) + "B";
+        
+        /* Create instant slice for memory write */
+        trace_builder_->add_instant_event(memory_writes_track_id_, write_name, timestamp_ns)
+            .add_annotation("pc", format_hex(pc))
+            .add_annotation("address", format_hex(address))
+            .add_annotation("value", format_hex(value))
+            .add_annotation("size", static_cast<int64_t>(size));
+    }
 
     /* Update counter track */
     trace_builder_->update_counter(memory_counter_track_id_, static_cast<double>(total_memory_accesses_), timestamp_ns);
