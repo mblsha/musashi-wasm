@@ -198,6 +198,12 @@ int m68k_trace_flow_hook(m68k_trace_flow_type type, uint32_t source_pc,
         return 0;
     }
     
+    /* DEBUG: Always check RTS flow tracing */
+    if (type == M68K_TRACE_FLOW_RETURN) {
+        printf("DEBUG TRACE: RTS hook called - enabled=%d flow_enabled=%d has_callback=%d\n", 
+               g_trace.enabled, g_trace.flow_enabled, g_trace.flow_callback ? 1 : 0);
+    }
+    
     if (g_trace.enabled && g_trace.flow_enabled && g_trace.flow_callback) {
         /* Get current register state with bounds checking */
         std::array<uint32_t, 8> d_regs;

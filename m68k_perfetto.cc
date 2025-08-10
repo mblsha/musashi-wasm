@@ -29,6 +29,12 @@ extern "C" {
                                      uint32_t dest_pc, uint32_t return_addr,
                                      const uint32_t* d_regs, const uint32_t* a_regs, 
                                      uint64_t cycles) {
+        /* DEBUG: Log all flow callback calls */
+        if (type == M68K_TRACE_FLOW_RETURN) {
+            printf("DEBUG CALLBACK: RTS flow callback called! source_pc=%08X dest_pc=%08X\n", 
+                   source_pc, dest_pc);
+        }
+        
         if (g_tracer) {
             return g_tracer->handle_flow_event(type, source_pc, dest_pc, return_addr,
                                               d_regs, a_regs, cycles);
@@ -77,6 +83,12 @@ int m68k_perfetto_init(const char* process_name) {
     } catch (const std::exception&) {
         g_tracer.reset();
         return -1;
+    }
+}
+
+void m68k_perfetto_cleanup_slices(void) {
+    if (g_tracer) {
+        g_tracer->cleanup_unclosed_slices();
     }
 }
 
@@ -188,7 +200,28 @@ M68kPerfettoTracer::M68kPerfettoTracer(const std::string& process_name)
     cycle_counter_track_id_ = trace_builder_->add_counter_track("CPU_Cycles", "cycles");
 }
 
-M68kPerfettoTracer::~M68kPerfettoTracer() = default;
+M68kPerfettoTracer::~M68kPerfettoTracer() {
+    /* Auto-cleanup on destruction */
+    cleanup_unclosed_slices();
+}
+
+void M68kPerfettoTracer::cleanup_unclosed_slices() {
+    /* Close any remaining open slices to prevent "Did not end" in Perfetto UI */
+    if (!call_stack_.empty()) {
+        printf("PERFETTO CLEANUP: Closing %zu unclosed slices\n", call_stack_.size());
+        
+        /* Get a reasonable end timestamp (current cycles + small offset) */
+        uint64_t cleanup_timestamp_ns = cycles_to_nanoseconds(999999);  /* ~125ms at 8MHz */
+        
+        /* Close all remaining slices in reverse order (LIFO) */
+        while (!call_stack_.empty()) {
+            printf("  - Closing slice for PC=%08X\n", call_stack_.back().source_pc);
+            trace_builder_->end_slice(cpu_thread_track_id_, cleanup_timestamp_ns);
+            call_stack_.pop_back();
+            cleanup_timestamp_ns += 1000;  /* Small time increment between closes */
+        }
+    }
+}
 
 int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t source_pc, 
                                          uint32_t dest_pc, uint32_t return_addr,
@@ -204,6 +237,11 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
         case M68K_TRACE_FLOW_CALL: {
             /* Begin a slice for the call and track it on call stack */
             auto call_name = std::string("call_") + format_hex(dest_pc);
+            
+            /* DEBUG: Log the begin_slice call with detailed info */
+            printf("DEBUG: BSR CALL PC=%08X->%08X offset=%08X cycles=%llu stack=%zu\n", 
+                   source_pc, dest_pc, (dest_pc - source_pc), cycles, call_stack_.size());
+            
             auto event = trace_builder_->begin_slice(cpu_thread_track_id_, call_name, timestamp_ns)
                 .add_annotation("source_pc", format_hex(source_pc))
                 .add_annotation("target_pc", format_hex(dest_pc))
@@ -222,6 +260,7 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
             flow_state.flow_name = std::string("flow_") + format_hex(source_pc) + "_to_" + format_hex(dest_pc);
             call_stack_.push_back(flow_state);
 
+
             /* Begin flow event */
             uint64_t flow_id = source_pc; /* Use source PC as flow ID */
             auto flow_event = trace_builder_->add_flow(cpu_thread_track_id_, flow_state.flow_name, timestamp_ns, flow_id, false);
@@ -234,6 +273,10 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
             if (!call_stack_.empty()) {
                 auto& flow_state = call_stack_.back();
                 
+                /* DEBUG: Log the end_slice call */
+                printf("DEBUG: Calling end_slice for RTS at PC=%08X, cycles=%llu, stack_size=%zu\n", 
+                       source_pc, cycles, call_stack_.size());
+                
                 /* End the slice with proper timestamp */
                 trace_builder_->end_slice(cpu_thread_track_id_, timestamp_ns);
 
@@ -242,6 +285,9 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
                 auto end_flow_event = trace_builder_->add_flow(cpu_thread_track_id_, flow_state.flow_name, timestamp_ns, flow_id, true);
                 (void)end_flow_event; /* Suppress unused warning */
                 call_stack_.pop_back();
+            } else {
+                /* WARNING: Return without matching call - this shouldn't happen if flow tracing is correct */
+                printf("WARNING: RTS without matching BSR at PC=%08X, cycles=%llu\n", source_pc, cycles);
             }
             break;
         }

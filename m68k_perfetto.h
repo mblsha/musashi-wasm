@@ -32,6 +32,9 @@ extern "C" {
 int m68k_perfetto_init(const char* process_name);
 void m68k_perfetto_destroy(void);
 
+/* Cleanup unclosed slices before saving trace */
+void m68k_perfetto_cleanup_slices(void);
+
 /* Feature enable/disable */
 void m68k_perfetto_enable_flow(int enable);
 void m68k_perfetto_enable_memory(int enable);
@@ -72,6 +75,9 @@ public:
     void enable_flow_tracing(bool enable) { flow_enabled_ = enable; }
     void enable_memory_tracing(bool enable) { memory_enabled_ = enable; }
     void enable_instruction_tracing(bool enable) { instruction_enabled_ = enable; }
+    
+    /* Force cleanup of unclosed slices */
+    void cleanup_unclosed_slices();
 
     /* Implement m68ktrace callback interfaces */
     int handle_flow_event(m68k_trace_flow_type type, uint32_t source_pc, 

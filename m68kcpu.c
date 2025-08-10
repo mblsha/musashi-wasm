@@ -997,8 +997,70 @@ int m68k_execute(int num_cycles)
 				break;
 			}
 			
+			/* Store PC before instruction execution for flow tracing */
+			uint32_t pre_pc = REG_PC;
+			uint32_t post_pc;
+			
 			m68ki_instruction_jump_table[REG_IR]();
 			USE_CYCLES(executed_cycles);
+			
+			/* Get PC after instruction execution */
+			post_pc = REG_PC;
+			
+			/* FIXED: Use REG_IR which contains the correct opcode */
+			uint16_t opcode = REG_IR;
+			
+			/* DEBUG: Check for RTS instruction regardless of PC change */
+			if (opcode == 0x4E75) {
+				printf("DEBUG CPU: *** RTS FOUND! *** pre_pc=%08X post_pc=%08X opcode=%04X pc_changed=%d\n", 
+				       pre_pc, post_pc, opcode, (pre_pc != post_pc));
+				
+				/* Force RTS flow tracing even if PC didn't change in our detection */
+				printf("DEBUG CPU: Forcing RTS flow tracing!\n");
+				m68k_trace_flow_hook(M68K_TRACE_FLOW_RETURN, pre_pc, post_pc, 0);
+			}
+			
+			/* Check for control flow instructions and trace them */
+			if (pre_pc != post_pc) {
+				/* PC changed - check if it's a traceable control flow instruction */
+				/* opcode is already set from REG_IR above */
+				m68k_trace_flow_type flow_type;
+				int is_flow_instruction = 0;
+				
+				/* Decode control flow instructions */
+				if ((opcode & 0xFF00) == 0x6100) {
+					/* BSR - Branch to Subroutine */
+					flow_type = M68K_TRACE_FLOW_CALL;
+					is_flow_instruction = 1;
+				} else if ((opcode & 0xFFC0) == 0x4E80) {
+					/* JSR - Jump to Subroutine */
+					flow_type = M68K_TRACE_FLOW_CALL;
+					is_flow_instruction = 1;
+				} else if (opcode == 0x4E75) {
+					/* RTS - Return from Subroutine */
+					printf("DEBUG CPU: RTS detected! opcode=%04X\n", opcode);
+					flow_type = M68K_TRACE_FLOW_RETURN;
+					is_flow_instruction = 1;
+				} else if (opcode == 0x4E77) {
+					/* RTR - Return and Restore Condition Codes */
+					flow_type = M68K_TRACE_FLOW_RETURN;
+					is_flow_instruction = 1;
+				} else if ((opcode & 0xFFF8) == 0x4E68) {
+					/* RTD - Return and Deallocate */
+					flow_type = M68K_TRACE_FLOW_RETURN;
+					is_flow_instruction = 1;
+				}
+				
+				if (is_flow_instruction) {
+					/* Call flow tracing hook */
+					if (flow_type == M68K_TRACE_FLOW_CALL) {
+						m68k_trace_flow_hook(flow_type, pre_pc, post_pc, pre_pc + 2);
+					} else if (flow_type == M68K_TRACE_FLOW_RETURN) {
+						printf("DEBUG CPU: Calling flow hook for RETURN\n");
+						m68k_trace_flow_hook(flow_type, pre_pc, post_pc, 0);
+					}
+				}
+			}
 			
 			/* THIS IS THE KEY FIX: Update the global trace cycle counter */
 			m68k_trace_update_cycles(executed_cycles);
