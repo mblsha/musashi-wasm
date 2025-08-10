@@ -118,6 +118,10 @@ TEST_F(MyFuncTest, PCHookAddresses) {
     write_word(0x1012, 0x6000); // BRA
     write_word(0x1014, 0x000C); // to 0x1020
     
+    // Set PC to start at 0x1000
+    write_long(4, 0x1000);
+    m68k_pulse_reset();
+    
     // Execute and verify hooks were called
     pc_hooks.clear();
     m68k_execute(50);

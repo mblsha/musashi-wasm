@@ -993,9 +993,8 @@ int m68k_execute(int num_cycles)
 			uint executed_cycles = CYC_INSTRUCTION[REG_IR]; /* Capture cycle cost */
 			
 			/* Call external hook to peek at CPU */
-			/* Note: PC has already been incremented by 2 for the instruction fetch, 
-			   so we pass PC-2 to get the actual instruction address */
-			if (m68ki_instr_hook(REG_PC - 2, REG_IR, executed_cycles)) {
+			/* Use REG_PPC which contains the actual instruction start address */
+			if (m68ki_instr_hook(REG_PPC, REG_IR, executed_cycles)) {
 				break;
 			}
 			

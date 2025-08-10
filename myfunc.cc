@@ -96,10 +96,15 @@ extern "C" {
       printf("set_pc_hook_func: %p\n", (void*)func);
     _pc_hook = func;
   }
+  // Normalize to 24-bit, even address (68k opcodes are word-aligned)
+  static inline uint32_t norm_pc(uint32_t a) {
+    return (a & 0x00FFFFFEu);
+  }
+  
   void add_pc_hook_addr(unsigned int addr) {
     if (_enable_printf_logging)
-      printf("add_pc_hook_addr: %p\n", (void*)addr);
-    _pc_hook_addrs.insert(addr);
+      printf("add_pc_hook_addr: %p (normalized: %p)\n", (void*)addr, (void*)norm_pc(addr));
+    _pc_hook_addrs.insert(norm_pc(addr));
   }
   void add_region(unsigned int start, unsigned int size, void* data) {
     if (_enable_printf_logging)
@@ -162,7 +167,7 @@ extern "C" {
   }
 } // extern "C"
 
-unsigned int my_read_memory(unsigned int address, int size) {
+extern "C" unsigned int my_read_memory(unsigned int address, int size) {
   for (auto& region : _regions) {
     const auto val = region.read(address, size);
     if (val) {
@@ -175,11 +180,9 @@ unsigned int my_read_memory(unsigned int address, int size) {
   return 0; // Return 0 if no handler is set
 }
 
-unsigned int m68k_read_memory_8(unsigned int address) { return my_read_memory(address, 1); }
-unsigned int m68k_read_memory_16(unsigned int address) { return my_read_memory(address, 2); }
-unsigned int m68k_read_memory_32(unsigned int address) { return my_read_memory(address, 4); }
+// Memory access callbacks are now in m68k_memory_bridge.cc
 
-void my_write_memory(unsigned int address, int size, unsigned int value) {
+extern "C" void my_write_memory(unsigned int address, int size, unsigned int value) {
   // Check regions first, similar to read
   for (auto& region : _regions) {
     if (region.write(address, size, value)) {
@@ -192,43 +195,29 @@ void my_write_memory(unsigned int address, int size, unsigned int value) {
   }
 }
 
-void m68k_write_memory_8(unsigned int address, unsigned int value) { 
-  my_write_memory(address, 1, value);
-}
-void m68k_write_memory_16(unsigned int address, unsigned int value) { 
-  my_write_memory(address, 2, value);
-}
-void m68k_write_memory_32(unsigned int address, unsigned int value) { 
-  my_write_memory(address, 4, value);
-}
-
-/* Disassembler memory read functions */
-unsigned int m68k_read_disassembler_8(unsigned int address) {
-  return m68k_read_memory_8(address);
-}
-
-unsigned int m68k_read_disassembler_16(unsigned int address) {
-  return m68k_read_memory_16(address);
-}
-
-unsigned int m68k_read_disassembler_32(unsigned int address) {
-  return m68k_read_memory_32(address);
-}
-
-int my_instruction_hook_function(unsigned int pc) {
-  // Only call the hook if it's set
-  if (_pc_hook) {
-    // If specific addresses were added, only hook those
-    if (!_pc_hook_addrs.empty()) {
-      if (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end()) {
-        return _pc_hook(pc);
+int my_instruction_hook_function(unsigned int pc_raw) {
+  if (!_pc_hook) return 0;
+  
+  const uint32_t pc = norm_pc(pc_raw);
+  
+  if (!_pc_hook_addrs.empty()) {
+    // Debug: Check what addresses we're looking for
+    static bool debug_once = true;
+    if (debug_once && _enable_printf_logging) {
+      debug_once = false;
+      printf("DEBUG: Looking for addresses:");
+      for (auto addr : _pc_hook_addrs) {
+        printf(" %x", addr);
       }
-    } else {
-      // If no specific addresses, hook all
+      printf("\n");
+    }
+    
+    if (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end()) {
       return _pc_hook(pc);
     }
+    return 0; // filtered out
   }
-  return 0; // Return 0 to continue execution
+  return _pc_hook(pc); // no filter: hook everything
 }
 
 // This is the new wrapper called by the core

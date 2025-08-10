@@ -115,6 +115,7 @@ endif()
 # Create the myfunc library (C++ wrapper)
 add_library(musashi_api STATIC
     myfunc.cc
+    m68k_memory_bridge.cc
 )
 
 set_source_files_properties(myfunc.cc m68ktrace.cc PROPERTIES LANGUAGE CXX)
