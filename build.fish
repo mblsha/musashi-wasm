@@ -132,7 +132,7 @@ set -l runtime_methods \
     stringToUTF8 \
     stackTrace
 
-set -l object_files m68kcpu.o m68kops.o myfunc.o m68ktrace.o m68kdasm.o
+set -l object_files m68kcpu.o m68kops.o myfunc.o m68k_memory_bridge.o m68ktrace.o m68kdasm.o
 
 # Add Perfetto-related files and libraries if enabled
 if test "$enable_perfetto" = "1"
