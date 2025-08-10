@@ -47,7 +47,7 @@ jobs:
         cd build
         ctest --output-on-failure -C ${{ matrix.build_type }}
 
-  # Sanitizer build job (Linux only)
+  # Sanitizer build job (Linux only - more efficient than running on all platforms)
   sanitizer-tests:
     name: Sanitizer Tests
     runs-on: ubuntu-latest
