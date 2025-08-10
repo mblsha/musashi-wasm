@@ -50,6 +50,13 @@ void m68k_write_memory_32(unsigned int address, unsigned int value) {
     my_write_memory(addr24(address), 4, value); 
 }
 
+// Predecrement write for move.l with -(An) destination
+void m68k_write_memory_32_pd(unsigned int address, unsigned int value) {
+    // For proper 68k behavior, write high word first, then low word
+    m68k_write_memory_16(address + 2, (value >> 16) & 0xFFFF);
+    m68k_write_memory_16(address, value & 0xFFFF);
+}
+
 // ---- Instruction/immediate fetch + PC-relative + disassembler ----
 // Route *everything* through the same region-aware path.
 unsigned int m68k_read_immediate_8(unsigned int address) { 
