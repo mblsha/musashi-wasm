@@ -50,6 +50,24 @@ struct Region {
     }
     return std::nullopt;
   }
+  
+  bool write(unsigned int addr, int size, unsigned int value) {
+    if (addr >= start_ && addr < start_ + size_) {
+      if (size == 1) {
+        data_[addr - start_] = value & 0xFF;
+      } else if (size == 2) {
+        data_[addr - start_ + 0] = (value >> 8) & 0xFF;
+        data_[addr - start_ + 1] = value & 0xFF;
+      } else if (size == 4) {
+        data_[addr - start_ + 0] = (value >> 24) & 0xFF;
+        data_[addr - start_ + 1] = (value >> 16) & 0xFF;
+        data_[addr - start_ + 2] = (value >> 8) & 0xFF;
+        data_[addr - start_ + 3] = value & 0xFF;
+      }
+      return true;
+    }
+    return false;
+  }
 };
 static std::vector<Region> _regions;
 
@@ -161,14 +179,27 @@ unsigned int m68k_read_memory_8(unsigned int address) { return my_read_memory(ad
 unsigned int m68k_read_memory_16(unsigned int address) { return my_read_memory(address, 2); }
 unsigned int m68k_read_memory_32(unsigned int address) { return my_read_memory(address, 4); }
 
+void my_write_memory(unsigned int address, int size, unsigned int value) {
+  // Check regions first, similar to read
+  for (auto& region : _regions) {
+    if (region.write(address, size, value)) {
+      return; // Write handled by region
+    }
+  }
+  // Fall back to callback if no region handles it
+  if (_write_mem) {
+    _write_mem(address, size, value);
+  }
+}
+
 void m68k_write_memory_8(unsigned int address, unsigned int value) { 
-  if (_write_mem) _write_mem(address, 1, value); 
+  my_write_memory(address, 1, value);
 }
 void m68k_write_memory_16(unsigned int address, unsigned int value) { 
-  if (_write_mem) _write_mem(address, 2, value); 
+  my_write_memory(address, 2, value);
 }
 void m68k_write_memory_32(unsigned int address, unsigned int value) { 
-  if (_write_mem) _write_mem(address, 4, value); 
+  my_write_memory(address, 4, value);
 }
 
 /* Disassembler memory read functions */
@@ -185,13 +216,17 @@ unsigned int m68k_read_disassembler_32(unsigned int address) {
 }
 
 int my_instruction_hook_function(unsigned int pc) {
-  // Only call the hook if it's set and we want to break on this address
+  // Only call the hook if it's set
   if (_pc_hook) {
-    // Optionally check if we have specific addresses to hook
-    // if (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end()) {
-    //   return _pc_hook(pc);
-    // }
-    return _pc_hook(pc);
+    // If specific addresses were added, only hook those
+    if (!_pc_hook_addrs.empty()) {
+      if (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end()) {
+        return _pc_hook(pc);
+      }
+    } else {
+      // If no specific addresses, hook all
+      return _pc_hook(pc);
+    }
   }
   return 0; // Return 0 to continue execution
 }
