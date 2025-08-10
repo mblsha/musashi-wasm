@@ -19,7 +19,19 @@ set -l exported_functions \
     _m68k_pulse_reset \
     _m68k_cycles_run \
     _enable_printf_logging \
-    _my_initialize
+    _my_initialize \
+    _m68k_trace_enable \
+    _m68k_trace_is_enabled \
+    _m68k_set_trace_flow_callback \
+    _m68k_set_trace_mem_callback \
+    _m68k_set_trace_instr_callback \
+    _m68k_trace_add_mem_region \
+    _m68k_trace_clear_mem_regions \
+    _m68k_trace_set_flow_enabled \
+    _m68k_trace_set_mem_enabled \
+    _m68k_trace_set_instr_enabled \
+    _m68k_get_total_cycles \
+    _m68k_reset_total_cycles
 
 set -l runtime_methods \
     addFunction \
@@ -37,7 +49,7 @@ set -l emcc_options \
  -g3 \
  -gsource-map \
  --source-map-base http://localhost:8080/ \
- m68kcpu.o m68kops.o myfunc.o \
+ m68kcpu.o m68kops.o myfunc.o m68ktrace.o \
  -s EXPORTED_FUNCTIONS=(string join ',' $exported_functions) \
  -s EXPORTED_RUNTIME_METHODS=(string join ',' $runtime_methods) \
  # https://emscripten.org/docs/porting/guidelines/function_pointer_issues.html

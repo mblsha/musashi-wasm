@@ -38,6 +38,7 @@ extern "C" {
 #endif
 
 #include "m68k.h"
+#include "m68ktrace.h"
 
 #include <limits.h>
 
@@ -1127,6 +1128,7 @@ static inline uint m68ki_read_imm_32(void)
  */
 static inline uint m68ki_read_8_fc(uint address, uint fc)
 {
+	uint value;
 	(void)fc;
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 
@@ -1135,10 +1137,13 @@ static inline uint m68ki_read_8_fc(uint address, uint fc)
 	    address = pmmu_translate_addr(address);
 #endif
 
-	return m68k_read_memory_8(ADDRESS_68K(address));
+	value = m68k_read_memory_8(ADDRESS_68K(address));
+	m68k_trace_mem_hook(M68K_TRACE_MEM_READ, REG_PPC, ADDRESS_68K(address), value, 1);
+	return value;
 }
 static inline uint m68ki_read_16_fc(uint address, uint fc)
 {
+	uint value;
 	(void)fc;
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 	m68ki_check_address_error_010_less(address, MODE_READ, fc); /* auto-disable (see m68kcpu.h) */
@@ -1148,10 +1153,13 @@ static inline uint m68ki_read_16_fc(uint address, uint fc)
 	    address = pmmu_translate_addr(address);
 #endif
 
-	return m68k_read_memory_16(ADDRESS_68K(address));
+	value = m68k_read_memory_16(ADDRESS_68K(address));
+	m68k_trace_mem_hook(M68K_TRACE_MEM_READ, REG_PPC, ADDRESS_68K(address), value, 2);
+	return value;
 }
 static inline uint m68ki_read_32_fc(uint address, uint fc)
 {
+	uint value;
 	(void)fc;
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 	m68ki_check_address_error_010_less(address, MODE_READ, fc); /* auto-disable (see m68kcpu.h) */
@@ -1161,7 +1169,9 @@ static inline uint m68ki_read_32_fc(uint address, uint fc)
 	    address = pmmu_translate_addr(address);
 #endif
 
-	return m68k_read_memory_32(ADDRESS_68K(address));
+	value = m68k_read_memory_32(ADDRESS_68K(address));
+	m68k_trace_mem_hook(M68K_TRACE_MEM_READ, REG_PPC, ADDRESS_68K(address), value, 4);
+	return value;
 }
 
 static inline void m68ki_write_8_fc(uint address, uint fc, uint value)
@@ -1175,6 +1185,7 @@ static inline void m68ki_write_8_fc(uint address, uint fc, uint value)
 #endif
 
 	m68k_write_memory_8(ADDRESS_68K(address), value);
+	m68k_trace_mem_hook(M68K_TRACE_MEM_WRITE, REG_PPC, ADDRESS_68K(address), value, 1);
 }
 static inline void m68ki_write_16_fc(uint address, uint fc, uint value)
 {
@@ -1188,6 +1199,7 @@ static inline void m68ki_write_16_fc(uint address, uint fc, uint value)
 #endif
 
 	m68k_write_memory_16(ADDRESS_68K(address), value);
+	m68k_trace_mem_hook(M68K_TRACE_MEM_WRITE, REG_PPC, ADDRESS_68K(address), value, 2);
 }
 static inline void m68ki_write_32_fc(uint address, uint fc, uint value)
 {
@@ -1201,6 +1213,7 @@ static inline void m68ki_write_32_fc(uint address, uint fc, uint value)
 #endif
 
 	m68k_write_memory_32(ADDRESS_68K(address), value);
+	m68k_trace_mem_hook(M68K_TRACE_MEM_WRITE, REG_PPC, ADDRESS_68K(address), value, 4);
 }
 
 #if M68K_SIMULATE_PD_WRITES
@@ -1216,6 +1229,7 @@ static inline void m68ki_write_32_pd_fc(uint address, uint fc, uint value)
 #endif
 
 	m68k_write_memory_32_pd(ADDRESS_68K(address), value);
+	m68k_trace_mem_hook(M68K_TRACE_MEM_WRITE, REG_PPC, ADDRESS_68K(address), value, 4);
 }
 #endif
 
@@ -1494,6 +1508,56 @@ static inline void m68ki_branch_32(uint offset)
 {
 	REG_PC += offset;
 	m68ki_pc_changed(REG_PC);
+}
+
+/* ------------------------- Control Flow Tracing ------------------------- */
+
+/* Trace-aware BSR (Branch to Subroutine) */
+static inline void m68ki_trace_bsr(uint source_pc, uint dest_pc, uint return_addr)
+{
+	m68k_trace_flow_hook(M68K_TRACE_FLOW_CALL, source_pc, dest_pc, return_addr);
+}
+
+/* Trace-aware JSR (Jump to Subroutine) */
+static inline void m68ki_trace_jsr(uint source_pc, uint dest_pc, uint return_addr)
+{
+	m68k_trace_flow_hook(M68K_TRACE_FLOW_CALL, source_pc, dest_pc, return_addr);
+}
+
+/* Trace-aware RTS (Return from Subroutine) */
+static inline void m68ki_trace_rts(uint source_pc, uint dest_pc)
+{
+	m68k_trace_flow_hook(M68K_TRACE_FLOW_RETURN, source_pc, dest_pc, 0);
+}
+
+/* Trace-aware RTE (Return from Exception) */
+static inline void m68ki_trace_rte(uint source_pc, uint dest_pc)
+{
+	m68k_trace_flow_hook(M68K_TRACE_FLOW_EXCEPTION_RETURN, source_pc, dest_pc, 0);
+}
+
+/* Trace-aware JMP (Jump) */
+static inline void m68ki_trace_jmp(uint source_pc, uint dest_pc)
+{
+	m68k_trace_flow_hook(M68K_TRACE_FLOW_JUMP, source_pc, dest_pc, 0);
+}
+
+/* Trace-aware BRA (Branch Always) */
+static inline void m68ki_trace_bra(uint source_pc, uint dest_pc)
+{
+	m68k_trace_flow_hook(M68K_TRACE_FLOW_JUMP, source_pc, dest_pc, 0);
+}
+
+/* Trace-aware conditional branch taken */
+static inline void m68ki_trace_branch_taken(uint source_pc, uint dest_pc)
+{
+	m68k_trace_flow_hook(M68K_TRACE_FLOW_BRANCH_TAKEN, source_pc, dest_pc, 0);
+}
+
+/* Trace-aware conditional branch not taken */
+static inline void m68ki_trace_branch_not_taken(uint source_pc)
+{
+	m68k_trace_flow_hook(M68K_TRACE_FLOW_BRANCH_NOT_TAKEN, source_pc, source_pc, 0);
 }
 
 /* ---------------------------- Status Register --------------------------- */
