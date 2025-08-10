@@ -15,6 +15,8 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: recursive
     
     - name: Configure CMake with Sanitizers
       run: |
@@ -36,3 +38,56 @@ jobs:
         ASAN_OPTIONS=detect_leaks=1:check_initialization_order=1 \
         UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
         ctest --output-on-failure
+  
+  # Perfetto integration build job
+  perfetto-build:
+    name: Perfetto Integration Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler libprotobuf-dev
+    
+    - name: Configure CMake with Perfetto
+      run: |
+        mkdir -p build
+        cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_TESTS=ON \
+          -DENABLE_PERFETTO=ON
+    
+    - name: Build with Perfetto
+      run: |
+        cd build
+        cmake --build . -j$(nproc)
+    
+    - name: Build and test example
+      run: |
+        cd build
+        # Build the example if it exists
+        if [ -f ../example_perfetto_trace.c ]; then
+          gcc -o example_perfetto_trace ../example_perfetto_trace.c \
+            -Lbuild -lmusashi_api -lmusashi_core \
+            -I. -I.. -Ibuild \
+            -lstdc++ -lm
+          echo "Perfetto example built successfully"
+        fi
+    
+    - name: Verify Perfetto symbols
+      run: |
+        cd build
+        # Check that Perfetto symbols are present in the library
+        nm libmusashi_core.a | grep -q "m68k_perfetto" && \
+          echo "✓ Perfetto symbols found in musashi_core" || \
+          echo "✗ Perfetto symbols missing"
+        
+        nm libmusashi_api.a | grep -q "perfetto_" && \
+          echo "✓ Perfetto wrapper symbols found in musashi_api" || \
+          echo "✗ Perfetto wrapper symbols missing"
