@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "m68k.h"
+#include "m68k_perfetto.h"
 
 #include <cstdint>
 #include <unordered_set>
@@ -127,3 +128,69 @@ int my_instruction_hook_function(unsigned int pc) {
   }
   return 0; // Return 0 to continue execution
 }
+
+/* ======================================================================== */
+/* ======================= PERFETTO TRACE API WRAPPERS =================== */
+/* ======================================================================== */
+
+extern "C" {
+  /* Perfetto lifecycle management */
+  int perfetto_init(const char* process_name) {
+    if (_enable_printf_logging)
+      printf("perfetto_init: %s\n", process_name ? process_name : "NULL");
+    return m68k_perfetto_init(process_name);
+  }
+  
+  void perfetto_destroy() {
+    if (_enable_printf_logging)
+      printf("perfetto_destroy\n");
+    m68k_perfetto_destroy();
+  }
+  
+  /* Feature enable/disable */
+  void perfetto_enable_flow(int enable) {
+    if (_enable_printf_logging)
+      printf("perfetto_enable_flow: %d\n", enable);
+    m68k_perfetto_enable_flow(enable);
+  }
+  
+  void perfetto_enable_memory(int enable) {
+    if (_enable_printf_logging)
+      printf("perfetto_enable_memory: %d\n", enable);
+    m68k_perfetto_enable_memory(enable);
+  }
+  
+  void perfetto_enable_instructions(int enable) {
+    if (_enable_printf_logging)
+      printf("perfetto_enable_instructions: %d\n", enable);
+    m68k_perfetto_enable_instructions(enable);
+  }
+  
+  /* Export trace data (critical for WASM) */
+  int perfetto_export_trace(uint8_t** data_out, size_t* size_out) {
+    if (_enable_printf_logging)
+      printf("perfetto_export_trace: %p %p\n", (void*)data_out, (void*)size_out);
+    return m68k_perfetto_export_trace(data_out, size_out);
+  }
+  
+  void perfetto_free_trace_data(uint8_t* data) {
+    if (_enable_printf_logging)
+      printf("perfetto_free_trace_data: %p\n", (void*)data);
+    m68k_perfetto_free_trace_data(data);
+  }
+  
+  /* Native-only file save */
+  int perfetto_save_trace(const char* filename) {
+    if (_enable_printf_logging)
+      printf("perfetto_save_trace: %s\n", filename ? filename : "NULL");
+    return m68k_perfetto_save_trace(filename);
+  }
+  
+  /* Status */
+  int perfetto_is_initialized() {
+    int result = m68k_perfetto_is_initialized();
+    if (_enable_printf_logging)
+      printf("perfetto_is_initialized: %d\n", result);
+    return result;
+  }
+} // extern "C"

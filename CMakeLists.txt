@@ -13,6 +13,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Options
 option(BUILD_TESTS "Build unit tests" ON)
 option(ENABLE_SANITIZERS "Enable address and undefined behavior sanitizers" OFF)
+option(ENABLE_PERFETTO "Enable Perfetto tracing support" OFF)
 
 # Add compiler warnings
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -23,6 +24,19 @@ endif()
 if(ENABLE_SANITIZERS)
     add_compile_options(-fsanitize=address -fsanitize=undefined)
     add_link_options(-fsanitize=address -fsanitize=undefined)
+endif()
+
+# Configure Perfetto if requested
+if(ENABLE_PERFETTO)
+    message(STATUS "Perfetto tracing enabled")
+    
+    # Add retrobus-perfetto subdirectory
+    add_subdirectory(third_party/retrobus-perfetto/cpp)
+    
+    # Define the compile flag
+    add_compile_definitions(ENABLE_PERFETTO=1)
+else()
+    message(STATUS "Perfetto tracing disabled")
 endif()
 
 # Generate M68k operation files first
@@ -39,13 +53,20 @@ add_custom_command(
 
 # Create the main Musashi library (static for testing)
 # Note: m68kfpu.c is included by m68kcpu.c, not compiled separately
-add_library(musashi_core STATIC
+set(MUSASHI_CORE_SOURCES
     m68kcpu.c
     m68kdasm.c
     m68ktrace.cc
     softfloat/softfloat.c
     ${CMAKE_CURRENT_BINARY_DIR}/m68kops.c
 )
+
+# Conditionally add Perfetto support
+if(ENABLE_PERFETTO)
+    list(APPEND MUSASHI_CORE_SOURCES m68k_perfetto.cc)
+endif()
+
+add_library(musashi_core STATIC ${MUSASHI_CORE_SOURCES})
 
 target_include_directories(musashi_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -69,7 +90,17 @@ add_library(musashi_api STATIC
 
 set_source_files_properties(myfunc.cc m68ktrace.cc PROPERTIES LANGUAGE CXX)
 
+# Conditionally set C++ properties for Perfetto files
+if(ENABLE_PERFETTO)
+    set_source_files_properties(m68k_perfetto.cc PROPERTIES LANGUAGE CXX)
+endif()
+
 target_link_libraries(musashi_api PUBLIC musashi_core)
+
+# Link Perfetto if enabled
+if(ENABLE_PERFETTO)
+    target_link_libraries(musashi_core PUBLIC retrobus_perfetto)
+endif()
 
 target_include_directories(musashi_api PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -113,10 +144,26 @@ if(BUILD_TESTS)
         GTest::gtest_main
     )
     
+    # Test executable for Perfetto integration (conditional)
+    if(ENABLE_PERFETTO)
+        add_executable(test_perfetto
+            tests/test_perfetto.cpp
+        )
+        
+        target_link_libraries(test_perfetto
+            musashi_api
+            GTest::gtest_main
+        )
+    endif()
+    
     # Register tests with CTest
     include(GoogleTest)
     gtest_discover_tests(test_myfunc)
     gtest_discover_tests(test_m68k)
+    
+    if(ENABLE_PERFETTO)
+        gtest_discover_tests(test_perfetto)
+    endif()
     
     # Add a custom target to run all tests
     add_custom_target(run_tests

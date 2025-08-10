@@ -1,5 +1,9 @@
 #!/usr/bin/env fish
 
+# Note: Perfetto tracing is disabled by default for WASM builds due to protobuf complexity
+# To enable Perfetto for WASM (experimental), set ENABLE_PERFETTO=1 environment variable
+# and ensure protobuf is available in the Emscripten environment
+
 emmake make -j20
 
 set -l exported_functions \
@@ -31,7 +35,16 @@ set -l exported_functions \
     _m68k_trace_set_mem_enabled \
     _m68k_trace_set_instr_enabled \
     _m68k_get_total_cycles \
-    _m68k_reset_total_cycles
+    _m68k_reset_total_cycles \
+    _perfetto_init \
+    _perfetto_destroy \
+    _perfetto_enable_flow \
+    _perfetto_enable_memory \
+    _perfetto_enable_instructions \
+    _perfetto_export_trace \
+    _perfetto_free_trace_data \
+    _perfetto_save_trace \
+    _perfetto_is_initialized
 
 set -l runtime_methods \
     addFunction \

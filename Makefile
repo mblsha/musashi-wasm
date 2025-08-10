@@ -1,7 +1,19 @@
 # Just a basic makefile to quickly test that everyting is working, it just
 # compiles the .o and the generator
 
+# Perfetto support - set ENABLE_PERFETTO=1 to enable
+ENABLE_PERFETTO ?= 0
+
 MUSASHIFILES     = m68kcpu.c myfunc.cc m68kdasm.c m68ktrace.cc softfloat/softfloat.c
+
+# Add Perfetto files if enabled
+ifeq ($(ENABLE_PERFETTO),1)
+    MUSASHIFILES += m68k_perfetto.cc
+    CFLAGS += -DENABLE_PERFETTO=1 -Ithird_party/retrobus-perfetto/cpp/include
+    LFLAGS += -DENABLE_PERFETTO=1
+    # Note: For full Perfetto support in Makefile builds, protobuf libs would be needed
+    # This is primarily for WASM builds where dependencies are handled differently
+endif
 MUSASHIGENCFILES = m68kops.c
 MUSASHIGENHFILES = m68kops.h
 MUSASHIGENERATOR = m68kmake
