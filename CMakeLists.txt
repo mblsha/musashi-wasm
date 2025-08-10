@@ -225,22 +225,12 @@ if(BUILD_TESTS)
         GTest::gtest_main
     )
     
-    # Build merge sort tracing test
-    add_executable(test_mergesort_trace
-        tests/test_mergesort_trace.cpp
+    # Build consolidated merge sort test
+    add_executable(test_mergesort
+        tests/test_mergesort.cpp
     )
     
-    target_link_libraries(test_mergesort_trace
-        musashi_api
-        GTest::gtest_main
-    )
-    
-    # Build merge sort verified test (with static expectations)
-    add_executable(test_mergesort_verified
-        tests/test_mergesort_verified.cpp
-    )
-    
-    target_link_libraries(test_mergesort_verified
+    target_link_libraries(test_mergesort
         musashi_api
         GTest::gtest_main
     )
@@ -282,8 +272,7 @@ if(BUILD_TESTS)
     gtest_discover_tests(test_myfunc)
     gtest_discover_tests(test_m68k)
     gtest_discover_tests(test_vasm_binary)
-    gtest_discover_tests(test_mergesort_trace)
-    gtest_discover_tests(test_mergesort_verified)
+    gtest_discover_tests(test_mergesort)
     
     if(ENABLE_PERFETTO)
         gtest_discover_tests(test_perfetto)
