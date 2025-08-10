@@ -124,7 +124,6 @@ private:
 
     /* Utility functions */
     std::string format_hex(uint32_t value) const;
-    std::string format_registers(const uint32_t* d_regs, const uint32_t* a_regs) const;
     uint64_t cycles_to_nanoseconds(uint64_t cycles) const;
 };
 

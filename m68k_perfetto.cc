@@ -234,12 +234,27 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
             auto event = trace_builder_->begin_slice(cpu_thread_track_id_, call_name, timestamp_ns)
                 .add_annotation("source_pc", format_hex(source_pc))
                 .add_annotation("target_pc", format_hex(dest_pc))
-                .add_annotation("return_addr", format_hex(return_addr))
-                .add_annotation("d0", static_cast<int64_t>(d_regs[0]))
-                .add_annotation("a7_sp", format_hex(a_regs[7]));
-
+                .add_annotation("return_addr", format_hex(return_addr));
+            
+            /* Add registers as a nested dictionary under "r" */
             if (d_regs && a_regs) {
-                event.add_annotation("registers", format_registers(d_regs, a_regs));
+                event.annotation("r")
+                    .pointer("d0", d_regs[0])
+                    .pointer("d1", d_regs[1])
+                    .pointer("d2", d_regs[2])
+                    .pointer("d3", d_regs[3])
+                    .pointer("d4", d_regs[4])
+                    .pointer("d5", d_regs[5])
+                    .pointer("d6", d_regs[6])
+                    .pointer("d7", d_regs[7])
+                    .pointer("a0", a_regs[0])
+                    .pointer("a1", a_regs[1])
+                    .pointer("a2", a_regs[2])
+                    .pointer("a3", a_regs[3])
+                    .pointer("a4", a_regs[4])
+                    .pointer("a5", a_regs[5])
+                    .pointer("a6", a_regs[6])
+                    .pointer("a7_sp", a_regs[7]);
             }
 
             /* Track call for matching with return */
@@ -386,20 +401,7 @@ std::string M68kPerfettoTracer::format_hex(uint32_t value) const {
     return oss.str();
 }
 
-std::string M68kPerfettoTracer::format_registers(const uint32_t* d_regs, const uint32_t* a_regs) const {
-    std::ostringstream oss;
-    oss << "D0-D7: ";
-    for (int i = 0; i < 8; i++) {
-        if (i > 0) oss << ", ";
-        oss << format_hex(d_regs[i]);
-    }
-    oss << " | A0-A7: ";
-    for (int i = 0; i < 8; i++) {
-        if (i > 0) oss << ", ";
-        oss << format_hex(a_regs[i]);
-    }
-    return oss.str();
-}
+/* format_registers is no longer needed - using nested dictionary annotations instead */
 
 uint64_t M68kPerfettoTracer::cycles_to_nanoseconds(uint64_t cycles) const {
     /* Convert CPU cycles to nanoseconds based on CPU frequency */

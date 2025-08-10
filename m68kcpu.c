@@ -1034,7 +1034,6 @@ int m68k_execute(int num_cycles)
 					is_flow_instruction = 1;
 				} else if (opcode == 0x4E75) {
 					/* RTS - Return from Subroutine */
-					printf("DEBUG CPU: RTS detected! opcode=%04X\n", opcode);
 					flow_type = M68K_TRACE_FLOW_RETURN;
 					is_flow_instruction = 1;
 				} else if (opcode == 0x4E77) {
