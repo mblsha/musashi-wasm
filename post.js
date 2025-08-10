@@ -1,4 +1,7 @@
 // post.js
-export function getModule() {
-    return Module;
+// CommonJS-compatible export for Node.js
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports.getModule = function() {
+        return Module;
+    };
 }

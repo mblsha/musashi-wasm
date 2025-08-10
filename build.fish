@@ -72,6 +72,7 @@ end
 # Build with correct flags (limit parallelism for CI stability)
 run emmake make -j8 ENABLE_PERFETTO=$enable_perfetto
 
+# Core functions that are always exported
 set -l exported_functions \
     _malloc \
     _free \
@@ -102,17 +103,22 @@ set -l exported_functions \
     _m68k_trace_set_instr_enabled \
     _m68k_get_total_cycles \
     _m68k_reset_total_cycles \
-    _m68k_disassemble \
-    _m68k_perfetto_init \
-    _m68k_perfetto_destroy \
-    _m68k_perfetto_enable_flow \
-    _m68k_perfetto_enable_memory \
-    _m68k_perfetto_enable_instructions \
-    _m68k_perfetto_export_trace \
-    _m68k_perfetto_free_trace_data \
-    _m68k_perfetto_save_trace \
-    _m68k_perfetto_is_initialized \
-    _m68k_perfetto_cleanup_slices
+    _m68k_disassemble
+
+# Add Perfetto functions only if enabled
+if test "$enable_perfetto" = "1"
+    set exported_functions $exported_functions \
+        _m68k_perfetto_init \
+        _m68k_perfetto_destroy \
+        _m68k_perfetto_enable_flow \
+        _m68k_perfetto_enable_memory \
+        _m68k_perfetto_enable_instructions \
+        _m68k_perfetto_export_trace \
+        _m68k_perfetto_free_trace_data \
+        _m68k_perfetto_save_trace \
+        _m68k_perfetto_is_initialized \
+        _m68k_perfetto_cleanup_slices
+end
 
 set -l runtime_methods \
     addFunction \
