@@ -72,3 +72,42 @@ The WebAssembly build creates two versions:
 - `musashi-node.out.*` - Node.js version with different export settings
 
 Both use optimization level -O2 and export all functions prefixed with underscore.
+
+## Running Native Tests
+
+### Build and Run Tests
+```bash
+# Clean build with tests
+mkdir -p build && cd build
+cmake .. -DBUILD_TESTS=ON
+make -j8
+
+# Run all tests
+ctest --output-on-failure
+
+# Run specific test executable
+./test_m68k
+./test_myfunc
+```
+
+### Debugging Test Failures
+The M68k CPU tests require proper initialization:
+1. **Reset Vector Setup**: The CPU reads initial SP from address 0 and PC from address 4
+2. **Memory Callbacks**: Must be set before CPU operations (read_mem, write_mem, pc_hook)
+3. **Instruction Execution**: Use m68k_execute(cycles) with sufficient cycles (>10 for most instructions)
+
+### Known Issues
+- **Instruction Execution**: Currently the CPU doesn't advance PC properly during execution
+- **Test Memory**: Tests use a 1MB memory buffer, ensure addresses stay within bounds
+- **Sanitizers**: Use `-DENABLE_SANITIZERS=ON` for memory debugging on Linux/macOS
+
+### Test Structure
+Tests use Google Test framework with fixtures:
+- `M68kTest`: Tests CPU core functionality
+- `MyFuncTest`: Tests the myfunc.c API wrapper
+
+Each test fixture sets up:
+- Memory buffer (1MB)
+- Memory access callbacks
+- Reset vector at addresses 0-7 (SP at 0, PC at 4)
+- CPU initialization with m68k_init() and m68k_pulse_reset()
