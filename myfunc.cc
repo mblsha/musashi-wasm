@@ -225,11 +225,18 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
     // Call the C++ tracing hook first
     int trace_result = m68k_trace_instruction_hook(pc, ir, cycles);
     if (trace_result != 0) {
-        return trace_result; // Tracing wants to stop execution
+        // Tracing requested to break: end the timeslice so m68k_execute() yields immediately
+        m68k_end_timeslice();
+        return trace_result;
     }
 
     // Call the original JS-facing hook
-    return my_instruction_hook_function(pc);
+    int js_result = my_instruction_hook_function(pc);
+    if (js_result != 0) {
+        // JS requested to break: end the timeslice so m68k_execute() yields immediately
+        m68k_end_timeslice();
+    }
+    return js_result;
 }
 
 /* ======================================================================== */
