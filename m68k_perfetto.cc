@@ -232,9 +232,9 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
             auto call_name = std::string("call_") + format_hex(dest_pc);
             
             auto event = trace_builder_->begin_slice(cpu_thread_track_id_, call_name, timestamp_ns)
-                .add_annotation("source_pc", format_hex(source_pc))
-                .add_annotation("target_pc", format_hex(dest_pc))
-                .add_annotation("return_addr", format_hex(return_addr));
+                .add_pointer("source_pc", source_pc)
+                .add_pointer("target_pc", dest_pc)
+                .add_pointer("return_addr", return_addr);
             
             /* Add registers as a nested dictionary under "r" */
             if (d_regs && a_regs) {
@@ -285,8 +285,8 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
             /* Only trace taken jumps/branches on dedicated Jumps thread */
             /* All taken jumps are shown as "jump" for simplicity */
             trace_builder_->add_instant_event(jumps_thread_track_id_, "jump", timestamp_ns)
-                .add_annotation("from", format_hex(source_pc))
-                .add_annotation("to", format_hex(dest_pc))
+                .add_pointer("from", source_pc)
+                .add_pointer("to", dest_pc)
                 .add_annotation("offset", static_cast<int64_t>(static_cast<int32_t>(dest_pc - source_pc)));
             break;
         }
@@ -298,28 +298,28 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
         case M68K_TRACE_FLOW_EXCEPTION: {
             /* Exception event on Jumps thread */
             trace_builder_->add_instant_event(jumps_thread_track_id_, "exception", timestamp_ns)
-                .add_annotation("from", format_hex(source_pc))
-                .add_annotation("to", format_hex(dest_pc))
+                .add_pointer("from", source_pc)
+                .add_pointer("to", dest_pc)
                 .add_annotation("condition", "exception")
-                .add_annotation("vector_addr", format_hex(dest_pc));
+                .add_pointer("vector_addr", dest_pc);
             break;
         }
 
         case M68K_TRACE_FLOW_TRAP: {
             /* TRAP instruction event on Jumps thread */
             trace_builder_->add_instant_event(jumps_thread_track_id_, "trap", timestamp_ns)
-                .add_annotation("from", format_hex(source_pc))
-                .add_annotation("to", format_hex(dest_pc))
+                .add_pointer("from", source_pc)
+                .add_pointer("to", dest_pc)
                 .add_annotation("condition", "trap")
-                .add_annotation("trap_vector", format_hex(dest_pc));
+                .add_pointer("trap_vector", dest_pc);
             break;
         }
 
         case M68K_TRACE_FLOW_EXCEPTION_RETURN: {
             /* Exception return (RTE) event on Jumps thread */
             trace_builder_->add_instant_event(jumps_thread_track_id_, "exception_return", timestamp_ns)
-                .add_annotation("from", format_hex(source_pc))
-                .add_annotation("to", format_hex(dest_pc))
+                .add_pointer("from", source_pc)
+                .add_pointer("to", dest_pc)
                 .add_annotation("condition", "exception_return");
             break;
         }
@@ -344,9 +344,9 @@ int M68kPerfettoTracer::handle_memory_event(m68k_trace_mem_type type, uint32_t p
         
         /* Create instant slice for memory write */
         trace_builder_->add_instant_event(memory_writes_track_id_, write_name, timestamp_ns)
-            .add_annotation("pc", format_hex(pc))
-            .add_annotation("address", format_hex(address))
-            .add_annotation("value", format_hex(value))
+            .add_pointer("pc", pc)
+            .add_pointer("address", address)
+            .add_pointer("value", value)
             .add_annotation("size", static_cast<int64_t>(size));
     }
 
@@ -377,7 +377,7 @@ int M68kPerfettoTracer::handle_instruction_event(uint32_t pc, uint16_t opcode, u
 
     /* Create slice for instruction execution on its own track */
     trace_builder_->begin_slice(instr_thread_track_id_, disasm_buf, start_ns)
-        .add_annotation("pc", format_hex(pc));
+        .add_pointer("pc", pc);
 
     trace_builder_->end_slice(instr_thread_track_id_, end_ns);
 
