@@ -1,10 +1,20 @@
 #!/usr/bin/env fish
 
-# Note: Perfetto tracing is disabled by default for WASM builds due to protobuf complexity
-# To enable Perfetto for WASM (experimental), set ENABLE_PERFETTO=1 environment variable
-# and ensure protobuf is available in the Emscripten environment
+# Note: Perfetto tracing can be enabled by setting ENABLE_PERFETTO=1 environment variable
+# Requires running ./build_protobuf_wasm.sh first to build protobuf and abseil dependencies
 
-emmake make -j20
+# Check if we should enable Perfetto
+set -l enable_perfetto (set -q ENABLE_PERFETTO; and echo $ENABLE_PERFETTO; or echo "0")
+
+if test "$enable_perfetto" = "1"
+    echo "Building with Perfetto tracing enabled..."
+    set -x ENABLE_PERFETTO 1
+else
+    echo "Building without Perfetto tracing (set ENABLE_PERFETTO=1 to enable)..."
+end
+
+# Build with correct flags
+emmake make -j20 ENABLE_PERFETTO=$enable_perfetto
 
 set -l exported_functions \
     _malloc \
@@ -36,15 +46,17 @@ set -l exported_functions \
     _m68k_trace_set_instr_enabled \
     _m68k_get_total_cycles \
     _m68k_reset_total_cycles \
-    _perfetto_init \
-    _perfetto_destroy \
-    _perfetto_enable_flow \
-    _perfetto_enable_memory \
-    _perfetto_enable_instructions \
-    _perfetto_export_trace \
-    _perfetto_free_trace_data \
-    _perfetto_save_trace \
-    _perfetto_is_initialized
+    _m68k_disassemble \
+    _m68k_perfetto_init \
+    _m68k_perfetto_destroy \
+    _m68k_perfetto_enable_flow \
+    _m68k_perfetto_enable_memory \
+    _m68k_perfetto_enable_instructions \
+    _m68k_perfetto_export_trace \
+    _m68k_perfetto_free_trace_data \
+    _m68k_perfetto_save_trace \
+    _m68k_perfetto_is_initialized \
+    _m68k_perfetto_cleanup_slices
 
 set -l runtime_methods \
     addFunction \
@@ -58,11 +70,18 @@ set -l runtime_methods \
     stringToUTF8 \
     stackTrace
 
+set -l object_files m68kcpu.o m68kops.o myfunc.o m68ktrace.o m68kdasm.o
+
+# Add Perfetto-related files and libraries if enabled
+if test "$enable_perfetto" = "1"
+    set object_files $object_files m68k_perfetto.o third_party/retrobus-perfetto/cpp/proto/perfetto.pb.o
+end
+
 set -l emcc_options \
  -g3 \
  -gsource-map \
  --source-map-base http://localhost:8080/ \
- m68kcpu.o m68kops.o myfunc.o m68ktrace.o \
+ $object_files \
  -s EXPORTED_FUNCTIONS=(string join ',' $exported_functions) \
  -s EXPORTED_RUNTIME_METHODS=(string join ',' $runtime_methods) \
  # https://emscripten.org/docs/porting/guidelines/function_pointer_issues.html
@@ -87,7 +106,19 @@ set -l emcc_options \
 #  -fsanitize=address \
  # important since we want to operate on 32 and 64-bit numbers
  -sWASM_BIGINT \
- -flto
+ # Enable JS exceptions for Perfetto support (WASM exceptions cause linker crash)
+ -sDISABLE_EXCEPTION_CATCHING=0 \
+ -Wl,--gc-sections
+
+# Add protobuf and abseil libraries if Perfetto is enabled
+if test "$enable_perfetto" = "1"
+    # Make pkg-config aware of WASM-installed .pc files
+    set -x PKG_CONFIG_PATH third_party/protobuf-wasm-install/lib/pkgconfig:third_party/abseil-wasm-install/lib/pkgconfig
+    
+    # Link protobuf libraries directly
+    set emcc_options $emcc_options \
+        third_party/protobuf-wasm-install/lib/libprotobuf.a
+end
 
 emcc \
  $emcc_options \

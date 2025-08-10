@@ -4,12 +4,22 @@
 # Perfetto support - set ENABLE_PERFETTO=1 to enable
 ENABLE_PERFETTO ?= 0
 
+# CC        = gcc
+CC        = em++
+# CC        = emcc
+WARNINGS  = -Wall -Wextra -pedantic
+# CFLAGS    = $(WARNINGS) -fsanitize=address -g
+# LFLAGS    = $(WARNINGS) -fsanitize=address -g
+CFLAGS    = $(WARNINGS) -O3 -frtti -fexceptions -std=c++17
+LFLAGS    = $(WARNINGS) -O3 -frtti -fexceptions -std=c++17
+
 MUSASHIFILES     = m68kcpu.c myfunc.cc m68kdasm.c m68ktrace.cc softfloat/softfloat.c
 
 # Add Perfetto files if enabled
 ifeq ($(ENABLE_PERFETTO),1)
-    MUSASHIFILES += m68k_perfetto.cc
-    CFLAGS += -DENABLE_PERFETTO=1 -Ithird_party/retrobus-perfetto/cpp/include
+    MUSASHIFILES += m68k_perfetto.cc third_party/retrobus-perfetto/cpp/proto/perfetto.pb.cc
+    PERFETTO_FLAGS = -DENABLE_PERFETTO=1 -Ithird_party/retrobus-perfetto/cpp/include -Ithird_party/retrobus-perfetto/cpp/proto -Ithird_party/protobuf-wasm-install/include
+    CFLAGS += $(PERFETTO_FLAGS)
     LFLAGS += -DENABLE_PERFETTO=1
     # Note: For full Perfetto support in Makefile builds, protobuf libs would be needed
     # This is primarily for WASM builds where dependencies are handled differently
@@ -28,15 +38,6 @@ EXEPATH = ./
 # Rule for compiling .cc files with the same compiler
 %.o: %.cc
 	$(CC) $(CFLAGS) -c -o $@ $<
-
-# CC        = gcc
-CC        = em++
-# CC        = emcc
-WARNINGS  = -Wall -Wextra -pedantic
-# CFLAGS    = $(WARNINGS) -fsanitize=address -g
-# LFLAGS    = $(WARNINGS) -fsanitize=address -g
-CFLAGS    = $(WARNINGS) -O3 -flto -fno-rtti -fno-exceptions -std=c++17
-LFLAGS    = $(WARNINGS) -O3 -flto -fno-rtti -fno-exceptions -std=c++17
 
 DELETEFILES = $(MUSASHIGENCFILES) $(MUSASHIGENHFILES) $(.OFILES) $(TARGET) $(MUSASHIGENERATOR)$(EXE)
 
