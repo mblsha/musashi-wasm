@@ -29,12 +29,6 @@ extern "C" {
                                      uint32_t dest_pc, uint32_t return_addr,
                                      const uint32_t* d_regs, const uint32_t* a_regs, 
                                      uint64_t cycles) {
-        /* DEBUG: Log all flow callback calls */
-        if (type == M68K_TRACE_FLOW_RETURN) {
-            printf("DEBUG CALLBACK: RTS flow callback called! source_pc=%08X dest_pc=%08X\n", 
-                   source_pc, dest_pc);
-        }
-        
         if (g_tracer) {
             return g_tracer->handle_flow_event(type, source_pc, dest_pc, return_addr,
                                               d_regs, a_regs, cycles);
@@ -210,14 +204,11 @@ M68kPerfettoTracer::~M68kPerfettoTracer() {
 void M68kPerfettoTracer::cleanup_unclosed_slices() {
     /* Close any remaining open slices to prevent "Did not end" in Perfetto UI */
     if (!call_stack_.empty()) {
-        printf("PERFETTO CLEANUP: Closing %zu unclosed slices\n", call_stack_.size());
-        
         /* Get a reasonable end timestamp (current cycles + small offset) */
         uint64_t cleanup_timestamp_ns = cycles_to_nanoseconds(999999);  /* ~125ms at 8MHz */
         
         /* Close all remaining slices in reverse order (LIFO) */
         while (!call_stack_.empty()) {
-            printf("  - Closing slice for PC=%08X\n", call_stack_.back().source_pc);
             trace_builder_->end_slice(cpu_thread_track_id_, cleanup_timestamp_ns);
             call_stack_.pop_back();
             cleanup_timestamp_ns += 1000;  /* Small time increment between closes */
@@ -239,10 +230,6 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
         case M68K_TRACE_FLOW_CALL: {
             /* Begin a slice for the call and track it on call stack */
             auto call_name = std::string("call_") + format_hex(dest_pc);
-            
-            /* DEBUG: Log the begin_slice call with detailed info */
-            printf("DEBUG: BSR CALL PC=%08X->%08X offset=%08X cycles=%llu stack=%zu\n", 
-                   source_pc, dest_pc, (dest_pc - source_pc), cycles, call_stack_.size());
             
             auto event = trace_builder_->begin_slice(cpu_thread_track_id_, call_name, timestamp_ns)
                 .add_annotation("source_pc", format_hex(source_pc))
@@ -269,45 +256,29 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
             if (!call_stack_.empty()) {
                 auto& flow_state = call_stack_.back();
                 
-                /* DEBUG: Log the end_slice call */
-                printf("DEBUG: Calling end_slice for RTS at PC=%08X, cycles=%llu, stack_size=%zu\n", 
-                       source_pc, cycles, call_stack_.size());
-                
                 /* End the slice with proper timestamp */
                 trace_builder_->end_slice(cpu_thread_track_id_, timestamp_ns);
                 call_stack_.pop_back();
             } else {
-                /* WARNING: Return without matching call - this shouldn't happen if flow tracing is correct */
-                printf("WARNING: RTS without matching BSR at PC=%08X, cycles=%llu\n", source_pc, cycles);
+                /* Return without matching call - can happen when starting mid-execution */
             }
             break;
         }
 
         case M68K_TRACE_FLOW_BRANCH_TAKEN:
-        case M68K_TRACE_FLOW_BRANCH_NOT_TAKEN:
         case M68K_TRACE_FLOW_JUMP: {
-            /* Create jump events on dedicated Jumps thread */
-            const char* event_name;
-            const char* condition_type;
-            if (type == M68K_TRACE_FLOW_BRANCH_TAKEN) {
-                event_name = "branch_taken";
-                condition_type = "taken";
-            } else if (type == M68K_TRACE_FLOW_BRANCH_NOT_TAKEN) {
-                event_name = "branch_not_taken"; 
-                condition_type = "not_taken";
-            } else {
-                event_name = "jump";
-                condition_type = "unconditional";
-            }
-            
-            /* Add jump event to dedicated Jumps thread */
-            trace_builder_->add_instant_event(jumps_thread_track_id_, event_name, timestamp_ns)
+            /* Only trace taken jumps/branches on dedicated Jumps thread */
+            /* All taken jumps are shown as "jump" for simplicity */
+            trace_builder_->add_instant_event(jumps_thread_track_id_, "jump", timestamp_ns)
                 .add_annotation("from", format_hex(source_pc))
                 .add_annotation("to", format_hex(dest_pc))
-                .add_annotation("condition", condition_type)
                 .add_annotation("offset", static_cast<int64_t>(static_cast<int32_t>(dest_pc - source_pc)));
             break;
         }
+        
+        case M68K_TRACE_FLOW_BRANCH_NOT_TAKEN:
+            /* Ignore not-taken branches as requested */
+            break;
 
         case M68K_TRACE_FLOW_EXCEPTION: {
             /* Exception event on Jumps thread */

@@ -1010,13 +1010,9 @@ int m68k_execute(int num_cycles)
 			/* FIXED: Use REG_IR which contains the correct opcode */
 			uint16_t opcode = REG_IR;
 			
-			/* DEBUG: Check for RTS instruction regardless of PC change */
+			/* Check for RTS instruction regardless of PC change */
 			if (opcode == 0x4E75) {
-				printf("DEBUG CPU: *** RTS FOUND! *** pre_pc=%08X post_pc=%08X opcode=%04X pc_changed=%d\n", 
-				       pre_pc, post_pc, opcode, (pre_pc != post_pc));
-				
 				/* Force RTS flow tracing even if PC didn't change in our detection */
-				printf("DEBUG CPU: Forcing RTS flow tracing!\n");
 				m68k_trace_flow_hook(M68K_TRACE_FLOW_RETURN, pre_pc, post_pc, 0);
 			}
 			
@@ -1049,6 +1045,15 @@ int m68k_execute(int num_cycles)
 					/* RTD - Return and Deallocate */
 					flow_type = M68K_TRACE_FLOW_RETURN;
 					is_flow_instruction = 1;
+				} else if ((opcode & 0xF000) == 0x6000) {
+					/* Bcc - Conditional branches (including BRA which is always taken) */
+					/* We only trace taken branches/jumps as requested */
+					flow_type = M68K_TRACE_FLOW_JUMP;  /* Use JUMP for all taken branches */
+					is_flow_instruction = 1;
+				} else if ((opcode & 0xFFC0) == 0x4EC0) {
+					/* JMP - Unconditional jump */
+					flow_type = M68K_TRACE_FLOW_JUMP;
+					is_flow_instruction = 1;
 				}
 				
 				if (is_flow_instruction) {
@@ -1056,7 +1061,9 @@ int m68k_execute(int num_cycles)
 					if (flow_type == M68K_TRACE_FLOW_CALL) {
 						m68k_trace_flow_hook(flow_type, pre_pc, post_pc, pre_pc + 2);
 					} else if (flow_type == M68K_TRACE_FLOW_RETURN) {
-						printf("DEBUG CPU: Calling flow hook for RETURN\n");
+						m68k_trace_flow_hook(flow_type, pre_pc, post_pc, 0);
+					} else if (flow_type == M68K_TRACE_FLOW_JUMP) {
+						/* Only trace if jump was actually taken (PC changed) */
 						m68k_trace_flow_hook(flow_type, pre_pc, post_pc, 0);
 					}
 				}
