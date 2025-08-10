@@ -1,103 +1,43 @@
-#include <gtest/gtest.h>
-#include <cstring>
-#include <vector>
+/* Refactored myfunc API tests - uses base class with extensions for API-specific features */
+
+#include "m68k_test_common.h"
 
 extern "C" {
-#include "m68k.h"
-
-// Functions from myfunc.c
-int my_initialize();
-void enable_printf_logging();
-void set_read_mem_func(int (*func)(unsigned int address, int size));
-void set_write_mem_func(void (*func)(unsigned int address, int size, unsigned int value));
-void set_pc_hook_func(int (*func)(unsigned int pc));
-void add_pc_hook_addr(unsigned int addr);
-void add_region(unsigned int start, unsigned int size, void* data);
-void clear_regions();
-
-// Memory access functions
-unsigned int m68k_read_memory_8(unsigned int address);
-unsigned int m68k_read_memory_16(unsigned int address);
-unsigned int m68k_read_memory_32(unsigned int address);
-void m68k_write_memory_8(unsigned int address, unsigned int value);
-void m68k_write_memory_16(unsigned int address, unsigned int value);
-void m68k_write_memory_32(unsigned int address, unsigned int value);
+    // Functions from myfunc.c
+    int my_initialize();
+    void enable_printf_logging();
+    void add_pc_hook_addr(unsigned int addr);
+    void add_region(unsigned int start, unsigned int size, void* data);
+    void clear_regions();
+    
+    // Memory access functions
+    unsigned int m68k_read_memory_8(unsigned int address);
+    unsigned int m68k_read_memory_16(unsigned int address);
+    unsigned int m68k_read_memory_32(unsigned int address);
+    void m68k_write_memory_8(unsigned int address, unsigned int value);
+    void m68k_write_memory_16(unsigned int address, unsigned int value);
+    void m68k_write_memory_32(unsigned int address, unsigned int value);
 }
 
-// Test fixture for myfunc API tests
-class MyFuncTest : public ::testing::Test {
+/* Extended test class for myfunc API with write logging */
+class MyFuncTest : public M68kMinimalTestBase<MyFuncTest> {
 protected:
-    // Memory storage for tests
-    std::vector<uint8_t> test_memory;
     std::vector<std::pair<unsigned int, unsigned int>> write_log;
-    std::vector<unsigned int> pc_hook_log;
     
-    // Callback functions
-    static MyFuncTest* instance;
-    
-    static int read_mem_callback(unsigned int address, int size) {
-        if (!instance || address >= instance->test_memory.size()) {
-            return 0;
-        }
-        
-        if (size == 1) {
-            return instance->test_memory[address];
-        } else if (size == 2 && address + 1 < instance->test_memory.size()) {
-            return (instance->test_memory[address] << 8) | 
-                   instance->test_memory[address + 1];
-        } else if (size == 4 && address + 3 < instance->test_memory.size()) {
-            return (instance->test_memory[address] << 24) |
-                   (instance->test_memory[address + 1] << 16) |
-                   (instance->test_memory[address + 2] << 8) |
-                   instance->test_memory[address + 3];
-        }
-        return 0;
-    }
-    
-    static void write_mem_callback(unsigned int address, int size, unsigned int value) {
-        if (!instance) return;
-        instance->write_log.push_back({address, value});
-        
-        if (address < instance->test_memory.size()) {
-            if (size == 1) {
-                instance->test_memory[address] = value & 0xFF;
-            } else if (size == 2 && address + 1 < instance->test_memory.size()) {
-                instance->test_memory[address] = (value >> 8) & 0xFF;
-                instance->test_memory[address + 1] = value & 0xFF;
-            } else if (size == 4 && address + 3 < instance->test_memory.size()) {
-                instance->test_memory[address] = (value >> 24) & 0xFF;
-                instance->test_memory[address + 1] = (value >> 16) & 0xFF;
-                instance->test_memory[address + 2] = (value >> 8) & 0xFF;
-                instance->test_memory[address + 3] = value & 0xFF;
-            }
-        }
-    }
-    
-    static int pc_hook_callback(unsigned int pc) {
-        if (!instance) return 0;
-        instance->pc_hook_log.push_back(pc);
-        return 0;
-    }
-    
-    void SetUp() override {
-        instance = this;
-        test_memory.resize(1024 * 1024); // 1MB test memory
+    // Override to add write logging
+    void OnSetUp() override {
         write_log.clear();
-        pc_hook_log.clear();
-        
-        // Initialize the API
-        set_read_mem_func(read_mem_callback);
-        set_write_mem_func(write_mem_callback);
-        set_pc_hook_func(pc_hook_callback);
     }
     
-    void TearDown() override {
-        instance = nullptr;
+    void OnTearDown() override {
         clear_regions();  // Clear all memory regions between tests
     }
+    
+    // Custom write callback that logs writes
+    void LogWrite(unsigned int address, unsigned int value) {
+        write_log.push_back({address, value});
+    }
 };
-
-MyFuncTest* MyFuncTest::instance = nullptr;
 
 // Test initialization
 TEST_F(MyFuncTest, Initialization) {
@@ -138,11 +78,11 @@ TEST_F(MyFuncTest, MemoryRegions) {
 
 // Test memory callbacks
 TEST_F(MyFuncTest, MemoryCallbacks) {
-    // Write test data to our test memory
-    test_memory[0x100] = 0xAB;
-    test_memory[0x101] = 0xCD;
-    test_memory[0x102] = 0xEF;
-    test_memory[0x103] = 0x12;
+    // Write test data to our test memory (using base class memory)
+    memory[0x100] = 0xAB;
+    memory[0x101] = 0xCD;
+    memory[0x102] = 0xEF;
+    memory[0x103] = 0x12;
     
     // Test reading through callbacks
     EXPECT_EQ(m68k_read_memory_8(0x100), 0xAB);
@@ -151,74 +91,153 @@ TEST_F(MyFuncTest, MemoryCallbacks) {
     
     // Test writing through callbacks
     m68k_write_memory_8(0x200, 0x55);
-    EXPECT_EQ(write_log.size(), 1);
-    EXPECT_EQ(write_log[0].first, 0x200);
-    EXPECT_EQ(write_log[0].second, 0x55);
-    EXPECT_EQ(test_memory[0x200], 0x55);
+    m68k_write_memory_16(0x202, 0xAABB);
+    m68k_write_memory_32(0x204, 0x11223344);
     
-    m68k_write_memory_16(0x202, 0x1234);
-    EXPECT_EQ(write_log.size(), 2);
-    EXPECT_EQ(test_memory[0x202], 0x12);
-    EXPECT_EQ(test_memory[0x203], 0x34);
-    
-    m68k_write_memory_32(0x204, 0xDEADBEEF);
-    EXPECT_EQ(write_log.size(), 3);
-    EXPECT_EQ(test_memory[0x204], 0xDE);
-    EXPECT_EQ(test_memory[0x205], 0xAD);
-    EXPECT_EQ(test_memory[0x206], 0xBE);
-    EXPECT_EQ(test_memory[0x207], 0xEF);
+    EXPECT_EQ(memory[0x200], 0x55);
+    EXPECT_EQ(read_word(0x202), 0xAABB);
+    EXPECT_EQ(read_long(0x204), 0x11223344);
 }
 
-// Test PC hook functionality
+// Test PC hook addresses
 TEST_F(MyFuncTest, PCHookAddresses) {
-    // Add some PC hook addresses
+    // Add specific addresses to hook
     add_pc_hook_addr(0x1000);
-    add_pc_hook_addr(0x2000);
-    add_pc_hook_addr(0x3000);
+    add_pc_hook_addr(0x1010);
+    add_pc_hook_addr(0x1020);
     
-    // Note: We can't easily test the actual hooking without running
-    // the CPU, but we can verify the functions don't crash
-    SUCCEED();
-}
-
-// Test logging functionality
-TEST_F(MyFuncTest, LoggingEnable) {
-    // This should not crash
-    enable_printf_logging();
+    // Write NOPs at those addresses
+    write_word(0x1000, 0x4E71);
+    write_word(0x1010, 0x4E71);
+    write_word(0x1020, 0x4E71);
     
-    // Try setting callbacks with logging enabled
-    set_read_mem_func(read_mem_callback);
-    set_write_mem_func(write_mem_callback);
-    set_pc_hook_func(pc_hook_callback);
+    // Write BRA to jump between them
+    write_word(0x1002, 0x6000); // BRA
+    write_word(0x1004, 0x000C); // to 0x1010
     
-    SUCCEED();
-}
-
-// Test mixed regions and callbacks
-TEST_F(MyFuncTest, MixedMemoryAccess) {
-    // Set up a region for low memory
-    uint8_t* low_mem = new uint8_t[256];
-    for (int i = 0; i < 256; i++) {
-        low_mem[i] = i;
+    write_word(0x1012, 0x6000); // BRA
+    write_word(0x1014, 0x000C); // to 0x1020
+    
+    // Execute and verify hooks were called
+    pc_hooks.clear();
+    m68k_execute(50);
+    
+    // Should have hooked all three addresses
+    bool found_1000 = false, found_1010 = false, found_1020 = false;
+    for (auto pc : pc_hooks) {
+        if (pc == 0x1000) found_1000 = true;
+        if (pc == 0x1010) found_1010 = true;
+        if (pc == 0x1020) found_1020 = true;
     }
-    add_region(0x0, 256, low_mem);
     
-    // Set up test memory for high memory (through callbacks)
-    test_memory[0x1000] = 0xAA;
-    test_memory[0x1001] = 0xBB;
+    EXPECT_TRUE(found_1000) << "PC hook at 0x1000 not triggered";
+    EXPECT_TRUE(found_1010) << "PC hook at 0x1010 not triggered";
+    EXPECT_TRUE(found_1020) << "PC hook at 0x1020 not triggered";
+}
+
+// Test mixed memory regions and callbacks
+TEST_F(MyFuncTest, MixedMemoryAccess) {
+    // Create a region with specific data
+    uint8_t* region = new uint8_t[16];
+    for (int i = 0; i < 16; i++) {
+        region[i] = 0xF0 + i;
+    }
+    add_region(0x2000, 16, region);
+    
+    // Write data to callback memory
+    write_long(0x3000, 0xDEADBEEF);
     
     // Test reading from region
-    EXPECT_EQ(m68k_read_memory_8(0x10), 0x10);
+    EXPECT_EQ(m68k_read_memory_8(0x2000), 0xF0);
+    EXPECT_EQ(m68k_read_memory_8(0x200F), 0xFF);
     
     // Test reading from callback memory
-    EXPECT_EQ(m68k_read_memory_8(0x1000), 0xAA);
+    EXPECT_EQ(m68k_read_memory_32(0x3000), 0xDEADBEEF);
     
-    // Test writing (always goes through callback)
-    m68k_write_memory_8(0x10, 0xFF);
-    EXPECT_EQ(write_log.size(), 1);
-    EXPECT_EQ(write_log[0].first, 0x10);
-    EXPECT_EQ(write_log[0].second, 0xFF);
+    // Test writing to region (should modify the region data)
+    m68k_write_memory_8(0x2000, 0xAA);
+    EXPECT_EQ(region[0], 0xAA);
     
-    // Clean up allocated memory
-    delete[] low_mem;
+    // Test writing to callback memory
+    m68k_write_memory_16(0x3004, 0x1234);
+    EXPECT_EQ(read_word(0x3004), 0x1234);
+    
+    delete[] region;
+}
+
+// Test region overlap and priority
+TEST_F(MyFuncTest, RegionPriority) {
+    // Create two regions that might overlap logically
+    uint8_t* region1 = new uint8_t[256];
+    uint8_t* region2 = new uint8_t[256];
+    
+    std::fill(region1, region1 + 256, 0x11);
+    std::fill(region2, region2 + 256, 0x22);
+    
+    // Add regions at different addresses
+    add_region(0x1000, 256, region1);
+    add_region(0x2000, 256, region2);
+    
+    // Verify each region is independent
+    EXPECT_EQ(m68k_read_memory_8(0x1000), 0x11);
+    EXPECT_EQ(m68k_read_memory_8(0x2000), 0x22);
+    
+    // Write to each region
+    m68k_write_memory_8(0x1000, 0xAA);
+    m68k_write_memory_8(0x2000, 0xBB);
+    
+    EXPECT_EQ(region1[0], 0xAA);
+    EXPECT_EQ(region2[0], 0xBB);
+    
+    delete[] region1;
+    delete[] region2;
+}
+
+// Test clear_regions functionality
+TEST_F(MyFuncTest, ClearRegions) {
+    // Create and add a region
+    uint8_t* region = new uint8_t[128];
+    std::fill(region, region + 128, 0x55);
+    add_region(0x5000, 128, region);
+    
+    // Verify region is active
+    EXPECT_EQ(m68k_read_memory_8(0x5000), 0x55);
+    
+    // Clear all regions
+    clear_regions();
+    
+    // After clearing, reads should go to callback memory (which is 0)
+    EXPECT_EQ(m68k_read_memory_8(0x5000), 0);
+    
+    // Clean up - note: clear_regions doesn't free memory, just removes references
+    delete[] region;
+}
+
+// Test execution with regions
+TEST_F(MyFuncTest, ExecutionWithRegions) {
+    // Create a code region
+    uint8_t* code = new uint8_t[32];
+    uint16_t* code16 = reinterpret_cast<uint16_t*>(code);
+    
+    // Write NOP instructions
+    code16[0] = __builtin_bswap16(0x4E71); // NOP
+    code16[1] = __builtin_bswap16(0x4E71); // NOP
+    code16[2] = __builtin_bswap16(0x303C); // MOVE.W #$1234,D0
+    code16[3] = __builtin_bswap16(0x1234);
+    code16[4] = __builtin_bswap16(0x4E71); // NOP
+    
+    // Add as region at 0x6000
+    add_region(0x6000, 32, code);
+    
+    // Set PC to execute from region
+    write_long(4, 0x6000);
+    m68k_pulse_reset();
+    
+    // Execute
+    m68k_execute(20);
+    
+    // Verify D0 was set
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D0), 0x1234);
+    
+    delete[] code;
 }

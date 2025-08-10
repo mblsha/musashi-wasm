@@ -235,6 +235,16 @@ if(BUILD_TESTS)
         GTest::gtest_main
     )
     
+    # Build example test showing new simplified approach
+    add_executable(test_example_new
+        tests/test_example_new.cpp
+    )
+    
+    target_link_libraries(test_example_new
+        musashi_api
+        GTest::gtest_main
+    )
+    
     # Assemble test program with vasm
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/tests/test_program.bin
@@ -273,6 +283,7 @@ if(BUILD_TESTS)
     gtest_discover_tests(test_m68k)
     gtest_discover_tests(test_vasm_binary)
     gtest_discover_tests(test_mergesort)
+    gtest_discover_tests(test_example_new)
     
     if(ENABLE_PERFETTO)
         gtest_discover_tests(test_perfetto)
