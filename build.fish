@@ -200,9 +200,9 @@ echo "==== BUILDING NODE.JS VERSION ===="
 run emcc \
  $emcc_options \
  -s ENVIRONMENT=node \
+ -s EXPORT_NAME=createMusashi \
+ --post-js post.js \
  -o musashi-node.out.js
-# FIXME: add as prefix: // @ts-nocheck
-cat post.js >> musashi-node.out.js
 echo "Written to musashi-node.out.js"
 
 # Build Web version  
@@ -210,6 +210,7 @@ echo "==== BUILDING WEB VERSION ===="
 run emcc \
  $emcc_options \
  -s ENVIRONMENT=web \
+ -s EXPORT_NAME=createMusashi \
+ --post-js post.js \
  -o musashi.out.js
-cat post.js >> musashi.out.js
 echo "Written to musashi.out.js"

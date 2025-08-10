@@ -4,6 +4,8 @@
  * Test script to verify Perfetto-enabled WASM build functionality
  * This script tests that the Perfetto tracing functions are properly exported
  * and can be called without errors.
+ * 
+ * Handles multiple module formats (CommonJS factory, direct module, ESM)
  */
 
 const fs = require('fs');
@@ -18,16 +20,52 @@ if (!fs.existsSync(musashiPath)) {
 }
 
 console.log('Loading Musashi WASM module with Perfetto support...');
+console.log(`Module path: ${musashiPath}`);
 
 // Import the module
-const Musashi = require(musashiPath);
+const loadedModule = require(musashiPath);
 
 async function testPerfettoWasm() {
     try {
-        // Wait for module to be ready
-        const Module = await Musashi();
+        let Module;
+        
+        // Determine module format and load appropriately
+        console.log('Detecting module format...');
+        console.log('Type of loaded module:', typeof loadedModule);
+        console.log('Is function?', typeof loadedModule === 'function');
+        console.log('Has createMusashi?', typeof loadedModule.createMusashi === 'function');
+        console.log('Has default?', typeof loadedModule.default === 'function');
+        console.log('Has _m68k_init?', typeof loadedModule._m68k_init === 'function');
+        
+        if (typeof loadedModule === 'function') {
+            // Module is a factory function (Emscripten MODULARIZE=1)
+            console.log('Module format: Factory function (MODULARIZE=1)');
+            Module = await loadedModule();
+        } else if (typeof loadedModule.createMusashi === 'function') {
+            // Module has a named factory
+            console.log('Module format: Named factory (createMusashi)');
+            Module = await loadedModule.createMusashi();
+        } else if (typeof loadedModule.default === 'function') {
+            // ESM default export
+            console.log('Module format: ESM default export');
+            Module = await loadedModule.default();
+        } else if (typeof loadedModule._m68k_init === 'function') {
+            // Direct module export (no factory)
+            console.log('Module format: Direct export (no factory)');
+            Module = loadedModule;
+        } else {
+            // Unknown format - list what we see
+            console.error('Unknown module format. Available properties:');
+            const props = Object.keys(loadedModule).filter(k => !k.startsWith('_'));
+            console.error('Non-underscore properties:', props.slice(0, 10));
+            const funcs = Object.keys(loadedModule).filter(k => typeof loadedModule[k] === 'function');
+            console.error('Functions:', funcs.slice(0, 10));
+            throw new Error('Could not determine module format');
+        }
         
         console.log('✓ WASM module loaded successfully');
+        console.log('Module type after loading:', typeof Module);
+        console.log('Module has _m68k_init?', typeof Module._m68k_init === 'function');
         
         // Test core M68k functions are available
         const coreFunctions = [
