@@ -30,8 +30,18 @@ endif()
 if(ENABLE_PERFETTO)
     message(STATUS "Perfetto tracing enabled")
     
+    # Disable tests and examples for retrobus-perfetto to avoid CI issues
+    set(BUILD_TESTS_SAVED ${BUILD_TESTS})
+    set(BUILD_EXAMPLES_SAVED ${BUILD_EXAMPLES})
+    set(BUILD_TESTS OFF)
+    set(BUILD_EXAMPLES OFF)
+    
     # Add retrobus-perfetto subdirectory
     add_subdirectory(third_party/retrobus-perfetto/cpp)
+    
+    # Restore original values
+    set(BUILD_TESTS ${BUILD_TESTS_SAVED})
+    set(BUILD_EXAMPLES ${BUILD_EXAMPLES_SAVED})
     
     # Define the compile flag
     add_compile_definitions(ENABLE_PERFETTO=1)
