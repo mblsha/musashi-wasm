@@ -74,8 +74,8 @@ jobs:
         # Build the example if it exists
         if [ -f ../example_perfetto_trace.c ]; then
           gcc -o example_perfetto_trace ../example_perfetto_trace.c \
-            -Lbuild -lmusashi_api -lmusashi_core \
-            -I. -I.. -Ibuild \
+            -L. -lmusashi_api -lmusashi_core \
+            -I. -I.. \
             -lstdc++ -lm
           echo "Perfetto example built successfully"
         fi
