@@ -184,7 +184,7 @@ unsigned int m68k_read_disassembler_32(unsigned int address) {
   return m68k_read_memory_32(address);
 }
 
-int my_instruction_hook_function(unsigned int pc) {
+extern "C" int my_instruction_hook_function(unsigned int pc) {
   // Only call the hook if it's set and we want to break on this address
   if (_pc_hook) {
     // Optionally check if we have specific addresses to hook
