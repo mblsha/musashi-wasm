@@ -111,3 +111,49 @@ Each test fixture sets up:
 - Memory access callbacks
 - Reset vector at addresses 0-7 (SP at 0, PC at 4)
 - CPU initialization with m68k_init() and m68k_pulse_reset()
+
+## Important Implementation Details
+
+### Memory System
+The emulator has a two-tier memory system:
+1. **Memory Regions** (via `add_region`): Pre-allocated memory blocks mapped to specific addresses, checked first
+2. **Callback Functions**: If no region matches, falls back to read_mem/write_mem callbacks
+
+### Instruction Hook System
+- `my_instruction_hook_function` is called before EVERY instruction execution
+- Return 0 to continue execution, non-zero to break out of execution loop
+- Hook must be registered via `set_pc_hook_func` in myfunc.c
+- Can use `add_pc_hook_addr` to track specific addresses (currently all addresses are hooked)
+
+### CPU Execution Model
+- `m68k_execute(cycles)` runs instructions until cycle count exhausted
+- The CPU maintains internal cycle counting - instructions consume varying cycles
+- After reset, PC is loaded from address 4, SP from address 0
+- The instruction hook can interrupt execution early by returning non-zero
+
+### myfunc.c API Layer
+This C++ wrapper provides the WebAssembly interface:
+- Manages callback function pointers (read_mem, write_mem, pc_hook)
+- Implements memory region system with automatic memory management
+- All callbacks are NULL-checked before invocation to prevent crashes
+- Uses std::vector for regions and std::unordered_set for PC hook addresses
+
+### Critical Files Relationship
+- **m68kconf.h**: Configures CPU features and hooks - changes here affect entire emulation
+- **m68kcpu.c**: Includes m68kfpu.c directly (not compiled separately)
+- **myfunc.c**: Must be compiled as C++ despite .c extension (uses STL containers)
+- **build.fish**: Authoritative WASM build script with all Emscripten flags
+
+### WebAssembly Build Specifics
+The Fish script build process:
+1. Runs `emmake make -j20` to build object files with Emscripten
+2. Links with extensive exported functions list for JavaScript access
+3. Generates two outputs: web version and Node.js version
+4. Uses WASM_BIGINT for 64-bit number support in JavaScript
+5. Enables ALLOW_MEMORY_GROWTH for dynamic memory allocation
+
+### GitHub Actions CI
+- **native-ci.yml**: Tests CMake build on Ubuntu/macOS
+- **wasm-ci.yml**: Tests Fish script WASM build
+- Tests currently have some disabled cases due to CPU execution issues
+- Sanitizer builds available for memory debugging
