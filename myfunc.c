@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include "m68k.h"
 
+#include <cstdint>
 #include <unordered_set>
 #include <optional>
+#include <vector>
 
 extern "C" {
 typedef int (*read_mem_t)(unsigned int address, int size);
