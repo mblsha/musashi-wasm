@@ -232,12 +232,7 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
             if (!call_stack_.empty()) {
                 auto& flow_state = call_stack_.back();
                 
-                /* Add return event with annotations */
-                trace_builder_->add_instant_event(cpu_thread_track_id_, "return", timestamp_ns)
-                    .add_annotation("return_pc", format_hex(source_pc))
-                    .add_annotation("d0_result", static_cast<int64_t>(d_regs ? d_regs[0] : 0));
-                
-                /* End the slice */
+                /* End the slice with proper timestamp */
                 trace_builder_->end_slice(cpu_thread_track_id_, timestamp_ns);
 
                 /* End flow event */

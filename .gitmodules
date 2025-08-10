@@ -1,3 +1,6 @@
 [submodule "third_party/retrobus-perfetto"]
 	path = third_party/retrobus-perfetto
 	url = https://github.com/mblsha/retrobus-perfetto.git
+[submodule "third_party/vasm"]
+	path = third_party/vasm
+	url = https://github.com/dbuchwald/vasm.git

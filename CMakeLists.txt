@@ -126,6 +126,23 @@ target_include_directories(musashi_api PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+# Build vasm assembler for tests
+if(BUILD_TESTS)
+    # Build vasm as an external project
+    add_custom_target(vasm_build
+        COMMAND ${CMAKE_MAKE_PROGRAM} CPU=m68k SYNTAX=mot
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/vasm
+        COMMENT "Building vasm assembler"
+    )
+    
+    # Create vasm executable target that depends on the build
+    add_executable(vasm IMPORTED GLOBAL)
+    set_target_properties(vasm PROPERTIES
+        IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/third_party/vasm/vasmm68k_mot
+    )
+    add_dependencies(vasm vasm_build)
+endif()
+
 # Build tests if requested
 if(BUILD_TESTS)
     enable_testing()
@@ -195,12 +212,39 @@ if(BUILD_TESTS)
             musashi_api
             GTest::gtest_main
         )
+        
     endif()
+    
+    # Build test with vasm-assembled binary
+    add_executable(test_vasm_binary
+        tests/test_vasm_binary.cpp
+    )
+    
+    target_link_libraries(test_vasm_binary
+        musashi_api
+        GTest::gtest_main
+    )
+    
+    # Assemble test program with vasm
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/tests/test_program.bin
+        COMMAND ${CMAKE_SOURCE_DIR}/third_party/vasm/vasmm68k_mot 
+                -Fbin 
+                -o ${CMAKE_CURRENT_BINARY_DIR}/tests/test_program.bin
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_program.s
+        DEPENDS vasm ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_program.s
+        COMMENT "Assembling M68k test program with vasm"
+    )
+    
+    add_custom_target(test_program_bin ALL
+        DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/tests/test_program.bin
+    )
     
     # Register tests with CTest
     include(GoogleTest)
     gtest_discover_tests(test_myfunc)
     gtest_discover_tests(test_m68k)
+    gtest_discover_tests(test_vasm_binary)
     
     if(ENABLE_PERFETTO)
         gtest_discover_tests(test_perfetto)
