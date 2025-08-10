@@ -18,6 +18,7 @@ Thumbs.db
 *.bak
 .~*
 *.orig
+.claude
 
 # Make output
 *.o
@@ -26,7 +27,7 @@ m68kops.?
 sim
 tags
 
-# emscpripten
+# emscripten
 musashi.out.wasm.map
 musashi.out.js
 musashi.out.wasm
