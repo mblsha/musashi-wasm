@@ -96,8 +96,10 @@ The M68k CPU tests require proper initialization:
 2. **Memory Callbacks**: Must be set before CPU operations (read_mem, write_mem, pc_hook)
 3. **Instruction Execution**: Use m68k_execute(cycles) with sufficient cycles (>10 for most instructions)
 
-### Known Issues
-- **Instruction Execution**: Currently the CPU doesn't advance PC properly during execution
+### Testing Insights
+- **PC Hook Verification**: When testing instruction execution, verify PC hooks are called rather than relying on exact cycle counts - cycle counting varies with CPU state
+- **First Execution Overhead**: The first `m68k_execute()` after reset has ~40 cycle initialization overhead - tests should run a dummy execution in SetUp()
+- **Memory Management**: Use `clear_regions()` between tests to prevent memory leaks when using memory regions
 - **Test Memory**: Tests use a 1MB memory buffer, ensure addresses stay within bounds
 - **Sanitizers**: Use `-DENABLE_SANITIZERS=ON` for memory debugging on Linux/macOS
 
@@ -111,6 +113,8 @@ Each test fixture sets up:
 - Memory access callbacks
 - Reset vector at addresses 0-7 (SP at 0, PC at 4)
 - CPU initialization with m68k_init() and m68k_pulse_reset()
+- Dummy execution with m68k_execute(1) to handle initialization overhead
+- PC hook tracking via std::vector<unsigned int> for instruction verification
 
 ## Important Implementation Details
 
@@ -124,6 +128,7 @@ The emulator has a two-tier memory system:
 - Return 0 to continue execution, non-zero to break out of execution loop
 - Hook must be registered via `set_pc_hook_func` in myfunc.c
 - Can use `add_pc_hook_addr` to track specific addresses (currently all addresses are hooked)
+- **Critical for Testing**: PC hooks are the most reliable way to verify instruction execution - track them in a vector to verify execution flow
 
 ### CPU Execution Model
 - `m68k_execute(cycles)` runs instructions until cycle count exhausted
@@ -134,9 +139,10 @@ The emulator has a two-tier memory system:
 ### myfunc.c API Layer
 This C++ wrapper provides the WebAssembly interface:
 - Manages callback function pointers (read_mem, write_mem, pc_hook)
-- Implements memory region system with automatic memory management
+- Implements memory region system (Region class does NOT own memory - caller responsible for cleanup)
 - All callbacks are NULL-checked before invocation to prevent crashes
 - Uses std::vector for regions and std::unordered_set for PC hook addresses
+- Provides `clear_regions()` for test cleanup between test cases
 
 ### Critical Files Relationship
 - **m68kconf.h**: Configures CPU features and hooks - changes here affect entire emulation
@@ -153,7 +159,7 @@ The Fish script build process:
 5. Enables ALLOW_MEMORY_GROWTH for dynamic memory allocation
 
 ### GitHub Actions CI
-- **native-ci.yml**: Tests CMake build on Ubuntu/macOS
+- **native-ci.yml**: Tests CMake build on Ubuntu/macOS with sanitizer tests as critical (no continue-on-error)
 - **wasm-ci.yml**: Tests Fish script WASM build
-- Tests currently have some disabled cases due to CPU execution issues
-- Sanitizer builds available for memory debugging
+- All M68k CPU tests are now enabled and passing (previously 7 of 9 were disabled)
+- Sanitizer builds catch memory issues like alloc-dealloc mismatches and uninitialized reads
