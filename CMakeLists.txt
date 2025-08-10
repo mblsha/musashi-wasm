@@ -86,6 +86,7 @@ set(MUSASHI_CORE_SOURCES
     m68kcpu.c
     m68kdasm.c
     m68ktrace.cc
+    m68k_memory_bridge.cc
     softfloat/softfloat.c
     ${CMAKE_CURRENT_BINARY_DIR}/m68kops.c
 )
@@ -115,10 +116,9 @@ endif()
 # Create the myfunc library (C++ wrapper)
 add_library(musashi_api STATIC
     myfunc.cc
-    m68k_memory_bridge.cc
 )
 
-set_source_files_properties(myfunc.cc m68ktrace.cc PROPERTIES LANGUAGE CXX)
+set_source_files_properties(myfunc.cc m68ktrace.cc m68k_memory_bridge.cc PROPERTIES LANGUAGE CXX)
 
 # Conditionally set C++ properties for Perfetto files
 if(ENABLE_PERFETTO)
