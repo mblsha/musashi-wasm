@@ -195,6 +195,7 @@ M68kPerfettoTracer::M68kPerfettoTracer(const std::string& process_name)
     
     /* Create tracks for different event types */
     cpu_thread_track_id_ = trace_builder_->add_thread("Flow");
+    jumps_thread_track_id_ = trace_builder_->add_thread("Jumps");
     instr_thread_track_id_ = trace_builder_->add_thread("Instructions");
     memory_writes_track_id_ = trace_builder_->add_thread("Writes");
     memory_counter_track_id_ = trace_builder_->add_counter_track("Memory_Access", "count");
@@ -285,7 +286,7 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
         case M68K_TRACE_FLOW_BRANCH_TAKEN:
         case M68K_TRACE_FLOW_BRANCH_NOT_TAKEN:
         case M68K_TRACE_FLOW_JUMP: {
-            /* Instant event for branches/jumps */
+            /* Create jump events on dedicated Jumps thread */
             const char* event_name;
             const char* condition_type;
             if (type == M68K_TRACE_FLOW_BRANCH_TAKEN) {
@@ -299,37 +300,41 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
                 condition_type = "unconditional";
             }
             
-            trace_builder_->add_instant_event(cpu_thread_track_id_, event_name, timestamp_ns)
-                .add_annotation("source_pc", format_hex(source_pc))
-                .add_annotation("target_pc", format_hex(dest_pc))
-                .add_annotation("condition", condition_type);
+            /* Add jump event to dedicated Jumps thread */
+            trace_builder_->add_instant_event(jumps_thread_track_id_, event_name, timestamp_ns)
+                .add_annotation("from", format_hex(source_pc))
+                .add_annotation("to", format_hex(dest_pc))
+                .add_annotation("condition", condition_type)
+                .add_annotation("offset", static_cast<int64_t>(static_cast<int32_t>(dest_pc - source_pc)));
             break;
         }
 
         case M68K_TRACE_FLOW_EXCEPTION: {
-            /* Exception event - high priority instant event */
-            trace_builder_->add_instant_event(cpu_thread_track_id_, "exception", timestamp_ns)
-                .add_annotation("exception_pc", format_hex(source_pc))
-                .add_annotation("vector_addr", format_hex(dest_pc))
-                .add_annotation("type", "m68k_exception");
+            /* Exception event on Jumps thread */
+            trace_builder_->add_instant_event(jumps_thread_track_id_, "exception", timestamp_ns)
+                .add_annotation("from", format_hex(source_pc))
+                .add_annotation("to", format_hex(dest_pc))
+                .add_annotation("condition", "exception")
+                .add_annotation("vector_addr", format_hex(dest_pc));
             break;
         }
 
         case M68K_TRACE_FLOW_TRAP: {
-            /* TRAP instruction event */
-            trace_builder_->add_instant_event(cpu_thread_track_id_, "trap", timestamp_ns)
-                .add_annotation("source_pc", format_hex(source_pc))
-                .add_annotation("trap_vector", format_hex(dest_pc))
-                .add_annotation("type", "trap_instruction");
+            /* TRAP instruction event on Jumps thread */
+            trace_builder_->add_instant_event(jumps_thread_track_id_, "trap", timestamp_ns)
+                .add_annotation("from", format_hex(source_pc))
+                .add_annotation("to", format_hex(dest_pc))
+                .add_annotation("condition", "trap")
+                .add_annotation("trap_vector", format_hex(dest_pc));
             break;
         }
 
         case M68K_TRACE_FLOW_EXCEPTION_RETURN: {
-            /* Exception return (RTE) event */
-            trace_builder_->add_instant_event(cpu_thread_track_id_, "exception_return", timestamp_ns)
-                .add_annotation("return_pc", format_hex(source_pc))
-                .add_annotation("target_pc", format_hex(dest_pc))
-                .add_annotation("type", "exception_return");
+            /* Exception return (RTE) event on Jumps thread */
+            trace_builder_->add_instant_event(jumps_thread_track_id_, "exception_return", timestamp_ns)
+                .add_annotation("from", format_hex(source_pc))
+                .add_annotation("to", format_hex(dest_pc))
+                .add_annotation("condition", "exception_return");
             break;
         }
     }

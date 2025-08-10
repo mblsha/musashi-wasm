@@ -99,6 +99,7 @@ private:
     /* Trace builder and track IDs */
     std::unique_ptr<retrobus::PerfettoTraceBuilder> trace_builder_;
     uint64_t cpu_thread_track_id_;
+    uint64_t jumps_thread_track_id_;
     uint64_t instr_thread_track_id_;
     uint64_t memory_writes_track_id_;
     uint64_t memory_counter_track_id_;
