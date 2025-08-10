@@ -21,6 +21,25 @@ end
 
 # === Environment sanity: show the toolchain we actually see in this shell ===
 echo "==== TOOLCHAIN VERIFICATION ===="
+
+# Fish may not inherit PATH properly from bash - ensure Emscripten tools are in PATH
+if test -n "$EMSDK"
+    echo "Found EMSDK: $EMSDK"
+    set -gx PATH $EMSDK/upstream/emscripten $EMSDK $PATH
+else
+    echo "EMSDK not set, trying to find Emscripten..."
+    # Look for emcc in common locations
+    for emcc_path in /home/runner/work/_temp/*/emsdk-main/upstream/emscripten
+        if test -f "$emcc_path/emcc"
+            echo "Found emcc at: $emcc_path"
+            set -gx PATH $emcc_path (dirname $emcc_path) $PATH
+            set -gx EMSDK (dirname (dirname $emcc_path))
+            break
+        end
+    end
+end
+
+echo "Current PATH: $PATH"
 which emcc     ^/dev/null; or die "emcc not in PATH for fish"
 which em++     ^/dev/null; or die "em++ not in PATH for fish" 
 which emmake   ^/dev/null; or die "emmake not in PATH for fish"
