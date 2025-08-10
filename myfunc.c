@@ -95,26 +95,34 @@ unsigned int my_read_memory(unsigned int address, int size) {
       return *val;
     }
   }
-  return _read_mem(address, size);
+  if (_read_mem) {
+    return _read_mem(address, size);
+  }
+  return 0; // Return 0 if no handler is set
 }
 
 unsigned int m68k_read_memory_8(unsigned int address) { return my_read_memory(address, 1); }
 unsigned int m68k_read_memory_16(unsigned int address) { return my_read_memory(address, 2); }
 unsigned int m68k_read_memory_32(unsigned int address) { return my_read_memory(address, 4); }
 
-void m68k_write_memory_8(unsigned int address, unsigned int value) { _write_mem(address, 1, value); }
-void m68k_write_memory_16(unsigned int address, unsigned int value) { _write_mem(address, 2, value); }
-void m68k_write_memory_32(unsigned int address, unsigned int value) { _write_mem(address, 4, value); }
+void m68k_write_memory_8(unsigned int address, unsigned int value) { 
+  if (_write_mem) _write_mem(address, 1, value); 
+}
+void m68k_write_memory_16(unsigned int address, unsigned int value) { 
+  if (_write_mem) _write_mem(address, 2, value); 
+}
+void m68k_write_memory_32(unsigned int address, unsigned int value) { 
+  if (_write_mem) _write_mem(address, 4, value); 
+}
 
 int my_instruction_hook_function(unsigned int pc) {
-  // neogeo doesn't have any instructions before 0x122
-  /* if (pc < 0x122) { */
+  // Only call the hook if it's set and we want to break on this address
+  if (_pc_hook) {
+    // Optionally check if we have specific addresses to hook
+    // if (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end()) {
+    //   return _pc_hook(pc);
+    // }
     return _pc_hook(pc);
-  /* } */
-  /* if (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end()) { */
-  /*   return _pc_hook(pc); */
-  /* } */
-  /* return 0; */
-  // m68k_end_timeslice();
-  // m68k_pulse_halt();
+  }
+  return 0; // Return 0 to continue execution
 }
