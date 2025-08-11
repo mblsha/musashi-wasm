@@ -12,6 +12,7 @@
 #include <sstream>
 #include <algorithm>
 #include <iomanip>
+#include <cctype>
 #include "m68k.h"
 #include "m68ktrace.h"
 
@@ -150,9 +151,34 @@ protected:
     int CountInstructionType(const std::string& pattern) {
         int count = 0;
         for (const auto& t : trace) {
-            if (t.mnemonic.find(pattern) != std::string::npos ||
-                t.full_disasm.find(pattern) != std::string::npos) {
-                count++;
+            // For branch detection, be more precise
+            if (pattern == "b") {
+                // Only count actual branch instructions, not .b size suffixes
+                std::string lower_mnemonic = t.mnemonic;
+                std::transform(lower_mnemonic.begin(), lower_mnemonic.end(), 
+                              lower_mnemonic.begin(), ::tolower);
+                if (lower_mnemonic == "bra" || lower_mnemonic == "bsr" || 
+                    lower_mnemonic == "bcc" || lower_mnemonic == "bcs" || 
+                    lower_mnemonic == "beq" || lower_mnemonic == "bne" || 
+                    lower_mnemonic == "bge" || lower_mnemonic == "bgt" || 
+                    lower_mnemonic == "ble" || lower_mnemonic == "blt" || 
+                    lower_mnemonic == "bhi" || lower_mnemonic == "bls" || 
+                    lower_mnemonic == "bmi" || lower_mnemonic == "bpl" || 
+                    lower_mnemonic == "bvc" || lower_mnemonic == "bvs" ||
+                    lower_mnemonic.substr(0, 2) == "db") { // dbcc variants
+                    count++;
+                }
+            } else {
+                // For other patterns, do case-insensitive exact match
+                std::string lower_mnemonic = t.mnemonic;
+                std::string lower_pattern = pattern;
+                std::transform(lower_mnemonic.begin(), lower_mnemonic.end(), 
+                              lower_mnemonic.begin(), ::tolower);
+                std::transform(lower_pattern.begin(), lower_pattern.end(), 
+                              lower_pattern.begin(), ::tolower);
+                if (lower_mnemonic == lower_pattern) {
+                    count++;
+                }
             }
         }
         return count;
@@ -163,10 +189,15 @@ protected:
         int current_depth = 0;
         
         for (const auto& t : trace) {
-            if (t.mnemonic == "bsr") {
+            // Case-insensitive check for BSR/JSR/RTS
+            std::string lower_mnemonic = t.mnemonic;
+            std::transform(lower_mnemonic.begin(), lower_mnemonic.end(), 
+                          lower_mnemonic.begin(), ::tolower);
+            
+            if (lower_mnemonic == "bsr" || lower_mnemonic == "jsr") {
                 current_depth++;
                 max_depth = std::max(max_depth, current_depth);
-            } else if (t.mnemonic == "rts") {
+            } else if (lower_mnemonic == "rts") {
                 current_depth--;
             }
         }

@@ -13,6 +13,7 @@ extern "C" {
     void set_read_mem_func(int (*func)(unsigned int address, int size));
     void set_write_mem_func(void (*func)(unsigned int address, int size, unsigned int value));
     void set_pc_hook_func(int (*func)(unsigned int pc));
+    void clear_pc_hook_addrs();
 }
 
 /* Minimal base class with just memory management - no tracing overhead */
@@ -38,19 +39,24 @@ protected:
         memory.resize(1024 * 1024, 0);
         pc_hooks.clear();
         
+        // Clear any PC hook addresses from previous tests
+        clear_pc_hook_addrs();
+        
+        // Initialize M68K FIRST (it resets all callbacks)
+        m68k_init();
+        
+        // Then set our callbacks
         set_read_mem_func(read_memory_static);
         set_write_mem_func(write_memory_static);
         set_pc_hook_func(pc_hook_static);
         
-        m68k_init();
-        
         write_long(0, 0x1000);  /* Initial SP */
         write_long(4, 0x400);   /* Initial PC */
         
-        OnSetUp(); // Allow derived classes to modify setup BEFORE reset
-        
         m68k_pulse_reset();
-        m68k_execute(1);  /* Dummy execution */
+        
+        OnSetUp(); // Allow derived classes to modify setup AFTER reset
+        // This allows tests to override PC or other registers as needed
     }
     
     void TearDown() override {

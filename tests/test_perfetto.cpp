@@ -49,6 +49,9 @@ protected:
         /* Initialize M68K */
         m68k_init();
         
+        /* CRITICAL: Set current_test BEFORE installing callbacks */
+        current_test = this;
+        
         /* Set up memory callbacks */
         ::set_read_mem_func([](unsigned int address, int size) -> int {
             return PerfettoTest::static_read_memory(address, size);
@@ -71,8 +74,7 @@ protected:
         /* Reset CPU */
         m68k_pulse_reset();
         
-        /* Run a dummy execution to handle initialization overhead */
-        m68k_execute(1);
+        /* Removed dummy execution - causes nondeterminism and isn't needed */
     }
 
     void TearDown() override {
@@ -83,6 +85,9 @@ protected:
         
         /* Disable tracing */
         m68k_trace_enable(0);
+        
+        /* Clear current_test pointer */
+        current_test = nullptr;
     }
     
     /* Memory access helpers */

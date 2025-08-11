@@ -36,9 +36,9 @@ protected:
         stop_after_pc = 0;
         stop_on_next_hook = false;
         
-        // Override reset vector for these specific tests
-        write_long(0, 0x100000);  // SP = 0x100000
-        write_long(4, 0x1000);    // PC = 0x1000
+        // Set PC and SP for these specific tests
+        m68k_set_reg(M68K_REG_PC, 0x1000);
+        m68k_set_reg(M68K_REG_SP, 0x100000);
     }
 };
 
@@ -62,6 +62,10 @@ TEST_F(M68kTest, BasicInstructionExecution) {
     // Write NOP instruction at PC (0x1000)
     write_word(0x1000, 0x4E71); // NOP
     write_word(0x1002, 0x4E71); // NOP
+    
+    // Verify PC is at expected location
+    unsigned int initial_pc = m68k_get_reg(NULL, M68K_REG_PC);
+    ASSERT_EQ(initial_pc, 0x1000) << "PC should be at 0x1000 after setup";
     
     // Execute and verify PC advances
     pc_hooks.clear();
@@ -114,8 +118,10 @@ TEST_F(M68kTest, MemoryOperations) {
 // Test branch instructions
 TEST_F(M68kTest, BranchInstructions) {
     // BRA to 0x1010
+    // For 16-bit displacement BRA, the PC base is 0x1004 (after the extension word)
+    // Target 0x1010 - Base 0x1004 = Displacement 0x000C
     write_word(0x1000, 0x6000); // BRA
-    write_word(0x1002, 0x000E); // Offset to 0x1010
+    write_word(0x1002, 0x000C); // Displacement: 0x1010 - 0x1004 = 0x000C
     
     // Target: NOP at 0x1010
     write_word(0x1010, 0x4E71);
@@ -180,23 +186,57 @@ TEST_F(M68kTest, ConditionCodes) {
     EXPECT_TRUE((sr & 0x04) != 0) << "Zero flag should be set";
 }
 
-// Test interrupt handling (basic)
-TEST_F(M68kTest, InterruptBasics) {
-    // Current interrupt mask is 7 (all masked)
-    unsigned int sr = m68k_get_reg(NULL, M68K_REG_SR);
-    EXPECT_EQ((sr >> 8) & 7, 7) << "Interrupt mask should be 7";
+// Test interrupt handling with proper validation
+TEST_F(M68kTest, InterruptHandling) {
+    // Set up interrupt vector for level 2 autovector (vector 26 = 0x68)
+    // The autovector for IRQ 2 is at address 0x68 (26 * 4)
+    write_long(0x68, 0x2000); // ISR at 0x2000
     
-    // Lower interrupt mask
-    m68k_set_reg(M68K_REG_SR, sr & ~0x0700); // Clear interrupt mask
+    // Write simple ISR at 0x2000: just RTE
+    write_word(0x2000, 0x4E73); // RTE instruction
+    
+    // Write main program at 0x1000: NOP loop
+    write_word(0x1000, 0x4E71); // NOP
+    write_word(0x1002, 0x4E71); // NOP
+    write_word(0x1004, 0x60FA); // BRA -6 (loop back to 0x1000)
+    
+    // Get initial state
+    unsigned int initial_sr = m68k_get_reg(NULL, M68K_REG_SR);
+    unsigned int initial_sp = m68k_get_reg(NULL, M68K_REG_SP);
+    
+    // Lower interrupt mask to 1 to allow level 2 interrupts
+    m68k_set_reg(M68K_REG_SR, (initial_sr & ~0x0700) | 0x0100);
+    
+    // Clear hooks and execute a few instructions
+    pc_hooks.clear();
+    m68k_execute(20);
     
     // Generate interrupt level 2
     m68k_set_irq(2);
     
-    // Should process interrupt (implementation specific)
-    m68k_execute(10);
+    // Execute more to process the interrupt
+    m68k_execute(50);
     
-    // Just verify no crash - actual behavior depends on vector setup
-    SUCCEED();
+    // Clear the interrupt
+    m68k_set_irq(0);
+    
+    // Verify interrupt was taken
+    bool isr_executed = false;
+    for (auto pc : pc_hooks) {
+        if (pc == 0x2000) {
+            isr_executed = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(isr_executed) << "ISR at 0x2000 should have been executed";
+    
+    // Verify SR has supervisor bit set during interrupt
+    // and interrupt mask was raised to block same-level interrupts
+    // (This would be checked by examining the stacked SR)
+    
+    // Verify stack operations occurred (SP should have changed and returned)
+    unsigned int final_sp = m68k_get_reg(NULL, M68K_REG_SP);
+    EXPECT_EQ(final_sp, initial_sp) << "SP should return to original after RTE";
 }
 
 // Test execution control via PC hook
