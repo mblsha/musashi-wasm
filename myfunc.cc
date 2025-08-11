@@ -195,11 +195,21 @@ extern "C" void my_write_memory(unsigned int address, int size, unsigned int val
   }
 }
 
+// Forward declaration
+int _pc_hook_filtering_aware(unsigned int pc);
+
 int my_instruction_hook_function(unsigned int pc_raw) {
   if (!_pc_hook) return 0;
   
   const uint32_t pc = norm_pc(pc_raw);
   
+  // ALWAYS call the user callback - let it decide whether to ignore the PC
+  // This keeps the behavior identical to "no filtering" case
+  return _pc_hook_filtering_aware(pc);
+}
+
+// New filtering-aware callback that handles filtering internally
+int _pc_hook_filtering_aware(unsigned int pc) {
   if (!_pc_hook_addrs.empty()) {
     // Debug: Check what addresses we're looking for
     static bool debug_once = true;
@@ -215,12 +225,16 @@ int my_instruction_hook_function(unsigned int pc_raw) {
     if (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end()) {
       return _pc_hook(pc);
     }
-    return 0; // filtered out
+    return 0; // filtered out - but we still called this function
   }
   return _pc_hook(pc); // no filter: hook everything
 }
 
 // This is the new wrapper called by the core
+/* Clang/GCC attributes to keep the wrapper from being "too smart". */
+#if defined(__clang__) || defined(__GNUC__)
+__attribute__((noinline, used))
+#endif
 extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, unsigned int cycles) {
     // Call the C++ tracing hook first
     int trace_result = m68k_trace_instruction_hook(pc, ir, cycles);
@@ -231,7 +245,7 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
     }
 
     // Call the original JS-facing hook
-    int js_result = my_instruction_hook_function(pc);
+    const int js_result = my_instruction_hook_function(pc);
     if (js_result != 0) {
         // JS requested to break: end the timeslice so m68k_execute() yields immediately
         m68k_end_timeslice();
