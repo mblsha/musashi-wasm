@@ -102,7 +102,6 @@ protected:
         write_long(4, 0x400);   /* Initial PC */
         
         m68k_pulse_reset();
-        m68k_execute(1);  /* Dummy execution */
     }
     
     void TearDown() override {
@@ -209,12 +208,16 @@ protected:
         int depth = 0;
         
         for (const auto& instr : trace) {
-            if (instr.mnemonic == "bsr") {
+            std::string lower_mnemonic = instr.mnemonic;
+            std::transform(lower_mnemonic.begin(), lower_mnemonic.end(), 
+                          lower_mnemonic.begin(), ::tolower);
+            
+            if (lower_mnemonic == "bsr") {
                 for (int i = 0; i < depth; i++) printf("  ");
                 printf("→ CALL %s (D0=%d, D1=%d, D2=%d)\n", 
                        instr.operands.c_str(), instr.d0, instr.d1, instr.d2);
                 depth++;
-            } else if (instr.mnemonic == "rts") {
+            } else if (lower_mnemonic == "rts") {
                 depth--;
                 for (int i = 0; i < depth; i++) printf("  ");
                 printf("← RETURN\n");
