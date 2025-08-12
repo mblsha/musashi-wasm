@@ -330,16 +330,22 @@ export class MusashiWrapper {
 
 // Factory function to load and initialize the wasm module
 export async function getModule(): Promise<MusashiWrapper> {
-  const isBrowser = typeof window !== 'undefined';
+  // Environment detection without DOM types
+  const isNode =
+    typeof globalThis !== 'undefined' &&
+    !!(globalThis as any).process?.versions?.node;
   
   // Dynamic import based on environment
   let moduleFactory: any;
-  if (isBrowser) {
-    // For browser, import the web version
-    moduleFactory = (await import('../../wasm/musashi.out.js')).default;
-  } else {
+  if (isNode) {
     // For Node.js, we need to use the wrapper
-    moduleFactory = require('../../wasm/musashi-node-wrapper.js');
+    moduleFactory = require('../wasm/musashi-node-wrapper.js');
+  } else {
+    // For browser, import the web version
+    // Use variable specifier to avoid TS2307 compile-time resolution
+    const specifier = '../../../musashi.out.js';
+    const mod = await import(/* webpackIgnore: true */ specifier);
+    moduleFactory = mod.default;
   }
   
   const module = await moduleFactory();

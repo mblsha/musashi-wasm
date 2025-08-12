@@ -54,11 +54,11 @@ jobs:
     
     - name: Install TypeScript package dependencies
       run: |
-        # Install root dependencies
-        npm install
+        # Install root dependencies using lock file
+        npm ci
         
         # Install dependencies for each package
-        npm install --workspaces
+        npm ci --workspaces
     
     - name: Build TypeScript packages
       run: |
@@ -140,8 +140,8 @@ jobs:
     
     - name: Install TypeScript package dependencies
       run: |
-        npm install
-        npm install --workspaces
+        npm ci
+        npm ci --workspaces
     
     - name: Build TypeScript packages
       run: |
@@ -195,8 +195,8 @@ jobs:
     
     - name: Install dependencies
       run: |
-        npm install
-        npm install --workspaces
+        npm ci
+        npm ci --workspaces
     
     - name: TypeScript compilation check
       run: |

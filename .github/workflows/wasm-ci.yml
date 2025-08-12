@@ -109,9 +109,9 @@ jobs:
         if [ -f "package.json" ] && [ -d "packages" ]; then
           echo "TypeScript packages found, running tests..."
           
-          # Install dependencies
-          npm install || true
-          npm install --workspaces || true
+          # Install dependencies using lock file
+          npm ci || true
+          npm ci --workspaces || true
           
           # Build TypeScript packages
           npm run build || true
@@ -273,9 +273,9 @@ jobs:
         if [ -f "package.json" ] && [ -d "packages" ]; then
           echo "TypeScript packages found, running tests with Perfetto-enabled WASM..."
           
-          # Install dependencies
-          npm install || true
-          npm install --workspaces || true
+          # Install dependencies using lock file
+          npm ci || true
+          npm ci --workspaces || true
           
           # Build TypeScript packages
           npm run build || true
