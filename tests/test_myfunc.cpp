@@ -221,7 +221,12 @@ TEST_F(MyFuncTest, ClearRegions) {
 TEST_F(MyFuncTest, ExecutionWithRegions) {
     // Create a code region
     uint8_t* code = new uint8_t[32];
+    memset(code, 0, 32);  // Clear memory first
     uint16_t* code16 = reinterpret_cast<uint16_t*>(code);
+    
+    // Debug: Show what we're writing
+    fprintf(stderr, "\n=== ExecutionWithRegions Debug Info ===\n");
+    fprintf(stderr, "Code buffer address: %p\n", (void*)code);
     
     // Write NOP instructions
     code16[0] = __builtin_bswap16(0x4E71); // NOP
@@ -230,25 +235,71 @@ TEST_F(MyFuncTest, ExecutionWithRegions) {
     code16[3] = __builtin_bswap16(0x1234);
     code16[4] = __builtin_bswap16(0x4E71); // NOP
     
+    // Debug: Verify what was written to the buffer
+    fprintf(stderr, "Code bytes written to buffer:\n");
+    for (int i = 0; i < 12; i++) {
+        fprintf(stderr, "  [%02d]: 0x%02X\n", i, code[i]);
+    }
+    
     // Add as region at 0x6000
+    fprintf(stderr, "Adding region at 0x6000, size 32\n");
     add_region(0x6000, 32, code);
+    
+    // Debug: Verify region is readable
+    fprintf(stderr, "Reading back from region at 0x6000:\n");
+    for (unsigned int i = 0; i < 12; i++) {
+        unsigned int byte = m68k_read_memory_8(0x6000 + i);
+        fprintf(stderr, "  [0x%04X]: 0x%02X\n", 0x6000 + i, byte);
+    }
     
     // Set PC to execute from region
     write_long(4, 0x6000);
+    
+    // Debug: Check reset vector
+    unsigned int reset_pc = read_long(4);
+    fprintf(stderr, "Reset vector at 0x0004: 0x%08X\n", reset_pc);
+    
     m68k_pulse_reset();
     
     // Check what PC actually is after reset
     unsigned int pc_after_reset = m68k_get_reg(NULL, M68K_REG_PC);
     fprintf(stderr, "PC after reset: 0x%06X (expected 0x6000)\n", pc_after_reset);
     
+    // Debug: Check initial D0 value
+    unsigned int d0_before = m68k_get_reg(NULL, M68K_REG_D0);
+    fprintf(stderr, "D0 before execution: 0x%08X\n", d0_before);
+    
     // Execute - give it more cycles as expert suggested
     fprintf(stderr, "About to call m68k_execute(200)\n");
     int cycles = m68k_execute(200);
     fprintf(stderr, "m68k_execute returned %d cycles\n", cycles);
     
+    // Debug: Check PC after execution
+    unsigned int pc_after_exec = m68k_get_reg(NULL, M68K_REG_PC);
+    fprintf(stderr, "PC after execution: 0x%06X\n", pc_after_exec);
+    
+    // Debug: Disassemble what was actually executed
+    char disasm_buf[256];
+    m68k_disassemble(disasm_buf, 0x6000, M68K_CPU_TYPE_68000);
+    fprintf(stderr, "Instruction at 0x6000: %s\n", disasm_buf);
+    m68k_disassemble(disasm_buf, 0x6002, M68K_CPU_TYPE_68000);
+    fprintf(stderr, "Instruction at 0x6002: %s\n", disasm_buf);
+    m68k_disassemble(disasm_buf, 0x6004, M68K_CPU_TYPE_68000);
+    fprintf(stderr, "Instruction at 0x6004: %s\n", disasm_buf);
+    
     // Verify D0 was set
     unsigned int d0_value = m68k_get_reg(NULL, M68K_REG_D0);
     fprintf(stderr, "D0 after execution: 0x%08X (expected 0x1234)\n", d0_value);
+    
+    // Debug: If D0 is wrong, show what it might be
+    if ((d0_value & 0xFFFF) != 0x1234) {
+        fprintf(stderr, "ERROR: D0 is 0x%04X (%d decimal, '%c' ASCII)\n", 
+                d0_value & 0xFFFF, d0_value & 0xFFFF, 
+                (d0_value & 0xFF) >= 32 && (d0_value & 0xFF) < 127 ? (d0_value & 0xFF) : '?');
+    }
+    
+    fprintf(stderr, "=== End Debug Info ===\n\n");
+    
     EXPECT_EQ(d0_value & 0xFFFF, 0x1234);  // Check only lower 16 bits since we used MOVE.W
     
     delete[] code;
