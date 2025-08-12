@@ -1,0 +1,208 @@
+name: TypeScript CI
+
+on:
+  push:
+    branches: [ main, master, wasm ]
+  pull_request:
+    branches: [ main, master, wasm ]
+  workflow_dispatch:
+
+jobs:
+  # TypeScript package build and test
+  typescript-test:
+    name: TypeScript Packages Test
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Setup Emscripten for WASM build
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: '4.0.12'
+    
+    - name: Install Fish shell
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fish
+    
+    - name: Build WASM modules (required for TypeScript tests)
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        # Build standard WASM first
+        chmod +x build.fish
+        fish ./build.fish
+        
+        # Verify WASM outputs
+        test -f musashi-node.out.js
+        test -f musashi-node.out.wasm
+        echo "✓ WASM modules built successfully"
+    
+    - name: Install TypeScript package dependencies
+      run: |
+        # Install root dependencies
+        npm install
+        
+        # Install dependencies for each package
+        npm install --workspaces
+    
+    - name: Build TypeScript packages
+      run: |
+        npm run build
+    
+    - name: Run TypeScript tests
+      run: |
+        npm test
+    
+    - name: TypeScript type checking
+      run: |
+        npm run typecheck
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: typescript-test-results-node${{ matrix.node-version }}
+        path: |
+          packages/*/coverage
+          packages/*/test-results.xml
+        retention-days: 7
+        if-no-files-found: ignore
+
+  # TypeScript packages with Perfetto-enabled WASM
+  typescript-perfetto-test:
+    name: TypeScript with Perfetto WASM
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+    
+    - name: Setup Emscripten
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: '4.0.12'
+    
+    - name: Install Fish shell
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fish
+    
+    - name: Build protobuf and abseil for WebAssembly
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        # Build protobuf and abseil dependencies
+        chmod +x build_protobuf_wasm.sh
+        ./build_protobuf_wasm.sh
+    
+    - name: Build WASM with Perfetto enabled
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        # Build with Perfetto
+        chmod +x build.fish
+        ENABLE_PERFETTO=1 fish ./build.fish
+        
+        # Verify Perfetto functions are exported
+        echo "Checking for Perfetto function exports..."
+        for func in m68k_perfetto_init m68k_perfetto_destroy m68k_perfetto_export_trace; do
+          if grep -q "_${func}" musashi-node.out.js; then
+            echo "✓ ${func} exported"
+          else
+            echo "✗ ${func} NOT exported"
+            exit 1
+          fi
+        done
+    
+    - name: Install TypeScript package dependencies
+      run: |
+        npm install
+        npm install --workspaces
+    
+    - name: Build TypeScript packages
+      run: |
+        npm run build
+    
+    - name: Run TypeScript tests with Perfetto
+      run: |
+        # Set environment variable to indicate Perfetto is available
+        export PERFETTO_ENABLED=1
+        npm test
+    
+    - name: Run TypeScript example
+      run: |
+        # Compile and run the example
+        cd packages
+        npx tsc example.ts --target ES2020 --module commonjs --esModuleInterop
+        node example.js || true  # Don't fail if example has issues
+        
+        # Check if trace was generated
+        if [ -f "example.perfetto-trace" ]; then
+          echo "✓ Perfetto trace generated successfully"
+          ls -lh example.perfetto-trace
+        else
+          echo "ℹ️ No Perfetto trace generated (might be expected)"
+        fi
+    
+    - name: Upload Perfetto traces
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: perfetto-traces
+        path: |
+          packages/*.perfetto-trace
+          packages/**/*.perfetto-trace
+        retention-days: 7
+        if-no-files-found: ignore
+
+  # Lint and format check
+  typescript-lint:
+    name: TypeScript Lint & Format
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: |
+        npm install
+        npm install --workspaces
+    
+    - name: TypeScript compilation check
+      run: |
+        npm run typecheck
+    
+    - name: Check for TypeScript errors
+      run: |
+        npx tsc --noEmit --project packages/core/tsconfig.json
+        npx tsc --noEmit --project packages/memory/tsconfig.json

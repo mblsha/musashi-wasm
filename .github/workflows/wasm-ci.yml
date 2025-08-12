@@ -100,6 +100,33 @@ jobs:
         
         # Return to root directory
         cd ..
+    
+    - name: Test TypeScript Packages
+      run: |
+        echo "==== Testing TypeScript Packages ===="
+        
+        # Check if TypeScript packages exist
+        if [ -f "package.json" ] && [ -d "packages" ]; then
+          echo "TypeScript packages found, running tests..."
+          
+          # Install dependencies
+          npm install || true
+          npm install --workspaces || true
+          
+          # Build TypeScript packages
+          npm run build || true
+          
+          # Run TypeScript tests
+          npm test || EXIT_CODE=$?
+          
+          if [ "${EXIT_CODE:-0}" -ne 0 ]; then
+            echo "⚠️  Some TypeScript tests failed"
+          else
+            echo "✓ TypeScript tests passed"
+          fi
+        else
+          echo "No TypeScript packages found, skipping..."
+        fi
         
     - name: Upload test results
       if: always()
@@ -237,6 +264,47 @@ jobs:
         
         # Return to root directory
         cd ..
+    
+    - name: Test TypeScript Packages with Perfetto
+      run: |
+        echo "==== Testing TypeScript Packages with Perfetto WASM ===="
+        
+        # Check if TypeScript packages exist
+        if [ -f "package.json" ] && [ -d "packages" ]; then
+          echo "TypeScript packages found, running tests with Perfetto-enabled WASM..."
+          
+          # Install dependencies
+          npm install || true
+          npm install --workspaces || true
+          
+          # Build TypeScript packages
+          npm run build || true
+          
+          # Run TypeScript tests with Perfetto-enabled WASM
+          export PERFETTO_ENABLED=1
+          npm test || EXIT_CODE=$?
+          
+          if [ "${EXIT_CODE:-0}" -ne 0 ]; then
+            echo "⚠️  Some TypeScript tests failed with Perfetto"
+          else
+            echo "✓ TypeScript tests passed with Perfetto"
+          fi
+          
+          # Try to run the example
+          echo "Running TypeScript example with Perfetto..."
+          cd packages
+          npx tsc example.ts --target ES2020 --module commonjs --esModuleInterop || true
+          node example.js || true
+          
+          # Check for generated traces
+          if ls *.perfetto-trace 1> /dev/null 2>&1; then
+            echo "✓ Perfetto traces generated:"
+            ls -lh *.perfetto-trace
+          fi
+          cd ..
+        else
+          echo "No TypeScript packages found, skipping..."
+        fi
         
     - name: Upload Perfetto test results
       if: always()

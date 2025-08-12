@@ -19,6 +19,7 @@ Thumbs.db
 .~*
 *.orig
 .claude
+*.perfetto-trace
 
 # Make output
 *.o
@@ -53,3 +54,17 @@ third_party/protobuf-host-3.21.12/
 third_party/vasm/obj/
 third_party/vasm/vasmm68k_mot
 third_party/vasm/vobjdump
+
+# Node.js / TypeScript
+node_modules/
+packages/*/dist/
+packages/*/coverage/
+packages/*/test-results.xml
+packages/*.js
+packages/*.d.ts
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.npm
