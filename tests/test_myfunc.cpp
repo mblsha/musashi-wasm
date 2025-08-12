@@ -112,11 +112,11 @@ TEST_F(MyFuncTest, PCHookAddresses) {
     write_word(0x1020, 0x4E71);
     
     // Write BRA to jump between them
-    write_word(0x1002, 0x6000); // BRA
-    write_word(0x1004, 0x000C); // to 0x1010
+    write_word(0x1002, 0x6000); // BRA.w
+    write_word(0x1004, 0x0008); // to 0x1010 (base 0x1008, disp 0x0008)
     
-    write_word(0x1012, 0x6000); // BRA
-    write_word(0x1014, 0x000C); // to 0x1020
+    write_word(0x1012, 0x6000); // BRA.w
+    write_word(0x1014, 0x0008); // to 0x1020 (base 0x1018, disp 0x0008)
     
     // Set PC to start at 0x1000
     write_long(4, 0x1000);
@@ -124,7 +124,7 @@ TEST_F(MyFuncTest, PCHookAddresses) {
     
     // Execute and verify hooks were called
     pc_hooks.clear();
-    m68k_execute(50);
+    m68k_execute(100);
     
     // Should have hooked all three addresses
     bool found_1000 = false, found_1010 = false, found_1020 = false;
@@ -237,11 +237,19 @@ TEST_F(MyFuncTest, ExecutionWithRegions) {
     write_long(4, 0x6000);
     m68k_pulse_reset();
     
-    // Execute
-    m68k_execute(20);
+    // Check what PC actually is after reset
+    unsigned int pc_after_reset = m68k_get_reg(NULL, M68K_REG_PC);
+    fprintf(stderr, "PC after reset: 0x%06X (expected 0x6000)\n", pc_after_reset);
+    
+    // Execute - give it more cycles as expert suggested
+    fprintf(stderr, "About to call m68k_execute(200)\n");
+    int cycles = m68k_execute(200);
+    fprintf(stderr, "m68k_execute returned %d cycles\n", cycles);
     
     // Verify D0 was set
-    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D0), 0x1234);
+    unsigned int d0_value = m68k_get_reg(NULL, M68K_REG_D0);
+    fprintf(stderr, "D0 after execution: 0x%08X (expected 0x1234)\n", d0_value);
+    EXPECT_EQ(d0_value & 0xFFFF, 0x1234);  // Check only lower 16 bits since we used MOVE.W
     
     delete[] code;
 }

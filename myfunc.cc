@@ -70,6 +70,8 @@ struct Region {
   }
 };
 static std::vector<Region> _regions;
+static std::unordered_map<unsigned int, std::string> _function_names;
+static std::unordered_map<unsigned int, std::string> _memory_names;
 
 extern "C" {
   int my_initialize() {
@@ -116,12 +118,25 @@ extern "C" {
     _pc_hook_addrs.clear();
   }
   
+  void clear_pc_hook_func() {
+    _pc_hook = 0;
+  }
+  
+  void reset_myfunc_state() {
+    _initialized = false;
+    _enable_printf_logging = false;
+    _read_mem = 0;
+    _write_mem = 0;
+    _pc_hook = 0;
+    _pc_hook_addrs.clear();
+    _regions.clear();
+    _function_names.clear();
+    _memory_names.clear();
+  }
+  
   /* ======================================================================== */
   /* ==================== SYMBOL NAMING FOR PERFETTO ====================== */
   /* ======================================================================== */
-  
-  static std::unordered_map<unsigned int, std::string> _function_names;
-  static std::unordered_map<unsigned int, std::string> _memory_names;
   
   void register_function_name(unsigned int address, const char* name) {
     if (name) {
@@ -246,34 +261,27 @@ int _pc_hook_filtering_aware(unsigned int pc) {
 __attribute__((noinline, used))
 #endif
 extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, unsigned int cycles) {
-    (void)pc; (void)ir; (void)cycles; // Suppress unused warnings
-    
-    // Call the C++ tracing hook first
-    int trace_result = m68k_trace_instruction_hook(pc, ir, cycles);
-    if (trace_result != 0) {
-        // For tests: DON'T break execution, just log
-        #ifdef BUILD_TESTS
-            return 0;  // Non-breaking during tests
-        #else
-            // Production: end the timeslice so m68k_execute() yields immediately
-            m68k_end_timeslice();
-            return trace_result;
-        #endif
+#ifdef BUILD_TESTS
+    // Trace first (non-breaking)
+    (void)m68k_trace_instruction_hook(pc, (uint16_t)ir, (int)cycles);
+
+    // If the test installed a hook, call it via the filtering wrapper
+    if (_pc_hook) (void)my_instruction_hook_function(pc);
+    return 0; // never break in tests
+#else
+    int trace_result = m68k_trace_instruction_hook(pc, (uint16_t)ir, (int)cycles);
+    if (trace_result != 0) { 
+        m68k_end_timeslice(); 
+        return trace_result; 
     }
 
-    // Call the original JS-facing hook
     const int js_result = my_instruction_hook_function(pc);
-    if (js_result != 0) {
-        // For tests: DON'T break execution, just log
-        #ifdef BUILD_TESTS
-            return 0;  // Non-breaking during tests
-        #else
-            // JS requested to break: end the timeslice so m68k_execute() yields immediately
-            m68k_end_timeslice();
-            return js_result;
-        #endif
+    if (js_result != 0) { 
+        m68k_end_timeslice(); 
+        return js_result; 
     }
     return 0;
+#endif
 }
 
 /* ======================================================================== */

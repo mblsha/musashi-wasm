@@ -14,6 +14,10 @@ extern "C" {
     void set_write_mem_func(void (*func)(unsigned int address, int size, unsigned int value));
     void set_pc_hook_func(int (*func)(unsigned int pc));
     void clear_pc_hook_addrs();
+    void clear_pc_hook_func();
+    void reset_myfunc_state();
+    void clear_regions();
+    void add_region(unsigned int start, unsigned int size, void* data);
 }
 
 /* Minimal base class with just memory management - no tracing overhead */
@@ -37,15 +41,18 @@ protected:
     void SetUp() override {
         instance = static_cast<Derived*>(this);
         memory.resize(1024 * 1024, 0);
+        memset(memory.data(), 0, memory.size());
         pc_hooks.clear();
         
-        // Clear any PC hook addresses from previous tests
+        // Reset ALL myfunc state to ensure clean test isolation
+        reset_myfunc_state();
         clear_pc_hook_addrs();
+        clear_regions();
         
         // Initialize M68K FIRST (it resets all callbacks)
         m68k_init();
         
-        // Then set our callbacks
+        // Set our callbacks (don't use regions - let callbacks handle everything)
         set_read_mem_func(read_memory_static);
         set_write_mem_func(write_memory_static);
         set_pc_hook_func(pc_hook_static);
