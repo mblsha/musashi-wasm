@@ -264,50 +264,37 @@ if(BUILD_TESTS)
         target_include_directories(test_vasm_binary PRIVATE BEFORE ${GTEST_INCLUDES})
     endif()
     
-    # Build consolidated merge sort test
-    add_executable(test_mergesort
-        tests/test_mergesort.cpp
-    )
-    
-    target_link_libraries(test_mergesort
-        musashi_api
-        GTest::gtest_main
-    )
-    
-    # Force fetched gtest headers BEFORE system headers
-    if(GTEST_INCLUDES)
-        target_include_directories(test_mergesort PRIVATE BEFORE ${GTEST_INCLUDES})
-    endif()
     
     # Build example test showing new simplified approach
-    add_executable(test_example_new
-        tests/test_example_new.cpp
+    add_executable(test_fixture_example
+        tests/test_fixture_example.cpp
     )
     
-    target_link_libraries(test_example_new
+    target_link_libraries(test_fixture_example
         musashi_api
         GTest::gtest_main
     )
     
     # Force fetched gtest headers BEFORE system headers
     if(GTEST_INCLUDES)
-        target_include_directories(test_example_new PRIVATE BEFORE ${GTEST_INCLUDES})
+        target_include_directories(test_fixture_example PRIVATE BEFORE ${GTEST_INCLUDES})
     endif()
     
-    # Build debug test for failure analysis
-    add_executable(test_debug_failures
-        tests/debug_test_failures.cpp
+    # Build exception handling tests
+    add_executable(test_exceptions
+        tests/test_exceptions.cpp
     )
     
-    target_link_libraries(test_debug_failures
+    target_link_libraries(test_exceptions
         musashi_api
         GTest::gtest_main
     )
     
-    # Force fetched gtest headers BEFORE system headers  
+    # Force fetched gtest headers BEFORE system headers
     if(GTEST_INCLUDES)
-        target_include_directories(test_debug_failures PRIVATE BEFORE ${GTEST_INCLUDES})
+        target_include_directories(test_exceptions PRIVATE BEFORE ${GTEST_INCLUDES})
     endif()
+    
     
     # Assemble test program with vasm
     add_custom_command(
@@ -346,9 +333,8 @@ if(BUILD_TESTS)
     gtest_discover_tests(test_myfunc)
     gtest_discover_tests(test_m68k)
     gtest_discover_tests(test_vasm_binary)
-    gtest_discover_tests(test_mergesort)
-    gtest_discover_tests(test_example_new)
-    gtest_discover_tests(test_debug_failures)
+    gtest_discover_tests(test_fixture_example)
+    gtest_discover_tests(test_exceptions)
     
     if(ENABLE_PERFETTO)
         gtest_discover_tests(test_perfetto)
@@ -361,6 +347,40 @@ if(BUILD_TESTS)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "Running all tests"
     )
+    
+    # Build example programs to ensure they compile
+    # These are not tests but build verification targets
+    add_executable(example_trace
+        examples/example_trace.c
+    )
+    
+    target_link_libraries(example_trace
+        musashi_api
+    )
+    
+    # Build Perfetto example only if Perfetto is enabled
+    if(ENABLE_PERFETTO)
+        # Perfetto example needs to be compiled as C++ due to Perfetto headers
+        add_executable(example_perfetto_trace
+            examples/example_perfetto_trace.c
+        )
+        
+        set_source_files_properties(examples/example_perfetto_trace.c PROPERTIES LANGUAGE CXX)
+        
+        target_link_libraries(example_perfetto_trace
+            musashi_api
+        )
+    endif()
+    
+    # Add a custom target to build all examples
+    add_custom_target(examples
+        DEPENDS example_trace
+        COMMENT "Building example programs"
+    )
+    
+    if(ENABLE_PERFETTO)
+        add_dependencies(examples example_perfetto_trace)
+    endif()
 endif()
 
 # Print configuration summary

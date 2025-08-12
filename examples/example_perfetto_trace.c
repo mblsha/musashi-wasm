@@ -8,6 +8,17 @@
 #include "m68k.h"
 #include "m68k_perfetto.h"
 
+/* External functions from myfunc.cc */
+#ifdef __cplusplus
+extern "C" {
+#endif
+    void set_read_mem_func(int (*func)(unsigned int address, int size));
+    void set_write_mem_func(void (*func)(unsigned int address, int size, unsigned int value));
+    void set_pc_hook_func(int (*func)(unsigned int pc));
+#ifdef __cplusplus
+}
+#endif
+
 /* Test memory for M68K emulation (1MB) */
 #define MEMORY_SIZE (1024 * 1024)
 static unsigned char test_memory[MEMORY_SIZE];
@@ -119,9 +130,9 @@ int main(int argc, char* argv[]) {
     printf("============================\n\n");
     
     /* Check if Perfetto is available */
-    if (!perfetto_is_initialized()) {
+    if (!m68k_perfetto_is_initialized()) {
         printf("Initializing Perfetto tracing...\n");
-        if (perfetto_init("M68K_Emulator_Example") != 0) {
+        if (m68k_perfetto_init("M68K_Emulator_Example") != 0) {
             #ifdef ENABLE_PERFETTO
                 printf("Warning: Failed to initialize Perfetto tracing\n");
                 printf("Continuing without Perfetto...\n\n");
@@ -133,9 +144,9 @@ int main(int argc, char* argv[]) {
             printf("Perfetto tracing initialized successfully!\n\n");
             
             /* Enable all tracing features */
-            perfetto_enable_flow(1);
-            perfetto_enable_memory(1);
-            perfetto_enable_instructions(1);
+            m68k_perfetto_enable_flow(1);
+            m68k_perfetto_enable_memory(1);
+            m68k_perfetto_enable_instructions(1);
             printf("Enabled: Flow tracing, Memory tracing, Instruction tracing\n\n");
         }
     }
@@ -184,11 +195,11 @@ int main(int argc, char* argv[]) {
     printf("\nExecution completed!\n\n");
     
     /* Export Perfetto trace if enabled */
-    if (perfetto_is_initialized()) {
+    if (m68k_perfetto_is_initialized()) {
         printf("Exporting Perfetto trace...\n");
         
         /* Try to save to file first */
-        if (perfetto_save_trace("m68k_example_trace.perfetto-trace") == 0) {
+        if (m68k_perfetto_save_trace("m68k_example_trace.perfetto-trace") == 0) {
             printf("Trace saved to: m68k_example_trace.perfetto-trace\n");
             printf("Open at: https://ui.perfetto.dev\n\n");
         } else {
@@ -199,7 +210,7 @@ int main(int argc, char* argv[]) {
         uint8_t* trace_data = NULL;
         size_t trace_size = 0;
         
-        if (perfetto_export_trace(&trace_data, &trace_size) == 0 && trace_data) {
+        if (m68k_perfetto_export_trace(&trace_data, &trace_size) == 0 && trace_data) {
             printf("Trace exported as raw data: %zu bytes\n", trace_size);
             printf("First 16 bytes: ");
             for (int i = 0; i < 16 && i < trace_size; i++) {
@@ -208,14 +219,14 @@ int main(int argc, char* argv[]) {
             printf("\n\n");
             
             /* Free the trace data */
-            perfetto_free_trace_data(trace_data);
+            m68k_perfetto_free_trace_data(trace_data);
         } else {
             printf("Failed to export raw trace data\n");
         }
         
         /* Clean up Perfetto */
         printf("Cleaning up Perfetto...\n");
-        perfetto_destroy();
+        m68k_perfetto_destroy();
     }
     
     printf("Example completed successfully!\n");

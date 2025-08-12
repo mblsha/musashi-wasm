@@ -147,7 +147,7 @@ int trace_memory_access(m68k_trace_mem_type type, uint32_t pc,
     return 0; /* Continue execution */
 }
 
-int trace_instruction(uint32_t pc, uint16_t opcode, uint64_t cycles)
+int trace_instruction(uint32_t pc, uint16_t opcode, uint64_t start_cycles, int cycles_executed)
 {
     trace_stats.total_instructions++;
     
@@ -160,7 +160,7 @@ int trace_instruction(uint32_t pc, uint16_t opcode, uint64_t cycles)
     /* Log every 1000th instruction */
     if (trace_stats.total_instructions % 1000 == 0) {
         printf("[%8llu] Executed %u instructions (PC=%06X)\n",
-               (unsigned long long)cycles, trace_stats.total_instructions, pc);
+               (unsigned long long)start_cycles, trace_stats.total_instructions, pc);
     }
     
     return 0; /* Continue execution */

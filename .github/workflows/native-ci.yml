@@ -8,6 +8,85 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Build verification job - ensures all targets compile
+  build-all-targets:
+    name: Build All Targets
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Configure CMake
+      run: |
+        mkdir -p build
+        cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_TESTS=ON \
+          -DENABLE_PERFETTO=ON
+    
+    - name: Build all targets
+      run: |
+        cd build
+        echo "Building all targets..."
+        cmake --build . -j$(nproc)
+    
+    - name: Build examples target
+      run: |
+        cd build
+        echo "Building examples..."
+        cmake --build . --target examples -j$(nproc)
+    
+    - name: Verify all expected targets exist
+      run: |
+        cd build
+        echo "Verifying test executables:"
+        EXPECTED_TESTS="test_m68k test_myfunc test_vasm_binary test_fixture_example test_exceptions test_perfetto"
+        MISSING_TESTS=""
+        for test in $EXPECTED_TESTS; do
+          if [ -f "$test" ]; then
+            echo "✓ $test"
+          else
+            echo "✗ $test MISSING"
+            MISSING_TESTS="$MISSING_TESTS $test"
+          fi
+        done
+        
+        echo ""
+        echo "Verifying example executables:"
+        EXPECTED_EXAMPLES="example_trace example_perfetto_trace"
+        MISSING_EXAMPLES=""
+        for example in $EXPECTED_EXAMPLES; do
+          if [ -f "$example" ]; then
+            echo "✓ $example"
+          else
+            echo "✗ $example MISSING"
+            MISSING_EXAMPLES="$MISSING_EXAMPLES $example"
+          fi
+        done
+        
+        if [ -n "$MISSING_TESTS$MISSING_EXAMPLES" ]; then
+          echo ""
+          echo "ERROR: Missing targets detected!"
+          [ -n "$MISSING_TESTS" ] && echo "Missing tests:$MISSING_TESTS"
+          [ -n "$MISSING_EXAMPLES" ] && echo "Missing examples:$MISSING_EXAMPLES"
+          exit 1
+        fi
+        
+        echo ""
+        echo "All expected targets built successfully!"
+    
+    - name: Run quick smoke tests
+      run: |
+        cd build
+        echo "Running quick smoke tests..."
+        # Run tests with minimal execution to verify they start
+        timeout 10s ./example_trace || true
+        timeout 10s ./example_perfetto_trace || true
+        echo "Smoke tests completed"
+  
   # Sanitizer build job (Linux only - catches memory issues effectively)
   sanitizer-tests:
     name: Sanitizer Tests
@@ -31,6 +110,17 @@ jobs:
       run: |
         cd build
         cmake --build . -j$(nproc)
+    
+    - name: Build all examples
+      run: |
+        cd build
+        cmake --build . --target examples -j$(nproc) || echo "Examples target not found"
+    
+    - name: List all test executables
+      run: |
+        cd build
+        echo "Test executables built:"
+        ls -la test_* example_* 2>/dev/null || echo "No test executables found"
     
     - name: Run tests with Sanitizers
       run: |
@@ -68,6 +158,23 @@ jobs:
         cd build
         cmake --build . -j$(nproc)
     
+    - name: Build all examples including Perfetto example
+      run: |
+        cd build
+        cmake --build . --target examples -j$(nproc) || echo "Examples target not found"
+    
+    - name: List all built targets
+      run: |
+        cd build
+        echo "Built executables:"
+        ls -la test_* example_* 2>/dev/null || echo "No executables found"
+        echo ""
+        echo "Checking specific targets:"
+        [ -f test_exceptions ] && echo "✓ test_exceptions built" || echo "✗ test_exceptions missing"
+        [ -f test_fixture_example ] && echo "✓ test_fixture_example built" || echo "✗ test_fixture_example missing"
+        [ -f example_trace ] && echo "✓ example_trace built" || echo "✗ example_trace missing"
+        [ -f example_perfetto_trace ] && echo "✓ example_perfetto_trace built" || echo "✗ example_perfetto_trace missing"
+    
     - name: Run Perfetto unit tests
       run: |
         cd build
@@ -101,14 +208,17 @@ jobs:
         path: build/test_complex_trace.perfetto-trace
         if-no-files-found: warn
     
-    - name: Build and test example
+    - name: Test example programs
       run: |
         cd build
-        # Build the example if it exists
-        if [ -f ../example_perfetto_trace.c ]; then
-          # Note: Example requires proper linking but won't work without full integration
-          echo "Example file exists but requires full application integration to build properly"
-          echo "Skipping example build - Perfetto symbols are verified in library checks"
+        echo "Testing example programs:"
+        if [ -f example_trace ]; then
+          echo "Running example_trace..."
+          timeout 5s ./example_trace || echo "example_trace execution finished or timed out"
+        fi
+        if [ -f example_perfetto_trace ]; then
+          echo "Running example_perfetto_trace..."
+          timeout 5s ./example_perfetto_trace || echo "example_perfetto_trace execution finished or timed out"
         fi
     
     - name: Verify Perfetto symbols

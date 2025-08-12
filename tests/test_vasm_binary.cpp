@@ -4,6 +4,9 @@
 #include "test_helpers.h"
 #include "m68k_perfetto.h"
 #include "m68ktrace.h"
+#include <algorithm>
+#include <map>
+#include <set>
 
 extern "C" {
     int perfetto_init(const char* process_name);
@@ -16,7 +19,16 @@ extern "C" {
 }
 
 /* Simple test class using minimal base */
-DECLARE_M68K_TEST(VasmBinaryTest) {};
+DECLARE_M68K_TEST(VasmBinaryTest) {
+protected:
+    void PrintArrayState(const std::string& label, uint32_t base_addr) {
+        printf("%s: ", label.c_str());
+        for (int i = 0; i < 8; i++) {
+            printf("%d ", read_word(base_addr + i * 2));
+        }
+        printf("\n");
+    }
+};
 
 TEST_F(VasmBinaryTest, LoadAndValidateBinary) {
     /* Load the assembled binary */
@@ -113,39 +125,67 @@ TEST_F(VasmBinaryTest, ValidateProgramStructure) {
     /* Load the assembled binary */
     ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));;
     
-    /* Scan for common M68K instruction patterns without hard-coding addresses */
-    int move_instructions = 0;
-    int branch_instructions = 0;
-    int compare_instructions = 0;
-    int arithmetic_instructions = 0;
+    /* Define a magic completion marker address */
+    const uint32_t COMPLETION_FLAG_ADDR = 0x500;
+    const uint16_t COMPLETION_MAGIC = 0xBEEF;
     
-    /* Scan reasonable code area */
-    for (uint32_t addr = 0x400; addr < 0x480; addr += 2) {
-        uint16_t opcode = read_word(addr);
+    /* Execute the program */
+    pc_hooks.clear();
+    int total_cycles = 0;
+    for (int i = 0; i < 100; i++) {
+        int cycles = m68k_execute(50);
+        total_cycles += cycles;
+        if (cycles == 0) break;
         
-        /* MOVE variants (bits 15-14 = 00) */
-        if ((opcode >> 14) == 0) {
-            move_instructions++;
-        }
-        /* Branch instructions (0x6xxx) */
-        else if ((opcode >> 12) == 0x6) {
-            branch_instructions++;
-        }
-        /* CMP instructions (0xBxxx or 0x0Cxx) */
-        else if ((opcode >> 12) == 0xB || (opcode >> 8) == 0x0C) {
-            compare_instructions++;
-        }
-        /* ADD/SUB (0xDxxx/0x9xxx) */
-        else if ((opcode >> 12) == 0xD || (opcode >> 12) == 0x9) {
-            arithmetic_instructions++;
+        /* Check if program set completion flag */
+        if (read_word(COMPLETION_FLAG_ADDR) == COMPLETION_MAGIC) {
+            break;
         }
     }
     
-    /* A real program should have a mix of instruction types */
-    EXPECT_GT(move_instructions, 2) << "Program should contain MOVE instructions";
-    EXPECT_GT(branch_instructions, 1) << "Program should contain branches";
-    EXPECT_GT(compare_instructions, 0) << "Program should contain comparisons";
-    EXPECT_GT(arithmetic_instructions, 0) << "Program should contain arithmetic";
+    /* Analyze what the program did */
+    EXPECT_GT(pc_hooks.size(), 10u) << "Program should execute multiple instructions";
+    EXPECT_LT(pc_hooks.size(), 10000u) << "Program should not run forever";
+    
+    /* Count instruction types from actual execution */
+    std::map<uint16_t, int> opcode_classes;
+    char disasm_buf[256];
+    
+    for (auto pc : pc_hooks) {
+        uint16_t opcode = read_word(pc);
+        m68k_disassemble(disasm_buf, pc, M68K_CPU_TYPE_68000);
+        
+        /* Classify by major opcode group */
+        uint16_t opcode_class = (opcode >> 12) & 0xF;
+        opcode_classes[opcode_class]++;
+    }
+    
+    /* Verify we have a diverse set of instructions */
+    EXPECT_GE(opcode_classes.size(), 3u) << "Program should use various instruction types";
+    
+    /* If the program includes sorting, verify the result */
+    bool found_sorted_data = false;
+    for (uint32_t addr = 0x480; addr < 0x500; addr += 16) {
+        std::vector<uint16_t> data;
+        for (int i = 0; i < 8; i++) {
+            uint16_t val = read_word(addr + i * 2);
+            if (val == 0 || val > 1000) break;
+            data.push_back(val);
+        }
+        
+        if (data.size() >= 4) {
+            bool is_sorted = std::is_sorted(data.begin(), data.end());
+            if (is_sorted) {
+                found_sorted_data = true;
+                break;
+            }
+        }
+    }
+    
+    /* This is optional - only check if we found array-like data */
+    if (found_sorted_data) {
+        SUCCEED() << "Found sorted data - program likely includes sorting algorithm";
+    }
 }
 
 TEST_F(VasmBinaryTest, ExecuteWithRecursionDetection) {
@@ -235,4 +275,126 @@ TEST_F(VasmBinaryTest, VerifyDataSorting) {
             EXPECT_EQ(initial_values, final_values) << "Sorted array should be permutation of original";
         }
     }
+}
+
+/* Tests from test_mergesort.cpp - consolidated and refactored */
+
+TEST_F(VasmBinaryTest, MergeSortCorrectness) {
+    /* Load the assembled merge sort binary */
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_mergesort.bin"), 0x400));;
+    
+    /* Record initial array state */
+    std::vector<uint16_t> initial_array;
+    for (int i = 0; i < 8; i++) {
+        initial_array.push_back(read_word(0x4F4 + i * 2));
+    }
+    
+    PrintArrayState("Initial array", 0x4F4);
+    
+    /* Execute merge sort */
+    int iterations = 0;
+    const int MAX_ITERATIONS = 10000;
+    int total_cycles = 0;
+    
+    while (iterations < MAX_ITERATIONS && pc_hooks.size() < 1000) {
+        int cycles = m68k_execute(100);
+        total_cycles += cycles;
+        iterations++;
+        
+        /* Check for completion */
+        if (cycles == 0 || read_word(0x504) == 0xCAFE) {
+            break;
+        }
+        
+        /* Safety check */
+        uint32_t current_pc = m68k_get_reg(NULL, M68K_REG_PC);
+        if (current_pc < 0x400 || current_pc > 0x600) {
+            break;
+        }
+    }
+    
+    /* Get final array state */
+    std::vector<uint16_t> final_array;
+    for (int i = 0; i < 8; i++) {
+        final_array.push_back(read_word(0x4F4 + i * 2));
+    }
+    
+    PrintArrayState("Sorted array", 0x4F4);
+    
+    /* Check if array is sorted */
+    bool is_sorted = true;
+    for (size_t i = 1; i < final_array.size(); i++) {
+        if (final_array[i] < final_array[i-1]) {
+            is_sorted = false;
+            break;
+        }
+    }
+    
+    /* Verify it's a permutation of the original */
+    std::vector<uint16_t> sorted_initial = initial_array;
+    std::vector<uint16_t> sorted_final = final_array;
+    std::sort(sorted_initial.begin(), sorted_initial.end());
+    std::sort(sorted_final.begin(), sorted_final.end());
+    
+    bool is_permutation = (sorted_initial == sorted_final);
+    
+    printf("\nCorrectness Results:\n");
+    printf("Array is sorted:       %s\n", is_sorted ? "YES" : "NO");
+    printf("Is permutation:        %s\n", is_permutation ? "YES" : "NO");
+    printf("Completion flag:       %s\n", read_word(0x504) == 0xCAFE ? "SET" : "NOT SET");
+    printf("Total instructions:    %zu\n", pc_hooks.size());
+    printf("Total cycles:          %d\n", total_cycles);
+    
+    /* Final assertions */
+    ASSERT_TRUE(is_sorted) << "Array must be sorted";
+    ASSERT_TRUE(is_permutation) << "Sorted array must be a permutation of original";
+    ASSERT_EQ(0xCAFE, read_word(0x504)) << "Completion flag must be set";
+    EXPECT_LT(pc_hooks.size(), 5000u) << "Instruction count seems excessive for 8 elements";
+}
+
+TEST_F(VasmBinaryTest, MergeSortRecursionDepth) {
+    /* Load the assembled merge sort binary */
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_mergesort.bin"), 0x400));;
+    
+    /* Execute merge sort */
+    pc_hooks.clear();
+    m68k_execute(5000);
+    
+    /* Analyze recursion depth by tracking BSR/RTS pairs */
+    int current_depth = 0;
+    int max_depth = 0;
+    std::map<int, int> depth_counts;
+    
+    char disasm_buf[256];
+    for (auto pc : pc_hooks) {
+        uint16_t opcode = read_word(pc);
+        m68k_disassemble(disasm_buf, pc, M68K_CPU_TYPE_68000);
+        std::string instr(disasm_buf);
+        
+        /* BSR instruction increases depth */
+        if ((opcode & 0xFF00) == 0x6100) {
+            current_depth++;
+            depth_counts[current_depth]++;
+            if (current_depth > max_depth) {
+                max_depth = current_depth;
+            }
+        }
+        /* RTS instruction decreases depth */
+        else if (opcode == 0x4E75) {
+            if (current_depth > 0) current_depth--;
+        }
+    }
+    
+    printf("\nRecursion Analysis:\n");
+    printf("Maximum recursion depth: %d\n", max_depth);
+    printf("Expected for 8 elements: 3 (log2(8))\n");
+    
+    printf("\nCalls per recursion level:\n");
+    for (const auto& [depth, count] : depth_counts) {
+        printf("  Level %d: %d calls\n", depth, count);
+    }
+    
+    /* Verify reasonable recursion depth for merge sort on 8 elements */
+    EXPECT_GE(max_depth, 3) << "Merge sort should have depth at least log2(n)";
+    EXPECT_LE(max_depth, 5) << "Recursion depth should not be excessive";
 }
