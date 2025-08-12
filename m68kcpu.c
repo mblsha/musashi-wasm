@@ -946,6 +946,11 @@ void m68k_set_cpu_type(unsigned int cpu_type)
 /* ASG: removed per-instruction interrupt checks */
 int m68k_execute(int num_cycles)
 {
+	/* If the CPU is already in STOP state, report 0 cycles consumed */
+	if (CPU_STOPPED) {
+		return 0;
+	}
+	
 	/* eat up any reset cycles */
 	if (RESET_CYCLES) {
 	    int rc = RESET_CYCLES;

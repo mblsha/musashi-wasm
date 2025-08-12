@@ -146,36 +146,43 @@ protected:
         memory[addr + 1] = value & 0xFF;
     }
     
+    /* Utility to normalize mnemonics by stripping size suffixes */
+    static std::string NormalizeMnemonic(const std::string& s) {
+        std::string result = s;
+        std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+        auto dot = result.find('.');
+        if (dot != std::string::npos) result.erase(dot); // strip .w/.l/.b
+        return result;
+    }
+    
     /* Trace analysis utilities */
     int CountInstructionType(const std::string& pattern) {
         int count = 0;
+        std::string norm_pattern = NormalizeMnemonic(pattern);
+        
         for (const auto& t : trace) {
+            std::string norm_mnemonic = NormalizeMnemonic(t.mnemonic);
+            
             // For branch detection, be more precise
             if (pattern == "b") {
                 // Only count actual branch instructions, not .b size suffixes
-                std::string lower_mnemonic = t.mnemonic;
-                std::transform(lower_mnemonic.begin(), lower_mnemonic.end(), 
-                              lower_mnemonic.begin(), ::tolower);
-                if (lower_mnemonic == "bra" || lower_mnemonic == "bsr" || 
-                    lower_mnemonic == "bcc" || lower_mnemonic == "bcs" || 
-                    lower_mnemonic == "beq" || lower_mnemonic == "bne" || 
-                    lower_mnemonic == "bge" || lower_mnemonic == "bgt" || 
-                    lower_mnemonic == "ble" || lower_mnemonic == "blt" || 
-                    lower_mnemonic == "bhi" || lower_mnemonic == "bls" || 
-                    lower_mnemonic == "bmi" || lower_mnemonic == "bpl" || 
-                    lower_mnemonic == "bvc" || lower_mnemonic == "bvs" ||
-                    lower_mnemonic.substr(0, 2) == "db") { // dbcc variants
+                if (norm_mnemonic == "bra" || norm_mnemonic == "bsr" || 
+                    norm_mnemonic == "bcc" || norm_mnemonic == "bcs" || 
+                    norm_mnemonic == "beq" || norm_mnemonic == "bne" || 
+                    norm_mnemonic == "bge" || norm_mnemonic == "bgt" || 
+                    norm_mnemonic == "ble" || norm_mnemonic == "blt" || 
+                    norm_mnemonic == "bhi" || norm_mnemonic == "bls" || 
+                    norm_mnemonic == "bmi" || norm_mnemonic == "bpl" || 
+                    norm_mnemonic == "bvc" || norm_mnemonic == "bvs" ||
+                    norm_mnemonic.substr(0, 2) == "db") { // dbcc variants
                     count++;
                 }
             } else {
-                // For other patterns, do case-insensitive exact match
-                std::string lower_mnemonic = t.mnemonic;
-                std::string lower_pattern = pattern;
-                std::transform(lower_mnemonic.begin(), lower_mnemonic.end(), 
-                              lower_mnemonic.begin(), ::tolower);
-                std::transform(lower_pattern.begin(), lower_pattern.end(), 
-                              lower_pattern.begin(), ::tolower);
-                if (lower_mnemonic == lower_pattern) {
+                // For CMP instructions, match by prefix to catch cmp, cmpi, cmpa, cmpm
+                if (norm_pattern == "cmp" && norm_mnemonic.rfind("cmp", 0) == 0) {
+                    count++;
+                } else if (norm_mnemonic == norm_pattern) {
+                    // For other patterns, do exact match after normalization
                     count++;
                 }
             }
@@ -198,6 +205,29 @@ protected:
                 max_depth = std::max(max_depth, current_depth);
             } else if (lower_mnemonic == "rts") {
                 current_depth--;
+            }
+        }
+        return max_depth;
+    }
+    
+    /* Normalized recursion depth that starts counting from 0 */
+    int AnalyzeRecursionDepthNormalized() {
+        int max_depth = 0;
+        int current_depth = 0;
+        bool saw_root = false;
+        
+        for (const auto& t : trace) {
+            std::string norm_mnemonic = NormalizeMnemonic(t.mnemonic);
+            
+            if (norm_mnemonic == "bsr" || norm_mnemonic == "jsr") {
+                if (!saw_root) {
+                    saw_root = true;      // root call establishes depth 0
+                } else {
+                    current_depth++;      // deeper levels start after root
+                    max_depth = std::max(max_depth, current_depth);
+                }
+            } else if (norm_mnemonic == "rts") {
+                if (saw_root && current_depth > 0) current_depth--;
             }
         }
         return max_depth;

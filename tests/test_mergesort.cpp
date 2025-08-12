@@ -249,8 +249,9 @@ TEST_F(MergeSortTest, SortCorrectnessVerification) {
             }
         }
         
-        /* Count comparisons */
-        if (instr.mnemonic == "cmp" || instr.mnemonic == "CMP") {
+        /* Count comparisons - use NormalizeMnemonic to handle size suffixes */
+        std::string norm_mnemonic = NormalizeMnemonic(instr.mnemonic);
+        if (norm_mnemonic.rfind("cmp", 0) == 0) {  // Matches cmp, cmpi, cmpa, cmpm
             comparisons++;
         }
         
@@ -319,26 +320,30 @@ TEST_F(MergeSortTest, RecursionDepthAnalysis) {
     /* Analyze call graph */
     PrintCallGraph();
     
-    /* Verify recursion characteristics */
-    int max_depth = AnalyzeRecursionDepth();
+    /* Verify recursion characteristics - use normalized version */
+    int max_depth = AnalyzeRecursionDepthNormalized();
     printf("\n=== RECURSION ANALYSIS ===\n");
     printf("Maximum recursion depth: %d\n", max_depth);
     printf("Expected for 8 elements: 3 (log2(8))\n");
     
-    /* Count recursive calls at each level */
+    /* Count recursive calls at each level - normalized to start at 0 */
     std::map<int, int> depth_counts;
     int current_depth = 0;
+    bool saw_root = false;
     
     for (const auto& instr : trace) {
-        std::string lower_mnemonic = instr.mnemonic;
-        std::transform(lower_mnemonic.begin(), lower_mnemonic.end(), 
-                      lower_mnemonic.begin(), ::tolower);
+        std::string norm_mnemonic = NormalizeMnemonic(instr.mnemonic);
         
-        if (lower_mnemonic == "bsr") {
-            current_depth++;
-            depth_counts[current_depth]++;
-        } else if (lower_mnemonic == "rts") {
-            current_depth--;
+        if (norm_mnemonic == "bsr") {
+            if (!saw_root) {
+                saw_root = true;
+                depth_counts[0]++;  // Root call at level 0
+            } else {
+                current_depth++;
+                depth_counts[current_depth]++;
+            }
+        } else if (norm_mnemonic == "rts") {
+            if (saw_root && current_depth > 0) current_depth--;
         }
     }
     

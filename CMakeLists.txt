@@ -294,6 +294,21 @@ if(BUILD_TESTS)
         target_include_directories(test_example_new PRIVATE BEFORE ${GTEST_INCLUDES})
     endif()
     
+    # Build debug test for failure analysis
+    add_executable(test_debug_failures
+        tests/debug_test_failures.cpp
+    )
+    
+    target_link_libraries(test_debug_failures
+        musashi_api
+        GTest::gtest_main
+    )
+    
+    # Force fetched gtest headers BEFORE system headers  
+    if(GTEST_INCLUDES)
+        target_include_directories(test_debug_failures PRIVATE BEFORE ${GTEST_INCLUDES})
+    endif()
+    
     # Assemble test program with vasm
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/tests/test_program.bin
@@ -333,6 +348,7 @@ if(BUILD_TESTS)
     gtest_discover_tests(test_vasm_binary)
     gtest_discover_tests(test_mergesort)
     gtest_discover_tests(test_example_new)
+    gtest_discover_tests(test_debug_failures)
     
     if(ENABLE_PERFETTO)
         gtest_discover_tests(test_perfetto)
