@@ -73,6 +73,13 @@ The WebAssembly build creates two versions:
 
 Both use optimization level -O2 and export all functions prefixed with underscore.
 
+**Critical Emscripten Insights**:
+- The build expects EMSDK environment variable or emcc in PATH
+- fish shell's PATH handling can be inconsistent - use bash wrapper if needed
+- emmake wraps make to use Emscripten's compiler toolchain
+- C files compiled as C++ with em++ causes deprecation warnings (harmless)
+- Symbol export list must match exactly - missing symbols cause link errors
+
 ## Running Native Tests
 
 ### Build and Run Tests
@@ -88,6 +95,17 @@ ctest --output-on-failure
 # Run specific test executable
 ./test_m68k
 ./test_myfunc
+```
+
+### Running WebAssembly Tests
+```bash
+# In musashi-wasm-test directory
+npm test                          # Run all tests
+npm test perfetto_wasm.test.js   # Run specific test
+npm test -- --verbose            # Verbose output
+
+# Test files must be in tests/ directory
+# Tests use Jest framework with Node.js
 ```
 
 ### Debugging Test Failures
@@ -157,6 +175,68 @@ The Fish script build process:
 3. Generates two outputs: web version and Node.js version
 4. Uses WASM_BIGINT for 64-bit number support in JavaScript
 5. Enables ALLOW_MEMORY_GROWTH for dynamic memory allocation
+
+#### Building with Perfetto Tracing Support
+To enable Perfetto tracing in WebAssembly builds:
+
+1. **Generate protobuf files first** (required for compilation):
+   ```bash
+   # Must be done before building with ENABLE_PERFETTO=1
+   mkdir -p third_party/retrobus-perfetto/proto
+   third_party/protobuf-3.21.12/build.host/protoc \
+     --cpp_out=third_party/retrobus-perfetto/proto \
+     -I third_party/retrobus-perfetto/proto \
+     third_party/retrobus-perfetto/proto/perfetto.proto
+   
+   # Also copy to expected location for Makefile
+   cp third_party/retrobus-perfetto/cpp/proto/perfetto.pb.* third_party/retrobus-perfetto/proto/
+   ```
+
+2. **Build with Perfetto enabled**:
+   ```bash
+   # Use the build script (recommended)
+   ./build_perfetto_wasm_simple.sh
+   
+   # Or manually with emmake
+   emmake make -j8 ENABLE_PERFETTO=1
+   ```
+
+3. **Critical build requirements**:
+   - Must include `m68k_memory_bridge.o` (provides memory access functions)
+   - m68kfpu.c is included in m68kcpu.o (don't link separately)
+   - Link order matters: protobuf before abseil libraries
+
+4. **JavaScript/WASM Integration**:
+   - Perfetto functions exported with `_m68k_perfetto_` prefix
+   - Use `_m68k_perfetto_export_trace()` not `save_trace()` (WASM has no direct file access)
+   - Trace data returned as pointer to WASM heap - must copy to JavaScript buffer
+   - Always call `_m68k_perfetto_free_trace_data()` after export to prevent memory leaks
+
+5. **Testing Perfetto in WASM**:
+   ```javascript
+   // Initialize Perfetto
+   Module.ccall('m68k_perfetto_init', 'number', ['string'], ['ProcessName']);
+   
+   // Enable tracing modes
+   Module._m68k_perfetto_enable_flow(1);
+   Module._m68k_perfetto_enable_instructions(1);
+   
+   // Export trace data
+   const dataPtrPtr = Module._malloc(4);
+   const sizePtr = Module._malloc(4);
+   Module._m68k_perfetto_export_trace(dataPtrPtr, sizePtr);
+   
+   // Copy trace data from WASM heap
+   const dataPtr = Module.getValue(dataPtrPtr, '*');
+   const dataSize = Module.getValue(sizePtr, 'i32');
+   const traceData = new Uint8Array(Module.HEAPU8.buffer, dataPtr, dataSize);
+   
+   // Save to file (Node.js)
+   fs.writeFileSync('trace.perfetto-trace', traceData);
+   
+   // Cleanup
+   Module._m68k_perfetto_free_trace_data(dataPtr);
+   ```
 
 ### GitHub Actions CI
 - **native-ci.yml**: Tests CMake build on Ubuntu/macOS with sanitizer tests as critical (no continue-on-error)
