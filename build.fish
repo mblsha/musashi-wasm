@@ -130,7 +130,15 @@ set -l runtime_methods \
     writeArrayToMemory \
     UTF8ToString \
     stringToUTF8 \
-    stackTrace
+    stackTrace \
+    HEAP8 \
+    HEAPU8 \
+    HEAP16 \
+    HEAPU16 \
+    HEAP32 \
+    HEAPU32 \
+    HEAPF32 \
+    HEAPF64
 
 set -l object_files m68kcpu.o m68kops.o myfunc.o m68k_memory_bridge.o m68ktrace.o m68kdasm.o
 
