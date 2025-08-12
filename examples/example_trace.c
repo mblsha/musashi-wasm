@@ -28,6 +28,47 @@ static struct {
 /* ========================== MEMORY INTERFACE =========================== */
 /* ======================================================================== */
 
+/* Bridge functions required by m68k_memory_bridge.cc and m68kcpu.c */
+int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, unsigned int cycles) {
+    /* Called before each instruction - return 0 to continue, 1 to stop */
+    (void)pc; (void)ir; (void)cycles;
+    return 0;
+}
+
+unsigned int my_read_memory(unsigned int address, int size) {
+    address &= (MEMORY_SIZE - 1);
+    switch(size) {
+        case 1:
+            return memory[address];
+        case 2:
+            return (memory[address] << 8) | memory[address + 1];
+        case 4:
+            return (memory[address] << 24) | (memory[address + 1] << 16) |
+                   (memory[address + 2] << 8) | memory[address + 3];
+        default:
+            return 0;
+    }
+}
+
+void my_write_memory(unsigned int address, int size, unsigned int value) {
+    address &= (MEMORY_SIZE - 1);
+    switch(size) {
+        case 1:
+            memory[address] = value & 0xFF;
+            break;
+        case 2:
+            memory[address] = (value >> 8) & 0xFF;
+            memory[address + 1] = value & 0xFF;
+            break;
+        case 4:
+            memory[address] = (value >> 24) & 0xFF;
+            memory[address + 1] = (value >> 16) & 0xFF;
+            memory[address + 2] = (value >> 8) & 0xFF;
+            memory[address + 3] = value & 0xFF;
+            break;
+    }
+}
+
 unsigned int cpu_read_byte(unsigned int address)
 {
     return memory[address & (MEMORY_SIZE - 1)];

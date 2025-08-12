@@ -354,8 +354,9 @@ if(BUILD_TESTS)
         examples/example_trace.c
     )
     
+    # Examples are standalone and only need the core library
     target_link_libraries(example_trace
-        musashi_api
+        musashi_core
     )
     
     # Build Perfetto example only if Perfetto is enabled
@@ -367,8 +368,9 @@ if(BUILD_TESTS)
         
         set_source_files_properties(examples/example_perfetto_trace.c PROPERTIES LANGUAGE CXX)
         
+        # Perfetto example also only needs the core library
         target_link_libraries(example_perfetto_trace
-            musashi_api
+            musashi_core
         )
     endif()
     
