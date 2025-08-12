@@ -27,6 +27,12 @@ m68kops.?
 sim
 tags
 
+# CMake build directories
+build_minimal/
+build_debug/
+CMakeCache.txt
+CMakeFiles/
+
 # emscripten
 musashi.out.wasm.map
 musashi.out.js
@@ -42,3 +48,8 @@ third_party/abseil-wasm/
 third_party/abseil-wasm-install/
 third_party/protobuf-3.21.12/
 third_party/protobuf-host-3.21.12/
+
+# vasm build artifacts
+third_party/vasm/obj/
+third_party/vasm/vasmm68k_mot
+third_party/vasm/vobjdump
