@@ -107,9 +107,14 @@ extern "C" {
     _pc_hook_addrs.insert(norm_pc(addr));
   }
   void add_region(unsigned int start, unsigned int size, void* data) {
-    if (_enable_printf_logging)
-      printf("add_region: %p %p %p\n", (void*)start, (void*)size, data);
+    printf("DEBUG: add_region called: start=0x%x size=0x%x data=%p (regions before: %zu)\n", 
+           start, size, data, _regions.size());
     _regions.emplace_back(start, size, data);
+    
+    // Debug: verify the region was added properly
+    const auto& r = _regions.back();
+    printf("DEBUG: Region added successfully: start_=0x%x size_=0x%x data_=%p (total regions: %zu)\n", 
+           r.start_, r.size_, (void*)r.data_, _regions.size());
   }
   void clear_regions() {
     _regions.clear();
@@ -187,11 +192,24 @@ extern "C" unsigned int my_read_memory(unsigned int address, int size) {
   for (auto& region : _regions) {
     const auto val = region.read(address, size);
     if (val) {
+      if (_enable_printf_logging && address < 0x100) {
+        printf("DEBUG: my_read_memory region hit: addr=0x%x size=%d value=0x%x (region start=0x%x)\n", 
+               address, size, *val, region.start_);
+      }
       return *val;
     }
   }
   if (_read_mem) {
-    return _read_mem(address, size);
+    unsigned int result = _read_mem(address, size);
+    if (_enable_printf_logging && address < 0x100) {
+      printf("DEBUG: my_read_memory callback: addr=0x%x size=%d value=0x%x callback=%p\n", 
+             address, size, result, (void*)_read_mem);
+    }
+    return result;
+  }
+  if (_enable_printf_logging && address < 0x100) {
+    printf("DEBUG: my_read_memory NO HANDLER: addr=0x%x size=%d, %zu regions, callback=%p\n", 
+           address, size, _regions.size(), (void*)_read_mem);
   }
   return 0; // Return 0 if no handler is set
 }

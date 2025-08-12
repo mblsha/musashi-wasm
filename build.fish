@@ -87,7 +87,17 @@ set -l exported_functions \
     _add_pc_hook_addr \
     _add_region \
     _clear_regions \
+    _clear_pc_hook_addrs \
+    _clear_pc_hook_func \
+    _reset_myfunc_state \
+    _register_function_name \
+    _register_memory_name \
+    _register_memory_range \
+    _clear_registered_names \
+    _get_function_name \
+    _get_memory_name \
     _m68k_pulse_reset \
+    _m68k_end_timeslice \
     _m68k_cycles_run \
     _enable_printf_logging \
     _my_initialize \
@@ -103,7 +113,16 @@ set -l exported_functions \
     _m68k_trace_set_instr_enabled \
     _m68k_get_total_cycles \
     _m68k_reset_total_cycles \
-    _m68k_disassemble
+    _m68k_disassemble \
+    _perfetto_init \
+    _perfetto_destroy \
+    _perfetto_enable_flow \
+    _perfetto_enable_memory \
+    _perfetto_enable_instructions \
+    _perfetto_export_trace \
+    _perfetto_free_trace_data \
+    _perfetto_save_trace \
+    _perfetto_is_initialized
 
 # Add Perfetto functions only if enabled
 if test "$enable_perfetto" = "1"
