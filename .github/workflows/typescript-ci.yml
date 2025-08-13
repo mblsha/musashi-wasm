@@ -198,6 +198,10 @@ jobs:
         npm ci
         npm ci --workspaces
     
+    - name: Build packages first
+      run: |
+        npm run build
+    
     - name: TypeScript compilation check
       run: |
         npm run typecheck

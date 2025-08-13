@@ -137,9 +137,9 @@ TEST_F(ExceptionTest, PrivilegeViolationException) {
     
     EXPECT_TRUE(found_handler) << "Should have jumped to privilege violation handler at 0x2060";
     
-    /* After RTE, we should be back in supervisor mode */
+    /* After RTE, we should be back in user mode (unless handler modified stacked SR) */
     sr = m68k_get_reg(NULL, M68K_REG_SR);
-    EXPECT_TRUE((sr & 0x2000) != 0) << "Should be back in supervisor mode after exception";
+    EXPECT_TRUE((sr & 0x2000) == 0) << "Should be back in user mode after RTE from privilege violation";
 }
 
 TEST_F(ExceptionTest, ZeroDivideException) {
@@ -236,10 +236,10 @@ TEST_F(ExceptionTest, MultipleTrapVectors) {
 TEST_F(ExceptionTest, CHKInstructionException) {
     /* Set up registers for CHK */
     m68k_set_reg(M68K_REG_D0, 200);  /* Value to check */
-    m68k_set_reg(M68K_REG_D1, 100);  /* Upper bound (will fail) */
+    m68k_set_reg(M68K_REG_D1, 100);  /* Upper bound (will fail: 200 > 100) */
     
-    /* CHK D1, D0 - check if D0 is in range 0..D1 */
-    write_word(0x1000, 0x4180); /* CHK D1, D0 */
+    /* CHK D1, D0 - check if D0 is within bounds [0..D1] */
+    write_word(0x1000, 0x4181); /* CHK D1, D0 - opcode 0100 000 110 000 001 */
     write_word(0x1002, 0x4E71); /* NOP (after exception return) */
     
     /* Clear PC hooks */
