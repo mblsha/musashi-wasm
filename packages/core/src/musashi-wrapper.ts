@@ -24,12 +24,10 @@ interface MusashiEmscriptenModule {
   _clear_pc_hook_func(): void;
   _reset_myfunc_state(): void;
   addFunction(f: unknown, type: string): EmscriptenFunction;
-  getValue(ptr: EmscriptenBuffer, type: string): number;
-  setValue(ptr: EmscriptenBuffer, value: number, type: string): void;
-  writeArrayToMemory(array: Uint8Array, ptr: EmscriptenBuffer): void;
-  stringToUTF8(str: string, outPtr: number, maxBytesToWrite: number): number;
+  
+  // Heap access
   HEAPU8: Uint8Array;
-  ccall(ident: string, returnType: string | null, argTypes: string[], args: any[]): any;
+  HEAP32: Int32Array;
 
   // Optional Perfetto functions
   _m68k_perfetto_init?(process_name: EmscriptenBuffer): number;
@@ -71,12 +69,14 @@ export class MusashiWrapper {
 
     // Setup ROM region
     this._romBuffer = this._module._malloc(rom.length);
-    this._module.writeArrayToMemory(rom, this._romBuffer);
+    // Copy ROM data to WASM heap
+    this._module.HEAPU8.set(rom, this._romBuffer);
     this._module._add_region(0x000000, rom.length, this._romBuffer);
     
     // Setup RAM region
     this._ramBuffer = this._module._malloc(ram.length);
-    this._module.writeArrayToMemory(ram, this._ramBuffer);
+    // Copy RAM data to WASM heap
+    this._module.HEAPU8.set(ram, this._ramBuffer);
     this._module._add_region(0x100000, ram.length, this._ramBuffer);
     
     // Setup memory handlers
@@ -90,9 +90,7 @@ export class MusashiWrapper {
 
     // Write NOP function at NOP_FUNC_ADDR for override handling
     const nopCode = new Uint8Array([0x4E, 0x75]); // RTS instruction
-    for (let i = 0; i < nopCode.length; i++) {
-      this._module.HEAPU8[this._romBuffer + this.NOP_FUNC_ADDR + i] = nopCode[i];
-    }
+    this._module.HEAPU8.set(nopCode, this._romBuffer + this.NOP_FUNC_ADDR);
 
     this.pulse_reset();
   }
@@ -238,7 +236,11 @@ export class MusashiWrapper {
   perfettoInit(processName: string): number {
     if (!this._module._m68k_perfetto_init) return -1;
     const namePtr = this._module._malloc(processName.length + 1);
-    this._module.stringToUTF8(processName, namePtr, processName.length + 1);
+    // Write string to WASM heap manually
+    for (let i = 0; i < processName.length; i++) {
+      this._module.HEAPU8[namePtr + i] = processName.charCodeAt(i);
+    }
+    this._module.HEAPU8[namePtr + processName.length] = 0; // null terminator
     try {
       return this._module._m68k_perfetto_init(namePtr);
     } finally {
@@ -277,7 +279,11 @@ export class MusashiWrapper {
 
   private _registerSymbol(func: (address: number, name: EmscriptenBuffer) => void, address: number, name: string) {
     const namePtr = this._module._malloc(name.length + 1);
-    this._module.stringToUTF8(name, namePtr, name.length + 1);
+    // Write string to WASM heap manually
+    for (let i = 0; i < name.length; i++) {
+      this._module.HEAPU8[namePtr + i] = name.charCodeAt(i);
+    }
+    this._module.HEAPU8[namePtr + name.length] = 0; // null terminator
     try {
       func.call(this._module, address, namePtr);
     } finally {
@@ -288,17 +294,15 @@ export class MusashiWrapper {
   registerFunctionName(address: number, name: string) {
     if (this._module._register_function_name) {
       this._registerSymbol(this._module._register_function_name.bind(this._module), address, name);
-    } else if (this._module.ccall) {
-      this._module.ccall('register_function_name', null, ['number', 'string'], [address, name]);
     }
+    // Note: ccall fallback removed as it's not typically exported
   }
 
   registerMemoryName(address: number, name: string) {
     if (this._module._register_memory_name) {
       this._registerSymbol(this._module._register_memory_name.bind(this._module), address, name);
-    } else if (this._module.ccall) {
-      this._module.ccall('register_memory_name', null, ['number', 'string'], [address, name]);
     }
+    // Note: ccall fallback removed as it's not typically exported
   }
 
   perfettoExportTrace(): Uint8Array | null {
@@ -311,8 +315,9 @@ export class MusashiWrapper {
       const result = this._module._m68k_perfetto_export_trace(dataPtrPtr, sizePtr);
       if (result !== 0) return null;
 
-      const dataPtr = this._module.getValue(dataPtrPtr, 'i32');
-      const dataSize = this._module.getValue(sizePtr, 'i32');
+      // Read pointer values from WASM heap
+      const dataPtr = this._module.HEAP32[dataPtrPtr >> 2];
+      const dataSize = this._module.HEAP32[sizePtr >> 2];
 
       if (dataPtr === 0 || dataSize === 0) {
         return new Uint8Array(0);
@@ -336,18 +341,28 @@ export async function getModule(): Promise<MusashiWrapper> {
     !!(globalThis as any).process?.versions?.node;
   
   // Dynamic import based on environment
-  let moduleFactory: any;
+  let module: any;
   if (isNode) {
-    // For Node.js, we need to use the wrapper
-    moduleFactory = require('../wasm/musashi-node-wrapper.js');
+    // For Node.js, use the wrapper which handles loading correctly
+    const createMusashiModule = require('../wasm/musashi-node-wrapper.js');
+    module = await createMusashiModule();
+    
+    // Runtime validation to catch shape mismatches early
+    if (!module || typeof module._m68k_init !== 'function') {
+      const keys = module ? Object.keys(module).slice(0, 20) : [];
+      throw new Error(
+        `Musashi Module shape unexpected: _m68k_init not found. ` +
+        `Type=${typeof module}, keys=${JSON.stringify(keys)}`
+      );
+    }
   } else {
     // For browser, import the web version
     // Use variable specifier to avoid TS2307 compile-time resolution
     const specifier = '../../../musashi.out.js';
     const mod = await import(/* webpackIgnore: true */ specifier);
-    moduleFactory = mod.default;
+    const moduleFactory = mod.default;
+    module = await moduleFactory();
   }
   
-  const module = await moduleFactory();
   return new MusashiWrapper(module as MusashiEmscriptenModule);
 }
