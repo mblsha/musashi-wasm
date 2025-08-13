@@ -9228,10 +9228,16 @@ M68KMAKE_OP(rte, 32, ., .)
 
 		if(CPU_TYPE_IS_000(CPU_TYPE))
 		{
+			/* 68000: Fixed 6-byte frame on supervisor stack
+			 * CRITICAL: Must pop both SR and PC from SSP before setting SR,
+			 * because SR may change S-bit and switch stacks!
+			 */
 			new_sr = m68ki_pull_16();
 			new_pc = m68ki_pull_32();
-			m68ki_jump(new_pc);
+			/* Now safe to update SR (handles S-bit and stack switching) */
 			m68ki_set_sr(new_sr);
+			/* Then jump to the restored PC */
+			m68ki_jump(new_pc);
 			m68ki_trace_rte(source_pc, new_pc);
 
 			CPU_INSTR_MODE = INSTRUCTION_YES;
@@ -9248,8 +9254,8 @@ M68KMAKE_OP(rte, 32, ., .)
 				new_sr = m68ki_pull_16();
 				new_pc = m68ki_pull_32();
 				m68ki_fake_pull_16();	/* format word */
-				m68ki_jump(new_pc);
-				m68ki_set_sr(new_sr);
+				m68ki_set_sr(new_sr);  /* Set SR first (handles S-bit changes) */
+				m68ki_jump(new_pc);    /* Then jump */
 				m68ki_trace_rte(source_pc, new_pc);
 				CPU_INSTR_MODE = INSTRUCTION_YES;
 				CPU_RUN_MODE = RUN_MODE_NORMAL;
@@ -9275,8 +9281,8 @@ M68KMAKE_OP(rte, 32, ., .)
 				m68ki_fake_pull_32();
 				m68ki_fake_pull_32();
 				m68ki_fake_pull_32();
-				m68ki_jump(new_pc);
-				m68ki_set_sr(new_sr);
+				m68ki_set_sr(new_sr);  /* Set SR first (handles S-bit changes) */
+				m68ki_jump(new_pc);    /* Then jump */
 				m68ki_trace_rte(source_pc, new_pc);
 				CPU_INSTR_MODE = INSTRUCTION_YES;
 				CPU_RUN_MODE = RUN_MODE_NORMAL;
@@ -9298,8 +9304,8 @@ rte_loop:
 				new_sr = m68ki_pull_16();
 				new_pc = m68ki_pull_32();
 				m68ki_fake_pull_16();	/* format word */
-				m68ki_jump(new_pc);
-				m68ki_set_sr(new_sr);
+				m68ki_set_sr(new_sr);  /* Set SR first (handles S-bit changes) */
+				m68ki_jump(new_pc);    /* Then jump */
 				m68ki_trace_rte(source_pc, new_pc);
 				CPU_INSTR_MODE = INSTRUCTION_YES;
 				CPU_RUN_MODE = RUN_MODE_NORMAL;
@@ -9315,8 +9321,8 @@ rte_loop:
 				new_pc = m68ki_pull_32();
 				m68ki_fake_pull_16();	/* format word */
 				m68ki_fake_pull_32();	/* address */
-				m68ki_jump(new_pc);
-				m68ki_set_sr(new_sr);
+				m68ki_set_sr(new_sr);  /* Set SR first (handles S-bit changes) */
+				m68ki_jump(new_pc);    /* Then jump */
 				m68ki_trace_rte(source_pc, new_pc);
 				CPU_INSTR_MODE = INSTRUCTION_YES;
 				CPU_RUN_MODE = RUN_MODE_NORMAL;
