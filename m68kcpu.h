@@ -1972,7 +1972,8 @@ static inline void m68ki_exception_privilege_violation(void)
 	}
 	#endif /* M68K_EMULATE_ADDRESS_ERROR */
 
-	m68ki_stack_frame_0000(REG_PPC, sr, EXCEPTION_PRIVILEGE_VIOLATION);
+	/* For privilege violation, stack PC of NEXT instruction, not current */
+	m68ki_stack_frame_0000(REG_PC, sr, EXCEPTION_PRIVILEGE_VIOLATION);
 	m68ki_jump_vector(EXCEPTION_PRIVILEGE_VIOLATION);
 
 	/* Use up some clock cycles and undo the instruction's cycles */
@@ -2082,7 +2083,11 @@ static inline void m68ki_exception_illegal(void)
 	}
 	#endif /* M68K_EMULATE_ADDRESS_ERROR */
 
-	m68ki_stack_frame_0000(REG_PPC, sr, EXCEPTION_ILLEGAL_INSTRUCTION);
+	/* For illegal instruction on 68000, stack PC + 2 (next instruction) */
+	if(CPU_TYPE_IS_000(CPU_TYPE))
+		m68ki_stack_frame_0000(REG_PPC + 2, sr, EXCEPTION_ILLEGAL_INSTRUCTION);
+	else
+		m68ki_stack_frame_0000(REG_PC, sr, EXCEPTION_ILLEGAL_INSTRUCTION);
 	m68ki_jump_vector(EXCEPTION_ILLEGAL_INSTRUCTION);
 
 	/* Use up some clock cycles and undo the instruction's cycles */

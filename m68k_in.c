@@ -9228,15 +9228,26 @@ M68KMAKE_OP(rte, 32, ., .)
 
 		if(CPU_TYPE_IS_000(CPU_TYPE))
 		{
-			/* 68000: Fixed 6-byte frame on supervisor stack
-			 * CRITICAL: Must pop both SR and PC from SSP before setting SR,
-			 * because SR may change S-bit and switch stacks!
+			/* 68000 RTE: Fixed 6-byte frame on supervisor stack
+			 * CRITICAL: Must explicitly pop from SSP, not current SP!
+			 * On 68000, SSP is at REG_SP_BASE[4] (S=1, M=0)
 			 */
-			new_sr = m68ki_pull_16();
-			new_pc = m68ki_pull_32();
-			/* Now safe to update SR (handles S-bit and stack switching) */
+			
+			/* Explicitly pop from SSP (not the current A7 alias) */
+			uint ssp = REG_SP_BASE[4];  /* 4 = supervisor stack for 68000 */
+			new_sr = m68ki_read_16(ssp);
+			ssp += 2;
+			new_pc = m68ki_read_32(ssp);
+			ssp += 4;
+			
+			/* Commit SSP (we are still in S=1 so REG_SP must reflect SSP as well) */
+			REG_SP_BASE[4] = MASK_OUT_ABOVE_32(ssp);
+			REG_SP = REG_SP_BASE[4];
+			
+			/* Apply SR (may swap A7 to USP if S clears) */
 			m68ki_set_sr(new_sr);
-			/* Then jump to the restored PC */
+			
+			/* Jump to restored PC */
 			m68ki_jump(new_pc);
 			m68ki_trace_rte(source_pc, new_pc);
 
