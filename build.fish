@@ -139,17 +139,22 @@ if test "$enable_perfetto" = "1"
         _m68k_perfetto_cleanup_slices
 end
 
+# For Emscripten 4.x, we need to use DEFAULT_LIBRARY_FUNCS_TO_INCLUDE
+# with '$' prefix for runtime functions
+set -l runtime_funcs_to_include \
+    '$addFunction' \
+    '$removeFunction' \
+    '$ccall' \
+    '$cwrap' \
+    '$getValue' \
+    '$setValue' \
+    '$UTF8ToString' \
+    '$stringToUTF8' \
+    '$writeArrayToMemory'
+
+# Heap views and runtime methods exported via EXPORTED_RUNTIME_METHODS
+# Note: In Emscripten 4.x, some functions need to be in both places for compatibility
 set -l runtime_methods \
-    addFunction \
-    ccall \
-    cwrap \
-    getValue \
-    removeFunction \
-    setValue \
-    writeArrayToMemory \
-    UTF8ToString \
-    stringToUTF8 \
-    stackTrace \
     HEAP8 \
     HEAPU8 \
     HEAP16 \
@@ -157,7 +162,16 @@ set -l runtime_methods \
     HEAP32 \
     HEAPU32 \
     HEAPF32 \
-    HEAPF64
+    HEAPF64 \
+    addFunction \
+    removeFunction \
+    ccall \
+    cwrap \
+    getValue \
+    setValue \
+    UTF8ToString \
+    stringToUTF8 \
+    writeArrayToMemory
 
 set -l object_files m68kcpu.o m68kops.o myfunc.o m68k_memory_bridge.o m68ktrace.o m68kdasm.o
 
@@ -172,6 +186,7 @@ set -l emcc_options \
  --source-map-base http://localhost:8080/ \
  $object_files \
  -s EXPORTED_FUNCTIONS=(string join ',' $exported_functions) \
+ -s DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=(string join ',' $runtime_funcs_to_include) \
  -s EXPORTED_RUNTIME_METHODS=(string join ',' $runtime_methods) \
  # https://emscripten.org/docs/porting/guidelines/function_pointer_issues.html
 #  -s SAFE_HEAP \
