@@ -24,6 +24,7 @@ interface MusashiEmscriptenModule {
   _clear_pc_hook_func(): void;
   _reset_myfunc_state(): void;
   addFunction(f: unknown, type: string): EmscriptenFunction;
+  removeFunction(f: EmscriptenFunction): void;
   
   // Heap access
   HEAPU8: Uint8Array;
