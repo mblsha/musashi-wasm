@@ -70,7 +70,7 @@ interface MusashiEmscriptenModule {
 export class MusashiWrapper {
   private _module: MusashiEmscriptenModule;
   private _system: any; // Reference to SystemImpl
-  private _memory: Uint8Array = new Uint8Array(1024 * 1024); // 1MB memory
+  private _memory: Uint8Array = new Uint8Array(2 * 1024 * 1024); // 2MB memory
   private _readFunc: EmscriptenFunction = 0;
   private _writeFunc: EmscriptenFunction = 0;
   private _probeFunc: EmscriptenFunction = 0;
