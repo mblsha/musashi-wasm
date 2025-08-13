@@ -42,16 +42,37 @@ interface MusashiEmscriptenModule {
   _m68k_trace_enable?(enable: number): void;
   _register_function_name?(address: number, name: EmscriptenBuffer): void;
   _register_memory_name?(address: number, name: EmscriptenBuffer): void;
+  
+  // New callback system
+  _set_read8_callback?(f: EmscriptenFunction): void;
+  _set_write8_callback?(f: EmscriptenFunction): void;
+  _set_probe_callback?(f: EmscriptenFunction): void;
+  
+  // New register helpers
+  _set_d_reg?(n: number, value: number): void;
+  _get_d_reg?(n: number): number;
+  _set_a_reg?(n: number, value: number): void;
+  _get_a_reg?(n: number): number;
+  _set_pc_reg?(value: number): void;
+  _get_pc_reg?(): number;
+  _set_sr_reg?(value: number): void;
+  _get_sr_reg?(): number;
+  _set_isp_reg?(value: number): void;
+  _set_usp_reg?(value: number): void;
+  _get_sp_reg?(): number;
+  
+  // Heap access for memory setup
+  setValue?(ptr: number, value: number, type: string): void;
+  getValue?(ptr: number, type: string): number;
 }
 
 export class MusashiWrapper {
   private _module: MusashiEmscriptenModule;
   private _system: any; // Reference to SystemImpl
-  private _romBuffer: EmscriptenBuffer = 0;
-  private _ramBuffer: EmscriptenBuffer = 0;
+  private _memory: Uint8Array = new Uint8Array(1024 * 1024); // 1MB memory
   private _readFunc: EmscriptenFunction = 0;
   private _writeFunc: EmscriptenFunction = 0;
-  private _pcHookFunc: EmscriptenFunction = 0;
+  private _probeFunc: EmscriptenFunction = 0;
   private readonly NOP_FUNC_ADDR = 0x400; // Address with an RTS instruction
   private _doneExec = false;
   private _doneOverride = false;
@@ -63,51 +84,81 @@ export class MusashiWrapper {
   init(system: any, rom: Uint8Array, ram: Uint8Array) {
     this._system = system;
     
-    // Initialize musashi
-    this._module._m68k_init();
-    this._module._m68k_set_context(0);
-
-    // Setup ROM region
-    this._romBuffer = this._module._malloc(rom.length);
-    // Copy ROM data to WASM heap
-    this._module.HEAPU8.set(rom, this._romBuffer);
-    this._module._add_region(0x000000, rom.length, this._romBuffer);
+    // Setup callbacks FIRST (critical for expert's fix)
+    this._readFunc = this._module.addFunction((addr: number) => {
+      return this._memory[addr] || 0;
+    }, 'ii');
     
-    // Setup RAM region
-    this._ramBuffer = this._module._malloc(ram.length);
-    // Copy RAM data to WASM heap
-    this._module.HEAPU8.set(ram, this._ramBuffer);
-    this._module._add_region(0x100000, ram.length, this._ramBuffer);
+    this._writeFunc = this._module.addFunction((addr: number, val: number) => {
+      this._memory[addr] = val & 0xFF;
+    }, 'vii');
     
-    // Setup memory handlers
-    this._readFunc = this._module.addFunction(this.readHandler.bind(this), 'iii');
-    this._writeFunc = this._module.addFunction(this.writeHandler.bind(this), 'viii');
-    this._pcHookFunc = this._module.addFunction(this.pcHookHandler.bind(this), 'ii');
+    this._probeFunc = this._module.addFunction((addr: number) => {
+      return this._system._handlePCHook(addr) ? 1 : 0;
+    }, 'ii');
     
-    this._module._set_read_mem_func(this._readFunc);
-    this._module._set_write_mem_func(this._writeFunc);
-    this._module._set_pc_hook_func(this._pcHookFunc);
-
-    // Write NOP function at NOP_FUNC_ADDR for override handling
+    // Register callbacks with C
+    if (this._module._set_read8_callback) {
+      this._module._set_read8_callback(this._readFunc);
+    }
+    if (this._module._set_write8_callback) {
+      this._module._set_write8_callback(this._writeFunc);
+    }
+    if (this._module._set_probe_callback) {
+      this._module._set_probe_callback(this._probeFunc);
+    }
+    
+    // Copy ROM and RAM into our memory
+    this._memory.set(rom, 0x000000);
+    this._memory.set(ram, 0x100000);
+    
+    // CRITICAL: Write reset vectors BEFORE init/reset
+    this.write32BE(0x00000000, 0x00108000); // Initial SSP (in RAM)
+    this.write32BE(0x00000004, 0x00000400); // Initial PC (in ROM)
+    
+    // Write NOP function at NOP_FUNC_ADDR for override handling  
     const nopCode = new Uint8Array([0x4E, 0x75]); // RTS instruction
-    this._module.HEAPU8.set(nopCode, this._romBuffer + this.NOP_FUNC_ADDR);
-
-    this.pulse_reset();
+    this._memory.set(nopCode, this.NOP_FUNC_ADDR);
+    
+    // Initialize CPU
+    this._module._m68k_init();
+    this._module._m68k_set_context?.(0);
+    
+    // Reset CPU (will read vectors we just wrote)
+    this._module._m68k_pulse_reset();
+    
+    // Verify initialization
+    const pc = this._module._get_pc_reg?.() ?? this._module._m68k_get_reg(0, 16);
+    if (pc !== 0x400) {
+      throw new Error(`CPU not properly initialized, PC=0x${pc.toString(16)} (expected 0x400)`);
+    }
+  }
+  
+  private write32BE(addr: number, value: number): void {
+    this._memory[addr + 0] = (value >>> 24) & 0xFF;
+    this._memory[addr + 1] = (value >>> 16) & 0xFF;
+    this._memory[addr + 2] = (value >>> 8) & 0xFF;
+    this._memory[addr + 3] = value & 0xFF;
   }
 
   cleanup() {
-    if (this._romBuffer) {
-      this._module._free(this._romBuffer);
-      this._romBuffer = 0;
+    // Clean up function pointers
+    if (this._readFunc) {
+      this._module.removeFunction?.(this._readFunc);
+      this._readFunc = 0;
     }
-    if (this._ramBuffer) {
-      this._module._free(this._ramBuffer);
-      this._ramBuffer = 0;
+    if (this._writeFunc) {
+      this._module.removeFunction?.(this._writeFunc);
+      this._writeFunc = 0;
     }
-    this._module._clear_regions();
-    this._module._clear_pc_hook_addrs();
-    this._module._clear_pc_hook_func();
-    this._module._reset_myfunc_state();
+    if (this._probeFunc) {
+      this._module.removeFunction?.(this._probeFunc);
+      this._probeFunc = 0;
+    }
+    this._module._clear_regions?.();
+    this._module._clear_pc_hook_addrs?.();
+    this._module._clear_pc_hook_func?.();
+    this._module._reset_myfunc_state?.();
   }
 
   readHandler(address: number, size: 1 | 2 | 4): number {
@@ -166,11 +217,47 @@ export class MusashiWrapper {
   }
   
   get_reg(index: number): number { 
+    // Use new register helpers when available
+    if (index >= 0 && index <= 7 && this._module._get_d_reg) {
+      return this._module._get_d_reg(index);
+    } else if (index >= 8 && index <= 14 && this._module._get_a_reg) {
+      return this._module._get_a_reg(index - 8);
+    } else if (index === 15 && this._module._get_sp_reg) {
+      return this._module._get_sp_reg();
+    } else if (index === 16 && this._module._get_pc_reg) {
+      return this._module._get_pc_reg();
+    } else if (index === 17 && this._module._get_sr_reg) {
+      return this._module._get_sr_reg();
+    }
+    
+    // Fallback to old system
     return this._module._m68k_get_reg(0, index); 
   }
   
   set_reg(index: number, value: number) { 
-    this._module._m68k_set_reg(index, value); 
+    // Use new register helpers when available
+    if (index >= 0 && index <= 7 && this._module._set_d_reg) {
+      this._module._set_d_reg(index, value);
+    } else if (index >= 8 && index <= 14 && this._module._set_a_reg) {
+      this._module._set_a_reg(index - 8, value);
+    } else if (index === 15) {
+      // SP - need to check supervisor mode and set appropriate stack
+      const sr = this.get_reg(17);
+      if ((sr & 0x2000) !== 0 && this._module._set_isp_reg) {
+        this._module._set_isp_reg(value); // Supervisor mode: set ISP
+      } else if (this._module._set_usp_reg) {
+        this._module._set_usp_reg(value); // User mode: set USP
+      } else {
+        this._module._m68k_set_reg(index, value);
+      }
+    } else if (index === 16 && this._module._set_pc_reg) {
+      this._module._set_pc_reg(value);
+    } else if (index === 17 && this._module._set_sr_reg) {
+      this._module._set_sr_reg(value);
+    } else {
+      // Fallback to old system
+      this._module._m68k_set_reg(index, value);
+    }
   }
   
   add_pc_hook_addr(addr: number) { 
@@ -178,52 +265,51 @@ export class MusashiWrapper {
   }
   
   read_memory(address: number, size: 1 | 2 | 4): number { 
-    // Direct memory access through WASM heap
-    const ramStart = 0x100000;
-    const ramSize = this._system._ram.length;
+    // Read from our unified memory (big-endian composition)
+    if (address >= this._memory.length) return 0;
     
-    if (address >= ramStart && address < ramStart + ramSize) {
-      const offset = address - ramStart;
-      const ramPtr = this._ramBuffer + offset;
-      if (size === 1) return this._module.HEAPU8[ramPtr];
-      if (size === 2) return (this._module.HEAPU8[ramPtr] << 8) | this._module.HEAPU8[ramPtr + 1];
-      return (this._module.HEAPU8[ramPtr] << 24) | 
-             (this._module.HEAPU8[ramPtr + 1] << 16) | 
-             (this._module.HEAPU8[ramPtr + 2] << 8) | 
-             this._module.HEAPU8[ramPtr + 3];
+    if (size === 1) {
+      return this._memory[address];
+    } else if (size === 2) {
+      return (this._memory[address] << 8) | this._memory[address + 1];
+    } else {
+      return (this._memory[address] << 24) | 
+             (this._memory[address + 1] << 16) | 
+             (this._memory[address + 2] << 8) | 
+             this._memory[address + 3];
     }
-    
-    // ROM access
-    if (address < this._system._rom.length) {
-      const romPtr = this._romBuffer + address;
-      if (size === 1) return this._module.HEAPU8[romPtr];
-      if (size === 2) return (this._module.HEAPU8[romPtr] << 8) | this._module.HEAPU8[romPtr + 1];
-      return (this._module.HEAPU8[romPtr] << 24) | 
-             (this._module.HEAPU8[romPtr + 1] << 16) | 
-             (this._module.HEAPU8[romPtr + 2] << 8) | 
-             this._module.HEAPU8[romPtr + 3];
-    }
-    
-    return 0;
   }
   
   write_memory(address: number, size: 1 | 2 | 4, value: number) { 
-    const ramStart = 0x100000;
-    const ramSize = this._system._ram.length;
+    // Write to our unified memory (big-endian decomposition)
+    if (address >= this._memory.length) return;
     
-    if (address >= ramStart && address < ramStart + ramSize) {
+    if (size === 1) {
+      this._memory[address] = value & 0xFF;
+    } else if (size === 2) {
+      this._memory[address] = (value >> 8) & 0xFF;
+      this._memory[address + 1] = value & 0xFF;
+    } else {
+      this._memory[address] = (value >> 24) & 0xFF;
+      this._memory[address + 1] = (value >> 16) & 0xFF;
+      this._memory[address + 2] = (value >> 8) & 0xFF;
+      this._memory[address + 3] = value & 0xFF;
+    }
+    
+    // Update the JS-side RAM copy if this is in RAM space
+    const ramStart = 0x100000;
+    if (address >= ramStart && address < ramStart + this._system._ram.length) {
       const offset = address - ramStart;
-      const ramPtr = this._ramBuffer + offset;
       if (size === 1) {
-        this._module.HEAPU8[ramPtr] = value & 0xff;
+        this._system._ram[offset] = value & 0xFF;
       } else if (size === 2) {
-        this._module.HEAPU8[ramPtr] = (value >> 8) & 0xff;
-        this._module.HEAPU8[ramPtr + 1] = value & 0xff;
+        this._system._ram[offset] = (value >> 8) & 0xFF;
+        this._system._ram[offset + 1] = value & 0xFF;
       } else {
-        this._module.HEAPU8[ramPtr] = (value >> 24) & 0xff;
-        this._module.HEAPU8[ramPtr + 1] = (value >> 16) & 0xff;
-        this._module.HEAPU8[ramPtr + 2] = (value >> 8) & 0xff;
-        this._module.HEAPU8[ramPtr + 3] = value & 0xff;
+        this._system._ram[offset] = (value >> 24) & 0xFF;
+        this._system._ram[offset + 1] = (value >> 16) & 0xFF;
+        this._system._ram[offset + 2] = (value >> 8) & 0xFF;
+        this._system._ram[offset + 3] = value & 0xFF;
       }
     }
   }

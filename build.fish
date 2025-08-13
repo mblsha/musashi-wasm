@@ -122,7 +122,21 @@ set -l exported_functions \
     _perfetto_export_trace \
     _perfetto_free_trace_data \
     _perfetto_save_trace \
-    _perfetto_is_initialized
+    _perfetto_is_initialized \
+    _set_read8_callback \
+    _set_write8_callback \
+    _set_probe_callback \
+    _set_d_reg \
+    _get_d_reg \
+    _set_a_reg \
+    _get_a_reg \
+    _set_pc_reg \
+    _get_pc_reg \
+    _set_sr_reg \
+    _get_sr_reg \
+    _set_isp_reg \
+    _set_usp_reg \
+    _get_sp_reg
 
 # Add Perfetto functions only if enabled
 if test "$enable_perfetto" = "1"
