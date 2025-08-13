@@ -96,7 +96,9 @@ TEST_F(ExceptionTest, IllegalInstructionException) {
     bool found_handler = false;
     bool returned_from_exception = false;
     
+    printf("PC hooks: ");
     for (auto pc : pc_hooks) {
+        printf("0x%04X ", pc);
         if (pc == 0x2020) {
             found_handler = true;
         }
@@ -104,6 +106,7 @@ TEST_F(ExceptionTest, IllegalInstructionException) {
             returned_from_exception = true;
         }
     }
+    printf("\n");
     
     EXPECT_TRUE(found_handler) << "Should have jumped to illegal instruction handler at 0x2020";
     EXPECT_TRUE(returned_from_exception) << "Should have returned to instruction after illegal opcode";
