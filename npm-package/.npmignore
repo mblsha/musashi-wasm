@@ -1,0 +1,85 @@
+# Source files
+src/
+*.c
+*.cc
+*.cpp
+*.h
+*.o
+
+# Build artifacts not needed for npm
+build/
+cmake-build-*/
+CMakeFiles/
+*.cmake
+CMakeCache.txt
+Makefile
+
+# Test files
+test/
+tests/
+*.test.js
+*.test.mjs
+*.spec.js
+*.spec.mjs
+jest.config.*
+.jest/
+coverage/
+*.test.d.ts
+
+# Development files
+.github/
+.vscode/
+.idea/
+*.log
+*.pid
+*.seed
+*.pid.lock
+.DS_Store
+Thumbs.db
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# Documentation source
+docs/
+*.md
+!README.md
+!LICENSE
+
+# Configuration files
+.eslintrc*
+.prettierrc*
+.editorconfig
+tsconfig.json
+.npmrc
+.nvmrc
+
+# Scripts not needed at runtime
+scripts/
+!scripts/generate-wrapper.js
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*~
+
+# Debug files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Local environment
+.env
+.env.local
+.env.*.local
+
+# Only include built WASM files
+*.wasm.map
+!dist/*.wasm
+!dist/*.wasm.map
