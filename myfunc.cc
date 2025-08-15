@@ -36,10 +36,16 @@ static read8_callback_t js_read8_callback = nullptr;
 static write8_callback_t js_write8_callback = nullptr;
 static probe_callback_t js_probe_callback = nullptr;
 
-// Big-endian composition functions
+// 24-bit address masking for 68000 (16MB address space)
+static inline uint32_t addr24(uint32_t addr) {
+    return addr & 0x00FFFFFFu;
+}
+
+// Big-endian composition functions with address masking
 static uint16_t read16_be(uint32_t addr) {
     if (!js_read8_callback) return 0;
-    return (js_read8_callback(addr) << 8) | js_read8_callback(addr + 1);
+    addr = addr24(addr);
+    return (js_read8_callback(addr) << 8) | js_read8_callback(addr24(addr + 1));
 }
 
 static uint32_t read32_be(uint32_t addr) {
@@ -48,8 +54,9 @@ static uint32_t read32_be(uint32_t addr) {
 
 static void write16_be(uint32_t addr, uint16_t val) {
     if (!js_write8_callback) return;
+    addr = addr24(addr);
     js_write8_callback(addr, (val >> 8) & 0xFF);
-    js_write8_callback(addr + 1, val & 0xFF);
+    js_write8_callback(addr24(addr + 1), val & 0xFF);
 }
 
 static void write32_be(uint32_t addr, uint32_t val) {
@@ -129,6 +136,25 @@ extern "C" {
   }
   void set_pc_hook_func(pc_hook_t func) {
     _pc_hook = func;
+  }
+  
+  // JavaScript callback setters - these are what TypeScript actually calls
+  void set_read8_callback(int32_t fp) {
+    js_read8_callback = (read8_callback_t)fp;
+    if (_enable_printf_logging)
+      printf("set_read8_callback: %p\n", (void*)fp);
+  }
+  
+  void set_write8_callback(int32_t fp) {
+    js_write8_callback = (write8_callback_t)fp;
+    if (_enable_printf_logging)
+      printf("set_write8_callback: %p\n", (void*)fp);
+  }
+  
+  void set_probe_callback(int32_t fp) {
+    js_probe_callback = (probe_callback_t)fp;
+    if (_enable_printf_logging)
+      printf("set_probe_callback: %p\n", (void*)fp);
   }
   // Normalize to 24-bit, even address (68k opcodes are word-aligned)
   static inline uint32_t norm_pc(uint32_t a) {
@@ -220,6 +246,65 @@ extern "C" {
     auto it = _memory_names.find(address);
     return (it != _memory_names.end()) ? it->second.c_str() : nullptr;
   }
+  
+  /* ======================================================================== */
+  /* ==================== REGISTER ACCESS HELPERS ========================== */
+  /* ======================================================================== */
+  
+  // Direct register access helpers for TypeScript (avoids enum drift issues)
+  void set_d_reg(int n, uint32_t value) {
+    if (n >= 0 && n < 8) {
+      m68k_set_reg(static_cast<m68k_register_t>(M68K_REG_D0 + n), value);
+    }
+  }
+  
+  uint32_t get_d_reg(int n) {
+    if (n >= 0 && n < 8) {
+      return m68k_get_reg(NULL, static_cast<m68k_register_t>(M68K_REG_D0 + n));
+    }
+    return 0;
+  }
+  
+  void set_a_reg(int n, uint32_t value) {
+    if (n >= 0 && n < 8) {
+      m68k_set_reg(static_cast<m68k_register_t>(M68K_REG_A0 + n), value);
+    }
+  }
+  
+  uint32_t get_a_reg(int n) {
+    if (n >= 0 && n < 8) {
+      return m68k_get_reg(NULL, static_cast<m68k_register_t>(M68K_REG_A0 + n));
+    }
+    return 0;
+  }
+  
+  void set_pc_reg(uint32_t value) {
+    m68k_set_reg(M68K_REG_PC, value);
+  }
+  
+  uint32_t get_pc_reg(void) {
+    return m68k_get_reg(NULL, M68K_REG_PC);
+  }
+  
+  void set_sr_reg(uint16_t value) {
+    m68k_set_reg(M68K_REG_SR, value);
+  }
+  
+  uint32_t get_sr_reg(void) {
+    return m68k_get_reg(NULL, M68K_REG_SR);
+  }
+  
+  void set_isp_reg(uint32_t value) {
+    m68k_set_reg(M68K_REG_ISP, value);
+  }
+  
+  void set_usp_reg(uint32_t value) {
+    m68k_set_reg(M68K_REG_USP, value);
+  }
+  
+  uint32_t get_sp_reg(void) {
+    return m68k_get_reg(NULL, M68K_REG_SP);
+  }
 } // extern "C"
 
 extern "C" unsigned int my_read_memory(unsigned int address, int size) {
@@ -239,7 +324,7 @@ extern "C" unsigned int my_read_memory(unsigned int address, int size) {
   if (js_read8_callback) {
     unsigned int result;
     switch(size) {
-      case 1: result = js_read8_callback(address); break;
+      case 1: result = js_read8_callback(addr24(address)); break;
       case 2: result = read16_be(address); break;
       case 4: result = read32_be(address); break;
       default: result = 0; break;
@@ -281,7 +366,7 @@ extern "C" void my_write_memory(unsigned int address, int size, unsigned int val
   // Try JS callback (big-endian decomposition)
   if (js_write8_callback) {
     switch(size) {
-      case 1: js_write8_callback(address, value & 0xFF); break;
+      case 1: js_write8_callback(addr24(address), value & 0xFF); break;
       case 2: write16_be(address, value & 0xFFFF); break;
       case 4: write32_be(address, value); break;
     }
@@ -357,8 +442,9 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
     // Trace first (non-breaking)
     (void)m68k_trace_instruction_hook(pc, (uint16_t)ir, (int)cycles);
 
-    // If the test installed a hook, call it via the filtering wrapper
-    if (_pc_hook) (void)my_instruction_hook_function(pc);
+    // Always call the unified hook (JS probe + optional legacy filter)
+    // This ensures JS probe callbacks work in tests
+    (void)my_instruction_hook_function(pc);  // ignore result in tests
     return 0; // never break in tests
 #else
     int trace_result = m68k_trace_instruction_hook(pc, (uint16_t)ir, (int)cycles);
@@ -442,104 +528,3 @@ extern "C" {
   }
 } // extern "C"
 
-/* ======================================================================== */
-/* WASM Integration Layer - Callback Bridge                                */
-/* ======================================================================== */
-
-
-extern "C" {
-    // Set JavaScript callbacks for memory access
-    void set_read8_callback(int32_t fp) {
-        js_read8_callback = (read8_callback_t)fp;
-        if (_enable_printf_logging) {
-            printf("set_read8_callback: %p\n", (void*)js_read8_callback);
-        }
-    }
-    
-    void set_write8_callback(int32_t fp) {
-        js_write8_callback = (write8_callback_t)fp;
-        if (_enable_printf_logging) {
-            printf("set_write8_callback: %p\n", (void*)js_write8_callback);
-        }
-    }
-}
-
-
-/* ======================================================================== */
-/* Register Helper Functions                                                */
-/* ======================================================================== */
-
-extern "C" {
-    // Data registers
-    void set_d_reg(int n, uint32_t value) {
-        if (n >= 0 && n <= 7) {
-            m68k_set_reg(static_cast<m68k_register_t>(M68K_REG_D0 + n), value);
-        }
-    }
-    
-    uint32_t get_d_reg(int n) {
-        if (n >= 0 && n <= 7) {
-            return m68k_get_reg(NULL, static_cast<m68k_register_t>(M68K_REG_D0 + n));
-        }
-        return 0;
-    }
-    
-    // Address registers
-    void set_a_reg(int n, uint32_t value) {
-        if (n >= 0 && n <= 7) {
-            m68k_set_reg(static_cast<m68k_register_t>(M68K_REG_A0 + n), value);
-        }
-    }
-    
-    uint32_t get_a_reg(int n) {
-        if (n >= 0 && n <= 7) {
-            return m68k_get_reg(NULL, static_cast<m68k_register_t>(M68K_REG_A0 + n));
-        }
-        return 0;
-    }
-    
-    // Special registers
-    void set_pc_reg(uint32_t value) {
-        m68k_set_reg(M68K_REG_PC, value);
-    }
-    
-    uint32_t get_pc_reg(void) {
-        return m68k_get_reg(NULL, M68K_REG_PC);
-    }
-    
-    void set_sr_reg(uint16_t value) {
-        m68k_set_reg(M68K_REG_SR, value);
-    }
-    
-    uint16_t get_sr_reg(void) {
-        return m68k_get_reg(NULL, M68K_REG_SR) & 0xFFFF;
-    }
-    
-    // Stack pointers
-    void set_isp_reg(uint32_t value) {
-        m68k_set_reg(M68K_REG_ISP, value);
-    }
-    
-    void set_usp_reg(uint32_t value) {
-        m68k_set_reg(M68K_REG_USP, value);
-    }
-    
-    uint32_t get_sp_reg(void) {
-        // Return current stack pointer
-        return m68k_get_reg(NULL, M68K_REG_SP);
-    }
-}
-
-/* ======================================================================== */
-/* Probe Hook Bridge                                                       */
-/* ======================================================================== */
-
-
-extern "C" {
-    void set_probe_callback(int32_t fp) {
-        js_probe_callback = (probe_callback_t)fp;
-        if (_enable_printf_logging) {
-            printf("set_probe_callback: %p\n", (void*)js_probe_callback);
-        }
-    }
-}

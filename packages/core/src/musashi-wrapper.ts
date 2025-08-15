@@ -74,7 +74,7 @@ export class MusashiWrapper {
   private _readFunc: EmscriptenFunction = 0;
   private _writeFunc: EmscriptenFunction = 0;
   private _probeFunc: EmscriptenFunction = 0;
-  private readonly NOP_FUNC_ADDR = 0x400; // Address with an RTS instruction
+  private readonly NOP_FUNC_ADDR = 0x1000; // Address with an RTS instruction (moved away from test program)
   private _doneExec = false;
   private _doneOverride = false;
 
@@ -112,6 +112,7 @@ export class MusashiWrapper {
     // Copy ROM and RAM into our memory
     this._memory.set(rom, 0x000000);
     this._memory.set(ram, 0x100000);
+    
     
     // CRITICAL: Write reset vectors BEFORE init/reset
     this.write32BE(0x00000000, 0x00108000); // Initial SSP (in RAM)
@@ -220,19 +221,19 @@ export class MusashiWrapper {
   get_reg(index: number): number { 
     // Use new register helpers when available
     if (index >= 0 && index <= 7 && this._module._get_d_reg) {
-      return this._module._get_d_reg(index);
+      return this._module._get_d_reg(index) >>> 0; // Ensure unsigned
     } else if (index >= 8 && index <= 14 && this._module._get_a_reg) {
-      return this._module._get_a_reg(index - 8);
+      return this._module._get_a_reg(index - 8) >>> 0; // Ensure unsigned
     } else if (index === 15 && this._module._get_sp_reg) {
-      return this._module._get_sp_reg();
+      return this._module._get_sp_reg() >>> 0; // Ensure unsigned
     } else if (index === 16 && this._module._get_pc_reg) {
-      return this._module._get_pc_reg();
+      return this._module._get_pc_reg() >>> 0; // Ensure unsigned
     } else if (index === 17 && this._module._get_sr_reg) {
-      return this._module._get_sr_reg();
+      return this._module._get_sr_reg() >>> 0; // Ensure unsigned
     }
     
     // Fallback to old system
-    return this._module._m68k_get_reg(0, index); 
+    return this._module._m68k_get_reg(0, index) >>> 0; // Ensure unsigned
   }
   
   set_reg(index: number, value: number) { 
