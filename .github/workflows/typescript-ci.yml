@@ -52,6 +52,25 @@ jobs:
         test -f musashi-node.out.wasm
         echo "✓ WASM modules built successfully"
     
+    - name: Prepare WASM artifacts for tests
+      run: |
+        set -e
+        mkdir -p packages/core/wasm
+        
+        # Copy all generated Emscripten outputs to the expected package dir
+        if ls *.out.js >/dev/null 2>&1; then cp -f *.out.js packages/core/wasm/; fi
+        if ls *.out.wasm >/dev/null 2>&1; then cp -f *.out.wasm packages/core/wasm/; fi
+        if ls *.out.wasm.map >/dev/null 2>&1; then cp -f *.out.wasm.map packages/core/wasm/; fi
+        
+        # Ensure the exact filename the TS requires exists:
+        # musashi wrapper alias (copy instead of symlink for cross-platform stability)
+        if [ -f musashi-node.out.js ]; then
+          cp -f musashi-node.out.js packages/core/wasm/musashi-node-wrapper.js
+        fi
+        
+        echo "WASM files in packages/core/wasm:"
+        ls -la packages/core/wasm
+    
     - name: Install TypeScript package dependencies
       run: |
         # Install root dependencies using lock file
@@ -137,6 +156,26 @@ jobs:
             exit 1
           fi
         done
+    
+    - name: Prepare WASM artifacts for tests (with Perfetto)
+      run: |
+        set -e
+        mkdir -p packages/core/wasm
+        
+        # Copy all generated Emscripten outputs to the expected package dir
+        # (includes Perfetto-enabled builds)
+        if ls *.out.js >/dev/null 2>&1; then cp -f *.out.js packages/core/wasm/; fi
+        if ls *.out.wasm >/dev/null 2>&1; then cp -f *.out.wasm packages/core/wasm/; fi
+        if ls *.out.wasm.map >/dev/null 2>&1; then cp -f *.out.wasm.map packages/core/wasm/; fi
+        
+        # Ensure the exact filename the TS requires exists:
+        # musashi wrapper alias (copy instead of symlink for cross-platform stability)
+        if [ -f musashi-node.out.js ]; then
+          cp -f musashi-node.out.js packages/core/wasm/musashi-node-wrapper.js
+        fi
+        
+        echo "WASM files with Perfetto in packages/core/wasm:"
+        ls -la packages/core/wasm
     
     - name: Install TypeScript package dependencies
       run: |
