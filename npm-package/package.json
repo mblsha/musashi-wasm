@@ -1,6 +1,6 @@
 {
   "name": "musashi-wasm",
-  "version": "4.10.0",
+  "version": "0.1.0",
   "description": "WebAssembly port of the Musashi M68000 CPU emulator with optional Perfetto tracing support",
   "author": "Musashi Contributors",
   "license": "MIT",
