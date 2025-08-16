@@ -103,6 +103,49 @@ npm run build
 npm test
 ```
 
+## Local Development with Real WASM
+
+For local development and testing with real WASM artifacts, use the comprehensive test script:
+
+```bash
+# From repository root - full build and test
+./test_with_real_wasm.sh
+
+# With Perfetto tracing support
+ENABLE_PERFETTO=1 ./test_with_real_wasm.sh
+
+# Quick test with existing WASM (skip rebuild)
+SKIP_WASM_BUILD=1 ./test_with_real_wasm.sh
+
+# Verbose output for debugging
+VERBOSE=1 ./test_with_real_wasm.sh
+
+# View all options
+./test_with_real_wasm.sh --help
+```
+
+This script automatically:
+1. Builds WASM modules using `./build.fish` 
+2. Copies artifacts to `packages/core/wasm/`
+3. Runs TypeScript tests in `packages/core/`
+4. Runs integration tests in `musashi-wasm-test/`
+5. Provides detailed progress reporting and error handling
+
+### Environment Variables
+
+- `ENABLE_PERFETTO=1` - Enable Perfetto tracing support
+- `SKIP_WASM_BUILD=1` - Skip WASM build step (use existing artifacts)
+- `SKIP_CORE_TESTS=1` - Skip packages/core tests
+- `SKIP_INTEGRATION=1` - Skip musashi-wasm-test integration tests  
+- `VERBOSE=1` - Show detailed output for debugging
+
+### Prerequisites
+
+- Emscripten SDK (EMSDK) installed and activated
+- Node.js 16+ 
+- Fish shell (for build.fish script)
+- For Perfetto: protobuf dependencies (built automatically if needed)
+
 ## Requirements
 
 - Node.js 16+ or modern browser
