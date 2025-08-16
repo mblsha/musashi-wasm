@@ -39,7 +39,7 @@
       ]
     },
     "moduleNameMapper": {
-      "^\\./musashi-wrapper\\.js$": "<rootDir>/src/musashi-wrapper.ts",
+      "^\\./musashi-wrapper\\.js$": "<rootDir>/src/__mocks__/musashi-wrapper.ts",
       "^\\./types\\.js$": "<rootDir>/src/types.ts"
     },
     "roots": ["<rootDir>/src"],
