@@ -2,37 +2,35 @@ name: Publish to npm
 
 on:
   release:
-    types: [created] # Triggers when a new GitHub release is created
-  workflow_dispatch: # Allows manual triggering for testing
+    types: [published]
+  workflow_dispatch:
 
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # Allow reading content to get release tag
-      id-token: write # Needed for provenance if you enable it
+      contents: read
+      id-token: write
     steps:
-      - name: Checkout repository
+      - name: Checkout repository at release tag
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          ref: ${{ github.event.release.tag_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Use a current LTS version
+          node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-          cache: 'npm'
-          cache-dependency-path: 'npm-package/package-lock.json'
 
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: '3.1.46' # Pinning version for reproducible builds
+          version: '4.0.12'
 
       - name: Install fish shell
         run: |
-          sudo apt-add-repository -y ppa:fish-shell/release-3
           sudo apt-get update
           sudo apt-get install -y fish
 
@@ -46,30 +44,116 @@ jobs:
       - name: Stage standard WASM artifacts
         run: |
           mv musashi-node.out.wasm npm-package/dist/musashi.wasm
-          mv musashi-node.out.js npm-package/dist/musashi-loader.js
-          echo "✓ Staged standard WASM artifacts"
+          mv musashi-node.out.js   npm-package/dist/musashi-loader.js
 
       # --- Build Perfetto WASM ---
       - name: Build Perfetto WASM
-        run: ./build_perfetto_wasm_simple.sh # Assuming this script builds the Perfetto version
+        run: ./build_perfetto_wasm_simple.sh
 
       - name: Stage Perfetto WASM artifacts
         run: |
           mv musashi-node.out.wasm npm-package/dist/musashi-perfetto.wasm
-          mv musashi-node.out.js npm-package/dist/musashi-perfetto-loader.js
-          echo "✓ Staged Perfetto WASM artifacts"
+          mv musashi-node.out.js   npm-package/dist/musashi-perfetto-loader.js
+
+      # --- Generate package.json and entry wrappers (ESM + CJS) ---
+      - name: Generate package manifest and wrappers
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_RAW='${{ github.event.release.tag_name }}'
+          VERSION="${VERSION_RAW#v}"
+
+          cat > npm-package/package.json <<'JSON'
+          {
+            "name": "musashi-wasm",
+            "version": "0.0.0",
+            "description": "M68k Musashi WebAssembly (default and Perfetto profiling builds)",
+            "license": "MIT",
+            "type": "module",
+            "exports": {
+              ".": {
+                "import": "./index.js",
+                "require": "./index.cjs"
+              },
+              "./perf": {
+                "import": "./perf.js",
+                "require": "./perf.cjs"
+              }
+            },
+            "main": "./index.cjs",
+            "module": "./index.js",
+            "files": [
+              "dist/*",
+              "index.js",
+              "index.cjs",
+              "perf.js",
+              "perf.cjs",
+              "README.md",
+              "LICENSE"
+            ],
+            "publishConfig": {
+              "access": "public",
+              "provenance": true
+            }
+          }
+          JSON
+
+          # ESM wrappers
+          cat > npm-package/index.js <<'JS'
+          import createModule from "./dist/musashi-loader.js";
+          export default function init(options = {}) {
+            const isNode = typeof process !== "undefined" && !!process.versions?.node;
+            const url = new URL("./dist/musashi.wasm", import.meta.url);
+            const wasmPath = isNode ? url.pathname : url.href;
+            const locateFile = (p) => p.endsWith(".wasm") ? wasmPath : p;
+            return createModule({ locateFile, ...options });
+          }
+          JS
+
+          cat > npm-package/perf.js <<'JS'
+          import createModule from "./dist/musashi-perfetto-loader.js";
+          export default function init(options = {}) {
+            const isNode = typeof process !== "undefined" && !!process.versions?.node;
+            const url = new URL("./dist/musashi-perfetto.wasm", import.meta.url);
+            const wasmPath = isNode ? url.pathname : url.href;
+            const locateFile = (p) => p.endsWith(".wasm") ? wasmPath : p;
+            return createModule({ locateFile, ...options });
+          }
+          JS
+
+          # CJS wrappers
+          cat > npm-package/index.cjs <<'CJS'
+          const path = require("path");
+          const createModule = require("./dist/musashi-loader.js");
+          module.exports = function init(options = {}) {
+            const wasmPath = path.join(__dirname, "dist", "musashi.wasm");
+            const locateFile = (p) => p.endsWith(".wasm") ? wasmPath : p;
+            return createModule({ locateFile, ...options });
+          };
+          CJS
+
+          cat > npm-package/perf.cjs <<'CJS'
+          const path = require("path");
+          const createModule = require("./dist/musashi-perfetto-loader.js");
+          module.exports = function init(options = {}) {
+            const wasmPath = path.join(__dirname, "dist", "musashi-perfetto.wasm");
+            const locateFile = (p) => p.endsWith(".wasm") ? wasmPath : p;
+            return createModule({ locateFile, ...options });
+          };
+          CJS
+
+          # Copy docs if present
+          [ -f README.md ] && cp README.md npm-package/ || true
+          [ -f LICENSE ]   && cp LICENSE   npm-package/ || true
+
+          # Stamp the version from the tag
+          npm --prefix npm-package version "$VERSION" --no-git-tag-version
 
       - name: List final package contents
         run: ls -lR npm-package
 
-      # --- Prepare and Publish Package ---
-      - name: Set package version from release tag
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          echo "Setting package version to ${VERSION}"
-          npm --prefix npm-package version ${VERSION} --no-git-tag-version
-
       - name: Publish to npm
-        run: npm publish --access public --prefix npm-package
+        working-directory: npm-package
+        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
