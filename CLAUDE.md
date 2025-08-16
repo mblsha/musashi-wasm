@@ -29,14 +29,14 @@ make wasm  # Rebuilds WASM modules
    - `m68kops.c` - Implementation of all M68k instructions
    - `m68kops.h` - Headers for instruction handlers
 2. Core emulation in `m68kcpu.c` uses the generated instruction handlers
-3. `myfunc.c` provides WebAssembly-specific API and memory management
+3. `myfunc.cc` provides WebAssembly-specific API and memory management
 
 ### Key Components
 - **CPU Core**: `m68kcpu.c/h` - Main emulation logic, register management, execution loop
 - **Instruction Generator**: `m68kmake.c` + `m68k_in.c` - Generates opcode implementations
 - **Disassembler**: `m68kdasm.c` - Converts machine code to assembly
 - **FPU**: `m68kfpu.c` - Floating-point unit emulation using softfloat library
-- **WASM Interface**: `myfunc.c` - Memory regions, callbacks, JavaScript interop
+- **WASM Interface**: `myfunc.cc` - Memory regions, callbacks, JavaScript interop
 
 ### WebAssembly Exports
 Key functions exposed to JavaScript:
@@ -124,7 +124,7 @@ The M68k CPU tests require proper initialization:
 ### Test Structure
 Tests use Google Test framework with fixtures:
 - `M68kTest`: Tests CPU core functionality
-- `MyFuncTest`: Tests the myfunc.c API wrapper
+- `MyFuncTest`: Tests the myfunc.cc API wrapper
 
 Each test fixture sets up:
 - Memory buffer (1MB)
@@ -144,7 +144,7 @@ The emulator has a two-tier memory system:
 ### Instruction Hook System
 - `my_instruction_hook_function` is called before EVERY instruction execution
 - Return 0 to continue execution, non-zero to break out of execution loop
-- Hook must be registered via `set_pc_hook_func` in myfunc.c
+- Hook must be registered via `set_pc_hook_func` in myfunc.cc
 - Can use `add_pc_hook_addr` to track specific addresses (currently all addresses are hooked)
 - **Critical for Testing**: PC hooks are the most reliable way to verify instruction execution - track them in a vector to verify execution flow
 
@@ -154,7 +154,7 @@ The emulator has a two-tier memory system:
 - After reset, PC is loaded from address 4, SP from address 0
 - The instruction hook can interrupt execution early by returning non-zero
 
-### myfunc.c API Layer
+### myfunc.cc API Layer
 This C++ wrapper provides the WebAssembly interface:
 - Manages callback function pointers (read_mem, write_mem, pc_hook)
 - Implements memory region system (Region class does NOT own memory - caller responsible for cleanup)
@@ -165,7 +165,7 @@ This C++ wrapper provides the WebAssembly interface:
 ### Critical Files Relationship
 - **m68kconf.h**: Configures CPU features and hooks - changes here affect entire emulation
 - **m68kcpu.c**: Includes m68kfpu.c directly (not compiled separately)
-- **myfunc.c**: Must be compiled as C++ despite .c extension (uses STL containers)
+- **myfunc.cc**: C++ API layer with STL containers for regions and callbacks
 - **build.fish**: Authoritative WASM build script with all Emscripten flags
 
 ### WebAssembly Build Specifics

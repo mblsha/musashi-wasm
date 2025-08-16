@@ -3,7 +3,7 @@
 #include "m68k_test_common.h"
 
 extern "C" {
-    // Functions from myfunc.c
+    // Functions from myfunc.cc
     int my_initialize();
     void enable_printf_logging();
     void add_pc_hook_addr(unsigned int addr);
