@@ -14,8 +14,8 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "test": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",
-    "test:ci": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js --ci",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' npx jest",
+    "test:ci": "NODE_OPTIONS='--experimental-vm-modules' npx jest --ci",
     "typecheck": "tsc --noEmit"
   },
   "files": [
