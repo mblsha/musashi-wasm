@@ -1,5 +1,10 @@
 import path from 'path';
 import fs from 'fs';
+import { jest } from '@jest/globals';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Path to the WASM module, assuming it's in the parent directory
 const modulePath = path.resolve(__dirname, '../../musashi-node.out.mjs');
@@ -89,7 +94,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
             Module.ccall('add_region', 'void', ['number', 'number', 'number'], [0x0, MEMORY_SIZE, wasmMemoryPtr]);
 
             // Set up write callback for memory outside the region
-            const writeCallbackSpy = jest.fn();
+            const writeCallbackSpy = jest.fn((address, size, value) => {});
             writeCallbackPtr = Module.addFunction((address, size, value) => {
                 writeCallbackSpy(address, size, value);
             }, 'viii');
@@ -135,15 +140,39 @@ describe('Musashi WASM Node.js Integration Test', () => {
             // --- Verification ---
             // 5. Requirement: Register Access
             // JavaScript may return signed 32-bit value, so use >>> 0 to convert to unsigned
-            expect(Module._m68k_get_reg(M68K_REG_D0) >>> 0).toBe(0xDEADBEEF);
+            // Call get_reg with context=0 to match wrapper arity
+            expect(Module._m68k_get_reg(0, M68K_REG_D0) >>> 0).toBe(0xDEADBEEF);
 
-            // 6. Verify Memory Callback was triggered
-            expect(writeCallbackSpy).toHaveBeenCalledTimes(1);
-            // The value might be signed, so check both possibilities
-            const callArgs = writeCallbackSpy.mock.calls[0];
-            expect(callArgs[0]).toBe(DATA_TARGET_ADDR);
-            expect(callArgs[1]).toBe(4);
-            expect(callArgs[2] >>> 0).toBe(0xDEADBEEF);
+            // 6. Verify Memory Callback was triggered.
+            // Musashi may decompose 32-bit stores into 2x16-bit or 4x8-bit writes.
+            const calls = writeCallbackSpy.mock.calls.map(([addr, size, value]) => ({ addr, size, value }));
+            expect([1, 2, 4].includes(calls.length)).toBe(true);
+            const sorted = calls.slice().sort((a,b) => a.addr - b.addr);
+            // Check contiguity and base address
+            expect(sorted[0].addr).toBe(DATA_TARGET_ADDR);
+            const totalSize = sorted.reduce((n, c) => n + c.size, 0);
+            expect(totalSize).toBe(4);
+            let off = sorted[0].size;
+            for (let i = 1; i < sorted.length; i++) {
+                expect(sorted[i].addr).toBe(DATA_TARGET_ADDR + off);
+                off += sorted[i].size;
+            }
+            // Reconstruct big-endian 32-bit payload
+            const bytes = [];
+            for (const { size, value } of sorted) {
+                if (size === 4) {
+                    bytes.push((value >>> 24) & 0xFF, (value >>> 16) & 0xFF, (value >>> 8) & 0xFF, value & 0xFF);
+                } else if (size === 2) {
+                    bytes.push((value >>> 8) & 0xFF, value & 0xFF);
+                } else if (size === 1) {
+                    bytes.push(value & 0xFF);
+                } else {
+                    throw new Error('Unexpected write size');
+                }
+            }
+            expect(bytes).toHaveLength(4);
+            const combined = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+            expect((combined >>> 0)).toBe(0xDEADBEEF);
             
             // 7. Verify Instruction Hook
             expect(pcHookSpy).toHaveBeenCalledTimes(3);
