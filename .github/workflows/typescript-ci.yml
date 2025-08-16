@@ -64,11 +64,8 @@ jobs:
         if ls *.out.wasm >/dev/null 2>&1; then cp -f *.out.wasm packages/core/wasm/; fi
         if ls *.out.wasm.map >/dev/null 2>&1; then cp -f *.out.wasm.map packages/core/wasm/; fi
         
-        # Ensure the exact filename the TS requires exists:
-        # musashi wrapper alias (copy instead of symlink for cross-platform stability)
-        if [ -f musashi-node.out.mjs ]; then
-          cp -f musashi-node.out.mjs packages/core/wasm/musashi-node-wrapper.mjs
-        fi
+        # The wrapper expects musashi-node.out.mjs to exist
+        # No need to overwrite musashi-node-wrapper.mjs as it's already in the repo
         
         echo "WASM files in packages/core/wasm:"
         ls -la packages/core/wasm
@@ -170,11 +167,8 @@ jobs:
         if ls *.out.wasm >/dev/null 2>&1; then cp -f *.out.wasm packages/core/wasm/; fi
         if ls *.out.wasm.map >/dev/null 2>&1; then cp -f *.out.wasm.map packages/core/wasm/; fi
         
-        # Ensure the exact filename the TS requires exists:
-        # musashi wrapper alias (copy instead of symlink for cross-platform stability)
-        if [ -f musashi-node.out.mjs ]; then
-          cp -f musashi-node.out.mjs packages/core/wasm/musashi-node-wrapper.mjs
-        fi
+        # The wrapper expects musashi-node.out.mjs to exist
+        # No need to overwrite musashi-node-wrapper.mjs as it's already in the repo
         
         echo "WASM files with Perfetto in packages/core/wasm:"
         ls -la packages/core/wasm
