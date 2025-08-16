@@ -1,13 +1,17 @@
 // Smoke test to confirm mock isolation works correctly
 import { jest } from '@jest/globals';
 
-// Mock the wrapper module before any imports
-await jest.unstable_mockModule('./musashi-wrapper.js', async () => {
-  return await import('./__mocks__/musashi-wrapper.ts');
-});
+let getModule: () => Promise<any>;
 
-// Import the wrapper after mocking (which should give us the mock)
-const { getModule } = await import('./musashi-wrapper.js');
+beforeAll(async () => {
+  // Mock the wrapper module before any imports
+  await jest.unstable_mockModule('./musashi-wrapper.js', async () => {
+    return await import('./__mocks__/musashi-wrapper.js');
+  });
+
+  // Import the wrapper after mocking (which should give us the mock)
+  ({ getModule } = await import('./musashi-wrapper.js'));
+});
 
 test('mock wrapper loads and instantiates', async () => {
   const w = await getModule();

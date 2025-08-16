@@ -91,9 +91,14 @@ jobs:
         echo "=== Test with Node directly ==="
         node -e "import('./packages/core/wasm/musashi-node-wrapper.mjs').then(m => console.log('Module loaded:', Object.keys(m))).catch(e => console.log('Failed to load:', e.message))"
     
-    - name: Run TypeScript tests
+    - name: Debug tests that will run (@m68k/core)
       run: |
-        npm test
+        node --version
+        npm --version
+        node --experimental-vm-modules ./node_modules/jest/bin/jest.js --projects packages/core --listTests
+    
+    - name: Run TypeScript tests (@m68k/core)
+      run: npm run test:core
     
     - name: TypeScript type checking
       run: |
@@ -191,11 +196,15 @@ jobs:
       run: |
         npm run build
     
-    - name: Run TypeScript tests with Perfetto
+    - name: Debug tests that will run with Perfetto (@m68k/core)
+      run: |
+        node --experimental-vm-modules ./node_modules/jest/bin/jest.js --projects packages/core --listTests
+    
+    - name: Run TypeScript tests with Perfetto (@m68k/core)
       run: |
         # Set environment variable to indicate Perfetto is available
         export PERFETTO_ENABLED=1
-        npm test
+        npm run test:core
     
     - name: Run TypeScript example
       run: |

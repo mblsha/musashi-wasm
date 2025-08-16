@@ -48,7 +48,10 @@
       ]
     },
     "moduleNameMapper": {
-      "^\\./types\\.js$": "<rootDir>/src/types.ts"
+      "^\\./__mocks__/musashi-wrapper\\.js$": "<rootDir>/src/__mocks__/musashi-wrapper.ts",
+      "^\\./types\\.js$": "<rootDir>/src/types.ts",
+      "^\\./musashi-wrapper\\.js$": "<rootDir>/src/musashi-wrapper.ts",
+      "^\\./index\\.js$": "<rootDir>/src/index.ts"
     },
     "roots": ["<rootDir>/src"],
     "testMatch": ["**/*.test.ts"]

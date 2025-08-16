@@ -1,15 +1,31 @@
 // Mock implementation of musashi-wrapper for testing
 
 export class MusashiWrapper {
-  private _memory: Uint8Array = new Uint8Array(2 * 1024 * 1024);
+  private _memory: Uint8Array;
   private _registers: number[] = new Array(32).fill(0);
   private _cyclesRun = 0;
   private _pcHooks = new Map<number, (addr: number) => boolean>();
   private _overrideHooks = new Map<number, (addr: number) => boolean>();
+  private _system: any = null;
+  private _ramBase = 0x100000;
+  private _ramSize = 0;
+
+  constructor() {
+    // Initialize memory to zeros
+    this._memory = new Uint8Array(2 * 1024 * 1024);
+    this._memory.fill(0);
+  }
 
   init(system: any, rom: Uint8Array, ram: Uint8Array) {
+    this._system = system;
+    // Set ROM at address 0
     this._memory.set(rom, 0x000000);
-    // RAM is handled by size in config, not passed directly anymore
+    // Store RAM size for later use
+    this._ramSize = ram.length;
+    // RAM area starts at _ramBase (0x100000), so clear that region
+    for (let i = 0; i < this._ramSize; i++) {
+      this._memory[this._ramBase + i] = 0;
+    }
     // Set initial PC and SP from reset vector
     this._registers[15] = this.read32BE(0);  // SP
     this._registers[16] = this.read32BE(4);  // PC
@@ -20,29 +36,49 @@ export class MusashiWrapper {
     this._registers[16] = this.read32BE(4);  // PC
   }
 
+  pulse_reset() {
+    // Alias for reset in mock
+    this.reset();
+  }
+
   execute(cycles: number): number {
-    // Simple mock: just increment PC and return cycles
-    const pc = this._registers[16];
+    // Simple mock: simulate executing instructions
+    let remainingCycles = cycles;
     
-    // Check for probe hooks
-    if (this._pcHooks.has(pc)) {
-      const hook = this._pcHooks.get(pc)!;
-      if (hook(pc)) {
-        // Hook requested stop
-        return cycles;
+    while (remainingCycles > 0) {
+      const pc = this._registers[16];
+      
+      // Call the system's PC hook handler if it's a hooked address
+      if (this._system && (this._pcHooks.has(pc) || this._overrideHooks.has(pc))) {
+        if (this._system._handlePCHook(pc)) {
+          // Override requested stop with RTS
+          return cycles - remainingCycles;
+        }
       }
+      
+      // Simulate instruction execution
+      this._registers[16] += 2;  // Advance PC by 2 (simple instruction)
+      remainingCycles -= 4;  // Each instruction takes some cycles
+      this._cyclesRun += 4;
+      
+      // Stop if we've executed enough cycles
+      if (remainingCycles <= 0) break;
     }
     
-    // Check for override hooks  
-    if (this._overrideHooks.has(pc)) {
-      const hook = this._overrideHooks.get(pc)!;
-      hook(pc);
-      // Override replaces instruction, simulate RTS
-      return cycles;
-    }
+    return cycles;
+  }
+
+  call(address: number): number {
+    // Mock implementation of subroutine call
+    const oldPc = this._registers[16];
+    this._registers[16] = address;
     
-    this._registers[16] += 2;
+    // Simulate subroutine execution (simplified)
+    const cycles = 50;  // Mock cycles for a subroutine
     this._cyclesRun += cycles;
+    
+    // Return to saved PC (simplified)
+    this._registers[16] = oldPc + 4;
     
     return cycles;
   }
@@ -56,6 +92,12 @@ export class MusashiWrapper {
   }
 
   read_memory(address: number, size: 1 | 2 | 4): number {
+    // Map RAM addresses to the correct location in our memory array
+    if (address >= this._ramBase && address < this._ramBase + this._ramSize) {
+      // RAM access - already mapped to the right location
+    }
+    // Otherwise use address directly (ROM area)
+    
     switch (size) {
       case 1:
         return this._memory[address] || 0;
@@ -66,7 +108,13 @@ export class MusashiWrapper {
     }
   }
 
-  write_memory(address: number, value: number, size: 1 | 2 | 4) {
+  write_memory(address: number, size: 1 | 2 | 4, value: number) {
+    // Map RAM addresses to the correct location in our memory array
+    if (address >= this._ramBase && address < this._ramBase + this._ramSize) {
+      // RAM access - already mapped to the right location
+    }
+    // Otherwise use address directly (ROM area)
+    
     switch (size) {
       case 1:
         this._memory[address] = value & 0xFF;
@@ -82,7 +130,11 @@ export class MusashiWrapper {
   }
 
   add_pc_hook_addr(addr: number) {
-    // Mock implementation
+    // Track that this address has a hook
+    // The actual callbacks are managed by the System class
+    if (!this._pcHooks.has(addr)) {
+      this._pcHooks.set(addr, () => false);
+    }
   }
 
   set_probe_hook(addr: number, hook: (addr: number) => boolean) {
@@ -118,6 +170,10 @@ export class MusashiWrapper {
   
   perfettoExportTrace(): Uint8Array | null {
     return null;
+  }
+
+  perfettoCleanupSlices() {
+    // No-op in mock
   }
 
   traceEnable(enable: boolean) {}
