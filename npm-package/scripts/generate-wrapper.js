@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Ensure directories exist
 const libDir = path.join(__dirname, '..', 'lib');
@@ -14,7 +18,7 @@ if (!fs.existsSync(distDir)) {
   fs.mkdirSync(distDir, { recursive: true });
 }
 
-// Generate CommonJS wrapper for standard build
+// Generate CommonJS wrapper for standard build (kept for completeness; not exported)
 const cjsWrapper = `const fs = require('fs');
 const path = require('path');
 
@@ -24,7 +28,7 @@ let modulePromise = null;
 function loadMusashi() {
   if (modulePromise) return modulePromise;
   
-  modulePromise = new Promise((resolve, reject) => {
+  modulePromise = new Promise(async (resolve, reject) => {
     try {
       const wasmPath = path.join(__dirname, '..', 'dist', 'musashi.wasm');
       const wasmBuffer = fs.readFileSync(wasmPath);
@@ -39,7 +43,8 @@ function loadMusashi() {
       };
       
       // Load the emscripten-generated module
-      const EmscriptenModule = require('../dist/musashi-loader.js');
+      const mod = require('../dist/musashi-loader.cjs');
+      const EmscriptenModule = (mod && (mod.default || mod));
       EmscriptenModule(moduleConfig);
     } catch (error) {
       reject(error);
@@ -158,23 +163,21 @@ let modulePromise = null;
 function loadMusashi() {
   if (modulePromise) return modulePromise;
   
-  modulePromise = new Promise((resolve, reject) => {
+  modulePromise = new Promise(async (resolve, reject) => {
     try {
       const wasmPath = path.join(__dirname, '..', 'dist', 'musashi.wasm');
       const wasmBuffer = fs.readFileSync(wasmPath);
       
-      // Dynamic import of the emscripten module
-      import('../dist/musashi-loader.js').then(EmscriptenModule => {
-        const moduleConfig = {
-          wasmBinary: wasmBuffer,
-          onRuntimeInitialized: function() {
-            Module = this;
-            resolve(this);
-          }
-        };
-        
-        EmscriptenModule.default(moduleConfig);
-      }).catch(reject);
+      // Dynamically import the ESM emscripten-generated module
+      const { default: EmscriptenModule } = await import('../dist/musashi-loader.mjs');
+      const moduleConfig = {
+        wasmBinary: wasmBuffer,
+        onRuntimeInitialized: function() {
+          Module = this;
+          resolve(this);
+        }
+      };
+      EmscriptenModule(moduleConfig);
     } catch (error) {
       reject(error);
     }
@@ -299,7 +302,7 @@ function loadMusashiPerfetto() {
         }
       };
       
-      const EmscriptenModule = require('../dist/musashi-perfetto-loader.js');
+      const EmscriptenModule = require('../dist/musashi-perfetto-loader.cjs');
       EmscriptenModule(moduleConfig);
     } catch (error) {
       reject(error);
@@ -459,10 +462,31 @@ module.exports.MusashiPerfetto = MusashiPerfetto;
 module.exports.default = MusashiPerfetto;
 `;
 
-// Write wrapper files
-fs.writeFileSync(path.join(libDir, 'index.js'), cjsWrapper);
+// Ensure expected Emscripten loader+wasm are present under dist/
+const rootDir = path.join(__dirname, '..');
+const altRootDir = path.join(__dirname, '..', '..');
+const nodeJsCandidates = [
+  path.join(rootDir, 'musashi-node.out.mjs'),
+  path.join(altRootDir, 'musashi-node.out.mjs')
+];
+const nodeWasmCandidates = [
+  path.join(rootDir, 'musashi-node.out.wasm'),
+  path.join(altRootDir, 'musashi-node.out.wasm')
+];
+const loaderOut = path.join(distDir, 'musashi-loader.mjs');
+const wasmOut = path.join(distDir, 'musashi.wasm');
+
+const nodeJsIn = nodeJsCandidates.find(p => fs.existsSync(p));
+const nodeWasmIn = nodeWasmCandidates.find(p => fs.existsSync(p));
+if (nodeJsIn) {
+  fs.copyFileSync(nodeJsIn, loaderOut);
+}
+if (nodeWasmIn) {
+  fs.copyFileSync(nodeWasmIn, wasmOut);
+}
+
+// Write wrapper files (ESM-only)
 fs.writeFileSync(path.join(libDir, 'index.mjs'), esmWrapper);
-fs.writeFileSync(path.join(libDir, 'perfetto.js'), perfettoCjsWrapper);
 
 // Generate a similar ESM version for perfetto
 const perfettoEsmWrapper = perfettoCjsWrapper

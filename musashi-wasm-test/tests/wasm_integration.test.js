@@ -1,8 +1,8 @@
-const path = require('path');
-const fs = require('fs');
+import path from 'path';
+import fs from 'fs';
 
 // Path to the WASM module, assuming it's in the parent directory
-const modulePath = path.resolve(__dirname, '../../musashi-node.out.js');
+const modulePath = path.resolve(__dirname, '../../musashi-node.out.mjs');
 
 // Pre-flight check to ensure the module exists before running tests.
 if (!fs.existsSync(modulePath)) {
@@ -17,26 +17,12 @@ if (!fs.existsSync(modulePath)) {
     console.error(`   - emmake make -j8 && emcc [options] (manual build)`);
     console.error(`\nFor detailed instructions, see the README.md file.`);
     console.error(`\n============================================\n`);
-    process.exit(1);
+process.exit(1);
 }
 
 // Load the factory function for the WASM module
 // Try to use the wrapper if it exists, otherwise load directly
-let createMusashiModule;
-try {
-    // Try the wrapper first (for local development)
-    createMusashiModule = require('../load-musashi.js');
-} catch (e) {
-    // Fallback to direct require (for CI or when wrapper doesn't exist)
-    try {
-        createMusashiModule = require(modulePath);
-    } catch (requireError) {
-        // If direct require fails due to ES6 syntax, we need to handle it
-        console.error('Failed to load module directly. Error:', requireError.message);
-        console.error('The module may have mixed CommonJS/ES6 exports.');
-        process.exit(1);
-    }
-}
+import createMusashiModule from '../load-musashi.js';
 
 // Constants for register access, from m68k.h
 const M68K_REG_D0 = 0;

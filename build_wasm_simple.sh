@@ -20,16 +20,16 @@ EXPORTED_RUNTIME_METHODS="HEAP8,HEAPU8,HEAP16,HEAPU16,HEAP32,HEAPU32,HEAPF32,HEA
 OBJECT_FILES="m68kcpu.o m68kops.o myfunc.o m68k_memory_bridge.o m68ktrace.o m68kdasm.o"
 
 # Common options
-EMCC_OPTIONS="-g3 -gsource-map --source-map-base http://localhost:8080/ ${OBJECT_FILES} -s EXPORTED_FUNCTIONS=[${EXPORTED_FUNCTIONS}] -s DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=[${DEFAULT_LIBRARY_FUNCS}] -s EXPORTED_RUNTIME_METHODS=[${EXPORTED_RUNTIME_METHODS}] -s ASSERTIONS=2 -s ALLOW_MEMORY_GROWTH -s ALLOW_TABLE_GROWTH=1 -s MODULARIZE=1 -s WASM_ASYNC_COMPILATION=1 -s WASM=1 -s WASM_BIGINT -s DISABLE_EXCEPTION_CATCHING=0 -Wl,--gc-sections"
+EMCC_OPTIONS="-g3 -gsource-map --source-map-base http://localhost:8080/ ${OBJECT_FILES} -s EXPORTED_FUNCTIONS=[${EXPORTED_FUNCTIONS}] -s DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=[${DEFAULT_LIBRARY_FUNCS}] -s EXPORTED_RUNTIME_METHODS=[${EXPORTED_RUNTIME_METHODS}] -s ASSERTIONS=2 -s ALLOW_MEMORY_GROWTH -s ALLOW_TABLE_GROWTH=1 -s MODULARIZE=1 -s EXPORT_ES6=1 -s WASM_ASYNC_COMPILATION=1 -s WASM=1 -s WASM_BIGINT -s DISABLE_EXCEPTION_CATCHING=0 -Wl,--gc-sections"
 
 # Build Node.js version
-echo "Building Node.js version..."
-emcc ${EMCC_OPTIONS} -s ENVIRONMENT=node -s EXPORT_NAME=createMusashi --post-js post.js -o musashi-node.out.js
-echo "Written to musashi-node.out.js"
+echo "Building Node.js version (ESM)..."
+emcc ${EMCC_OPTIONS} -s ENVIRONMENT=node -s EXPORT_NAME=createMusashi --post-js post.js -o musashi-node.out.mjs
+echo "Written to musashi-node.out.mjs"
 
 # Build Web version
-echo "Building Web version..."
-emcc ${EMCC_OPTIONS} -s ENVIRONMENT=web -s EXPORT_NAME=createMusashi --post-js post.js -o musashi.out.js
-echo "Written to musashi.out.js"
+echo "Building Web version (ESM)..."
+emcc ${EMCC_OPTIONS} -s ENVIRONMENT=web -s EXPORT_NAME=createMusashi --post-js post.js -o musashi.out.mjs
+echo "Written to musashi.out.mjs"
 
 echo "Build complete!"
