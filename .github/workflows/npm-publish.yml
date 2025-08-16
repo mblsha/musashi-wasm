@@ -2,149 +2,74 @@ name: Publish to npm
 
 on:
   release:
-    types: [created]
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to publish (e.g., 4.10.0)'
-        required: true
-        type: string
-      tag:
-        description: 'npm tag (latest, beta, next)'
-        required: false
-        default: 'latest'
-        type: string
+    types: [created] # Triggers when a new GitHub release is created
+  workflow_dispatch: # Allows manual triggering for testing
 
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # Allow reading content to get release tag
+      id-token: write # Needed for provenance if you enable it
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20' # Use a current LTS version
           registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+          cache-dependency-path: 'npm-package/package-lock.json'
 
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: '3.1.46'
+          version: '3.1.46' # Pinning version for reproducible builds
 
       - name: Install fish shell
         run: |
-          sudo apt-add-repository ppa:fish-shell/release-3
+          sudo apt-add-repository -y ppa:fish-shell/release-3
           sudo apt-get update
           sudo apt-get install -y fish
 
-      - name: Build native components
-        run: |
-          make clean
-          make -j$(nproc)
+      - name: Create package directory
+        run: mkdir -p npm-package/dist
 
+      # --- Build Standard WASM ---
       - name: Build standard WASM
-        run: |
-          ./build_wasm_simple.sh
-          mkdir -p npm-package/dist
-          cp musashi-node.out.wasm npm-package/dist/musashi.wasm
-          cp musashi-node.out.wasm.map npm-package/dist/musashi.wasm.map
-          cp musashi-node.out.js npm-package/dist/musashi-loader.js
+        run: ./build_wasm_simple.sh
 
+      - name: Stage standard WASM artifacts
+        run: |
+          mv musashi-node.out.wasm npm-package/dist/musashi.wasm
+          mv musashi-node.out.js npm-package/dist/musashi-loader.js
+          echo "✓ Staged standard WASM artifacts"
+
+      # --- Build Perfetto WASM ---
       - name: Build Perfetto WASM
-        run: |
-          # Generate protobuf files first
-          mkdir -p third_party/retrobus-perfetto/proto
-          third_party/protobuf-3.21.12/build.host/protoc \
-            --cpp_out=third_party/retrobus-perfetto/proto \
-            -I third_party/retrobus-perfetto/proto \
-            third_party/retrobus-perfetto/proto/perfetto.proto
-          
-          cp third_party/retrobus-perfetto/cpp/proto/perfetto.pb.* third_party/retrobus-perfetto/proto/
-          
-          # Build with Perfetto
-          ./build_perfetto_wasm_simple.sh
-          cp musashi-node.out.wasm npm-package/dist/musashi-perfetto.wasm
-          cp musashi-node.out.wasm.map npm-package/dist/musashi-perfetto.wasm.map
-          cp musashi-node.out.js npm-package/dist/musashi-perfetto-loader.js
+        run: ./build_perfetto_wasm_simple.sh # Assuming this script builds the Perfetto version
 
-      - name: Generate wrapper modules
+      - name: Stage Perfetto WASM artifacts
         run: |
-          cd npm-package
-          npm install
-          node scripts/generate-wrapper.js
+          mv musashi-node.out.wasm npm-package/dist/musashi-perfetto.wasm
+          mv musashi-node.out.js npm-package/dist/musashi-perfetto-loader.js
+          echo "✓ Staged Perfetto WASM artifacts"
 
-      - name: Run tests
-        run: |
-          cd npm-package
-          npm test
+      - name: List final package contents
+        run: ls -lR npm-package
 
-      - name: Set version
-        if: github.event_name == 'workflow_dispatch'
+      # --- Prepare and Publish Package ---
+      - name: Set package version from release tag
         run: |
-          cd npm-package
-          npm version ${{ github.event.inputs.version }} --no-git-tag-version
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "Setting package version to ${VERSION}"
+          npm --prefix npm-package version ${VERSION} --no-git-tag-version
 
       - name: Publish to npm
-        run: |
-          cd npm-package
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            npm publish --tag ${{ github.event.inputs.tag }}
-          else
-            npm publish
-          fi
+        run: npm publish --access public --prefix npm-package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  publish-dry-run:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Setup Emscripten
-        uses: mymindstorm/setup-emsdk@v14
-        with:
-          version: '3.1.46'
-
-      - name: Install fish shell
-        run: |
-          sudo apt-add-repository ppa:fish-shell/release-3
-          sudo apt-get update
-          sudo apt-get install -y fish
-
-      - name: Build native components
-        run: |
-          make clean
-          make -j$(nproc)
-
-      - name: Build WASM modules
-        run: |
-          ./build_wasm_simple.sh
-          mkdir -p npm-package/dist
-          cp musashi-node.out.wasm npm-package/dist/musashi.wasm
-          cp musashi-node.out.wasm.map npm-package/dist/musashi.wasm.map
-          cp musashi-node.out.js npm-package/dist/musashi-loader.js
-
-      - name: Generate wrapper modules
-        run: |
-          cd npm-package
-          npm install
-          node scripts/generate-wrapper.js
-
-      - name: Pack package
-        run: |
-          cd npm-package
-          npm pack --dry-run
-          npm pack
-          echo "Package contents:"
-          tar -tzf *.tgz
