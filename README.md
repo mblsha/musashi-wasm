@@ -50,6 +50,24 @@ ENABLE_PERFETTO=1 ./build.fish
 npm install
 npm run build
 npm test
+
+# Or use the comprehensive local development script
+./test_with_real_wasm.sh
+```
+
+### Local Development Script
+
+For complete local testing with real WASM artifacts:
+
+```bash
+# Full build and test pipeline
+./test_with_real_wasm.sh
+
+# With Perfetto tracing
+ENABLE_PERFETTO=1 ./test_with_real_wasm.sh
+
+# Skip WASM rebuild for faster iteration
+SKIP_WASM_BUILD=1 ./test_with_real_wasm.sh
 ```
 
 ## TypeScript Packages
