@@ -152,3 +152,6 @@ export class MusashiWrapper {
 export async function getModule(): Promise<MusashiWrapper> {
   return new MusashiWrapper();
 }
+
+// Also export default for compatibility
+export default { getModule, MusashiWrapper };
