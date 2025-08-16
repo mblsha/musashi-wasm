@@ -69,13 +69,13 @@ if [ "$ALL_GOOD" = true ]; then
   echo "========================================"
   echo "✅ SUCCESS: All expected targets built!"
   echo "========================================"
-  
+
   echo ""
   echo "Running quick smoke tests..."
   timeout 2s ./example_trace > /dev/null 2>&1 || true
   timeout 2s ./example_perfetto_trace > /dev/null 2>&1 || true
   echo "Smoke tests completed"
-  
+
   echo ""
   echo "Running ctest to verify tests pass..."
   ctest --output-on-failure -j8 || echo "Some tests failed - check output above"

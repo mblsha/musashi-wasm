@@ -1,5 +1,5 @@
-import type { System, SystemConfig, CpuRegisters, HookCallback, Tracer, TraceConfig, SymbolMap } from './types';
-import { MusashiWrapper, getModule } from './musashi-wrapper';
+import type { System, SystemConfig, CpuRegisters, HookCallback, Tracer, TraceConfig, SymbolMap } from './types.js';
+import { MusashiWrapper, getModule } from './musashi-wrapper.js';
 
 // Re-export types
 export type { System, SystemConfig, CpuRegisters, HookCallback, Tracer, TraceConfig, SymbolMap };

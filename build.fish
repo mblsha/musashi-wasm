@@ -1,5 +1,7 @@
 #!/usr/bin/env fish
-
+#
+# Purpose: Canonical WASM build (Node/Web ESM); toggle Perfetto via ENABLE_PERFETTO=1
+#
 # Note: Perfetto tracing can be enabled by setting ENABLE_PERFETTO=1 environment variable
 # Requires running ./build_protobuf_wasm.sh first to build protobuf and abseil dependencies
 
@@ -51,7 +53,7 @@ end
 # Now try the which commands (these should work after PATH is set)
 echo "Checking which commands..."
 which emcc     ^/dev/null; or echo "WARNING: which emcc failed, but direct path works"
-which em++     ^/dev/null; or echo "WARNING: which em++ failed, but should work via PATH" 
+which em++     ^/dev/null; or echo "WARNING: which em++ failed, but should work via PATH"
 which emmake   ^/dev/null; or echo "WARNING: which emmake failed, but should work via PATH"
 echo "emcc version:"
 emcc --version
@@ -216,6 +218,7 @@ set -l emcc_options \
 #  -s USE_OFFSET_CONVERTER=1 \
  # without this it didn't find the .wasm file?
  -s MODULARIZE=1 \
+ -s EXPORT_ES6=1 \
  # async is important, or we won't be able to download .wasm easily in observablehq.com
  -s WASM_ASYNC_COMPILATION=1 \
  # having separate .wasm allows for a source map to work
@@ -228,51 +231,51 @@ set -l emcc_options \
  -sDISABLE_EXCEPTION_CATCHING=0 \
  -Wl,--gc-sections
 
-# Add protobuf and abseil libraries if Perfetto is enabled  
+# Add protobuf and abseil libraries if Perfetto is enabled
 if test "$enable_perfetto" = "1"
     echo "==== PERFETTO LINKING SETUP ===="
-    
+
     # Fish treats *_PATH variables as lists, so set as a list (exported as colon-separated)
     set -gx PKG_CONFIG_PATH third_party/protobuf-wasm-install/lib/pkgconfig \
                             third_party/abseil-wasm-install/lib/pkgconfig
-    
+
     echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
-    
+
     # Verify protobuf pkg-config works
     echo "Testing pkg-config for protobuf..."
     pkg-config --exists protobuf; or die "protobuf.pc not found or invalid"
-    
+
     # Get protobuf linking flags and split them properly (CRITICAL for Fish)
     echo "Getting protobuf link flags..."
     set -l protobuf_libs (pkg-config --static --libs protobuf | string split -n ' ')
-    
+
     echo "protobuf libs (split):"
     for lib in $protobuf_libs
         echo "  $lib"
     end
-    
+
     # Add the properly split protobuf libraries to emcc options
     set emcc_options $emcc_options $protobuf_libs
-    
+
     echo "================================="
 end
 
 # Build Node.js version
-echo "==== BUILDING NODE.JS VERSION ===="
+echo "==== BUILDING NODE.JS VERSION (ESM) ===="
 run emcc \
  $emcc_options \
  -s ENVIRONMENT=node \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \
- -o musashi-node.out.js
-echo "Written to musashi-node.out.js"
+ -o musashi-node.out.mjs
+echo "Written to musashi-node.out.mjs"
 
-# Build Web version  
-echo "==== BUILDING WEB VERSION ===="
+# Build Web version
+echo "==== BUILDING WEB VERSION (ESM) ===="
 run emcc \
  $emcc_options \
  -s ENVIRONMENT=web \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \
- -o musashi.out.js
-echo "Written to musashi.out.js"
+ -o musashi.out.mjs
+echo "Written to musashi.out.mjs"

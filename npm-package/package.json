@@ -4,18 +4,21 @@
   "description": "WebAssembly port of the Musashi M68000 CPU emulator with optional Perfetto tracing support",
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "lib"
   ],
   "exports": {
     ".": {
-      "import": "./dist/musashi-loader.js",
-      "require": "./dist/musashi-loader.js"
+      "import": "./lib/index.mjs",
+      "types": "./lib/index.d.ts"
     },
     "./perfetto": {
-      "import": "./dist/musashi-perfetto-loader.js",
-      "require": "./dist/musashi-perfetto-loader.js"
+      "import": "./lib/perfetto.mjs",
+      "types": "./lib/perfetto.d.ts"
     }
   },
+  "types": "./lib/index.d.ts",
+  "main": "./lib/index.mjs",
   "keywords": [
     "m68k",
     "m68000",
@@ -37,4 +40,9 @@
     "url": "https://github.com/mblsha/Musashi/issues"
   },
   "homepage": "https://github.com/mblsha/Musashi#readme"
+  ,
+  "scripts": {
+    "build": "node ./scripts/generate-wrapper.js",
+    "prepare": "npm run build"
+  }
 }

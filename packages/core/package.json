@@ -2,19 +2,20 @@
   "name": "@m68k/core",
   "version": "1.0.0",
   "description": "M68k CPU emulator core with WebAssembly backend",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "import": "./dist/index.js"
     }
   },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "test": "jest",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' npx jest",
+    "test:ci": "NODE_OPTIONS='--experimental-vm-modules' npx jest --ci",
     "typecheck": "tsc --noEmit"
   },
   "files": [
@@ -30,8 +31,25 @@
     "typescript": "^5.3.3"
   },
   "jest": {
-    "preset": "ts-jest",
     "testEnvironment": "node",
+    "extensionsToTreatAsEsm": [".ts"],
+    "transform": {
+      "^.+\\.ts$": [
+        "ts-jest",
+        { 
+          "useESM": true,
+          "tsconfig": {
+            "target": "ES2022",
+            "module": "ES2022",
+            "moduleResolution": "bundler",
+            "allowImportingTsExtensions": true
+          }
+        }
+      ]
+    },
+    "moduleNameMapper": {
+      "^\\./types\\.js$": "<rootDir>/src/types.ts"
+    },
     "roots": ["<rootDir>/src"],
     "testMatch": ["**/*.test.ts"]
   }

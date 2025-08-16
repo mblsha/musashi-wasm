@@ -1,6 +1,5 @@
 #!/bin/bash
-# Build protobuf for WebAssembly using Emscripten
-# This script builds protobuf as a static library for use with Musashi WASM build
+# Purpose: Builds protobuf/abseil for Perfetto-enabled WASM (generates/libs for linking)
 
 set -e
 
