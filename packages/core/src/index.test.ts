@@ -1,7 +1,15 @@
-// Mock the musashi-wrapper module before importing anything else
-jest.mock('./musashi-wrapper.js', () => require('./__mocks__/musashi-wrapper.ts'));
+// ESM-compatible test file with proper mocking
+import { jest } from '@jest/globals';
+import type { System } from './types.js';
 
-import { createSystem, System } from './index';
+// Mock BEFORE importing the SUT using ESM-compatible API
+await jest.unstable_mockModule('./musashi-wrapper.js', async () => {
+  // Re-export the mock module's actual ESM exports
+  return await import('./__mocks__/musashi-wrapper.ts');
+});
+
+// Now import the SUT (after the mock is in place)
+const { createSystem } = await import('./index.js');
 
 describe('@m68k/core', () => {
   let system: System;
@@ -48,9 +56,6 @@ describe('@m68k/core', () => {
     // RTS
     rom[0x40E] = 0x4E;
     rom[0x40F] = 0x75;
-    
-    // Simple 1KB RAM
-    const ram = new Uint8Array(0x1000);
     
     system = await createSystem({
       rom,
