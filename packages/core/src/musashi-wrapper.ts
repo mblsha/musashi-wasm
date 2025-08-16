@@ -431,8 +431,8 @@ export async function getModule(): Promise<MusashiWrapper> {
   // Dynamic import based on environment
   let module: any;
   if (isNode) {
-    // For Node.js, use the wrapper which handles loading correctly
-    const createMusashiModule = require('../wasm/musashi-node-wrapper.js');
+    // For Node.js, use the ESM wrapper
+    const { default: createMusashiModule } = await import('../wasm/musashi-node-wrapper.mjs');
     module = await createMusashiModule();
     
     // Runtime validation to catch shape mismatches early
@@ -444,9 +444,9 @@ export async function getModule(): Promise<MusashiWrapper> {
       );
     }
   } else {
-    // For browser, import the web version
+    // For browser, import the web ESM version
     // Use variable specifier to avoid TS2307 compile-time resolution
-    const specifier = '../../../musashi.out.js';
+    const specifier = '../../../musashi.out.mjs';
     const mod = await import(/* webpackIgnore: true */ specifier);
     const moduleFactory = mod.default;
     module = await moduleFactory();

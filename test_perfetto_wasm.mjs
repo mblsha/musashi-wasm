@@ -5,25 +5,30 @@
  * This script tests that the Perfetto tracing functions are properly exported
  * and can be called without errors.
  * 
- * Handles multiple module formats (CommonJS factory, direct module, ESM)
+ * ESM module format for Node.js
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get __dirname equivalent in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Import the Node.js version of the WASM module
-const musashiPath = path.join(__dirname, 'musashi-node.out.js');
+const musashiPath = path.join(__dirname, 'musashi-node.out.mjs');
 
 if (!fs.existsSync(musashiPath)) {
-    console.error('ERROR: musashi-node.out.js not found. Build the WASM module first.');
+    console.error('ERROR: musashi-node.out.mjs not found. Build the WASM module first.');
     process.exit(1);
 }
 
 console.log('Loading Musashi WASM module with Perfetto support...');
 console.log(`Module path: ${musashiPath}`);
 
-// Import the module
-const loadedModule = require(musashiPath);
+// Dynamic import for the ESM module
+const loadedModule = await import(musashiPath);
 
 async function testPerfettoWasm() {
     try {
@@ -32,27 +37,21 @@ async function testPerfettoWasm() {
         // Determine module format and load appropriately
         console.log('Detecting module format...');
         console.log('Type of loaded module:', typeof loadedModule);
-        console.log('Is function?', typeof loadedModule === 'function');
-        console.log('Has createMusashi?', typeof loadedModule.createMusashi === 'function');
         console.log('Has default?', typeof loadedModule.default === 'function');
-        console.log('Has _m68k_init?', typeof loadedModule._m68k_init === 'function');
+        console.log('Has createMusashi?', typeof loadedModule.createMusashi === 'function');
         
-        if (typeof loadedModule === 'function') {
-            // Module is a factory function (Emscripten MODULARIZE=1)
-            console.log('Module format: Factory function (MODULARIZE=1)');
-            Module = await loadedModule();
-        } else if (typeof loadedModule.createMusashi === 'function') {
-            // Module has a named factory
-            console.log('Module format: Named factory (createMusashi)');
-            Module = await loadedModule.createMusashi();
-        } else if (typeof loadedModule.default === 'function') {
-            // ESM default export
+        if (typeof loadedModule.default === 'function') {
+            // ESM default export (most likely with EXPORT_ES6=1)
             console.log('Module format: ESM default export');
             Module = await loadedModule.default();
-        } else if (typeof loadedModule._m68k_init === 'function') {
-            // Direct module export (no factory)
-            console.log('Module format: Direct export (no factory)');
-            Module = loadedModule;
+        } else if (typeof loadedModule.createMusashi === 'function') {
+            // Named export
+            console.log('Module format: Named export (createMusashi)');
+            Module = await loadedModule.createMusashi();
+        } else if (typeof loadedModule === 'function') {
+            // Module itself is a factory function
+            console.log('Module format: Factory function');
+            Module = await loadedModule();
         } else {
             // Unknown format - list what we see
             console.error('Unknown module format. Available properties:');
