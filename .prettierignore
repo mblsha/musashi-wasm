@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+build_minimal/
+
+# Generated files
+m68kops.c
+m68kops.h
+
+# WASM outputs
+*.wasm
+*.js
+*.mjs
+*.map
+
+# Third party
+third_party/
+
+# Test artifacts
+test-results.xml
+*.perfetto-trace
+
+# Documentation (preserve existing formatting)
+*.md
