@@ -242,10 +242,10 @@ jobs:
     - name: Test Perfetto WASM functionality
       run: |
         # Make test script executable
-        chmod +x test_perfetto_wasm.js
+        chmod +x test_perfetto_wasm.mjs
         
         # Run the Perfetto functionality test
-        node test_perfetto_wasm.js
+        node test_perfetto_wasm.mjs
         
     - name: Run Node.js Integration Tests (Perfetto build)
       run: |
