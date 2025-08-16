@@ -82,6 +82,15 @@ jobs:
       run: |
         npm run build
     
+    - name: Debug - Check file structure
+      run: |
+        echo "=== packages/core/wasm contents ==="
+        ls -la packages/core/wasm/ || echo "Directory not found"
+        echo "=== Check if mock exists ==="
+        ls -la packages/core/src/__mocks__/ || echo "Mock directory not found"
+        echo "=== Test with Node directly ==="
+        node -e "import('./packages/core/wasm/musashi-node-wrapper.mjs').then(m => console.log('Module loaded:', Object.keys(m))).catch(e => console.log('Failed to load:', e.message))"
+    
     - name: Run TypeScript tests
       run: |
         npm test
