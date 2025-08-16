@@ -4,11 +4,12 @@ export class MusashiWrapper {
   private _memory: Uint8Array = new Uint8Array(2 * 1024 * 1024);
   private _registers: number[] = new Array(32).fill(0);
   private _cyclesRun = 0;
-  private _pcHook: ((addr: number) => boolean) | null = null;
+  private _pcHooks = new Map<number, (addr: number) => boolean>();
+  private _overrideHooks = new Map<number, (addr: number) => boolean>();
 
   init(system: any, rom: Uint8Array, ram: Uint8Array) {
     this._memory.set(rom, 0x000000);
-    this._memory.set(ram, 0x100000);
+    // RAM is handled by size in config, not passed directly anymore
     // Set initial PC and SP from reset vector
     this._registers[15] = this.read32BE(0);  // SP
     this._registers[16] = this.read32BE(4);  // PC
@@ -21,13 +22,27 @@ export class MusashiWrapper {
 
   execute(cycles: number): number {
     // Simple mock: just increment PC and return cycles
+    const pc = this._registers[16];
+    
+    // Check for probe hooks
+    if (this._pcHooks.has(pc)) {
+      const hook = this._pcHooks.get(pc)!;
+      if (hook(pc)) {
+        // Hook requested stop
+        return cycles;
+      }
+    }
+    
+    // Check for override hooks  
+    if (this._overrideHooks.has(pc)) {
+      const hook = this._overrideHooks.get(pc)!;
+      hook(pc);
+      // Override replaces instruction, simulate RTS
+      return cycles;
+    }
+    
     this._registers[16] += 2;
     this._cyclesRun += cycles;
-    
-    // Call PC hook if set
-    if (this._pcHook) {
-      this._pcHook(this._registers[16]);
-    }
     
     return cycles;
   }
@@ -70,8 +85,20 @@ export class MusashiWrapper {
     // Mock implementation
   }
 
-  set_pc_hook(hook: (addr: number) => boolean) {
-    this._pcHook = hook;
+  set_probe_hook(addr: number, hook: (addr: number) => boolean) {
+    this._pcHooks.set(addr, hook);
+  }
+
+  remove_probe_hook(addr: number) {
+    this._pcHooks.delete(addr);
+  }
+
+  set_override_hook(addr: number, hook: (addr: number) => boolean) {
+    this._overrideHooks.set(addr, hook);
+  }
+
+  remove_override_hook(addr: number) {
+    this._overrideHooks.delete(addr);
   }
 
   // Perfetto mock methods
@@ -103,7 +130,8 @@ export class MusashiWrapper {
     this._memory.fill(0);
     this._registers.fill(0);
     this._cyclesRun = 0;
-    this._pcHook = null;
+    this._pcHooks.clear();
+    this._overrideHooks.clear();
   }
 
   private read32BE(address: number): number {
