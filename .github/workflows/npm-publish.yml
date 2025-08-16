@@ -81,19 +81,19 @@ jobs:
           set -euo pipefail
           mkdir -p npm-package/dist
 
-          # Stage default build from wasm-modules (Node variant)
-          echo "Staging standard WASM build..."
+          # Stage default build from wasm-modules (Node variant, ESM)
+          echo "Staging standard WASM build (ESM)..."
           cp ci-artifacts/wasm-modules/musashi-node.out.wasm npm-package/dist/musashi.wasm
-          cp ci-artifacts/wasm-modules/musashi-node.out.js   npm-package/dist/musashi-loader.js
+          cp ci-artifacts/wasm-modules/musashi-node.out.mjs  npm-package/dist/musashi-loader.mjs
 
-          # Stage Perfetto build from wasm-perfetto-modules (Node variant)
-          echo "Staging Perfetto WASM build..."
+          # Stage Perfetto build from wasm-perfetto-modules (Node variant, ESM)
+          echo "Staging Perfetto WASM build (ESM)..."
           cp ci-artifacts/wasm-perfetto-modules/musashi-node.out.wasm npm-package/dist/musashi-perfetto.wasm
-          cp ci-artifacts/wasm-perfetto-modules/musashi-node.out.js   npm-package/dist/musashi-perfetto-loader.js
+          cp ci-artifacts/wasm-perfetto-modules/musashi-node.out.mjs  npm-package/dist/musashi-perfetto-loader.mjs
 
           # Verify all files are present
           echo "Verifying staged files..."
-          for file in musashi.wasm musashi-loader.js musashi-perfetto.wasm musashi-perfetto-loader.js; do
+          for file in musashi.wasm musashi-loader.mjs musashi-perfetto.wasm musashi-perfetto-loader.mjs; do
             if [ ! -f "npm-package/dist/$file" ]; then
               echo "ERROR: Missing required file: $file"
               exit 1
@@ -130,22 +130,17 @@ jobs:
             "type": "module",
             "exports": {
               ".": {
-                "import": "./index.js",
-                "require": "./index.cjs"
+                "import": "./index.mjs"
               },
               "./perf": {
-                "import": "./perf.js",
-                "require": "./perf.cjs"
+                "import": "./perf.mjs"
               }
             },
-            "main": "./index.cjs",
-            "module": "./index.js",
+            "main": "./index.mjs",
             "files": [
               "dist/*",
-              "index.js",
-              "index.cjs",
-              "perf.js",
-              "perf.cjs",
+              "index.mjs",
+              "perf.mjs",
               "README.md",
               "LICENSE"
             ],
@@ -157,9 +152,9 @@ jobs:
           JSON
 
           # ESM wrapper for standard build
-          cat > npm-package/index.js <<'JS'
+          cat > npm-package/index.mjs <<'JS'
           import { fileURLToPath } from "url";
-          import createModule from "./dist/musashi-loader.js";
+          import createModule from "./dist/musashi-loader.mjs";
           
           export default function init(options = {}) {
             const isNode = typeof process !== "undefined" && !!process.versions?.node;
@@ -171,9 +166,9 @@ jobs:
           JS
 
           # ESM wrapper for Perfetto build
-          cat > npm-package/perf.js <<'JS'
+          cat > npm-package/perf.mjs <<'JS'
           import { fileURLToPath } from "url";
-          import createModule from "./dist/musashi-perfetto-loader.js";
+          import createModule from "./dist/musashi-perfetto-loader.mjs";
           
           export default function init(options = {}) {
             const isNode = typeof process !== "undefined" && !!process.versions?.node;
@@ -183,30 +178,6 @@ jobs:
             return createModule({ locateFile, ...options });
           }
           JS
-
-          # CJS wrapper for standard build
-          cat > npm-package/index.cjs <<'CJS'
-          const path = require("path");
-          const createModule = require("./dist/musashi-loader.js");
-          
-          module.exports = function init(options = {}) {
-            const wasmPath = path.join(__dirname, "dist", "musashi.wasm");
-            const locateFile = (p) => p.endsWith(".wasm") ? wasmPath : p;
-            return createModule({ locateFile, ...options });
-          };
-          CJS
-
-          # CJS wrapper for Perfetto build
-          cat > npm-package/perf.cjs <<'CJS'
-          const path = require("path");
-          const createModule = require("./dist/musashi-perfetto-loader.js");
-          
-          module.exports = function init(options = {}) {
-            const wasmPath = path.join(__dirname, "dist", "musashi-perfetto.wasm");
-            const locateFile = (p) => p.endsWith(".wasm") ? wasmPath : p;
-            return createModule({ locateFile, ...options });
-          };
-          CJS
 
           # Copy documentation files if present
           [ -f README.md ] && cp README.md npm-package/ || true

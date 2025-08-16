@@ -216,6 +216,7 @@ set -l emcc_options \
 #  -s USE_OFFSET_CONVERTER=1 \
  # without this it didn't find the .wasm file?
  -s MODULARIZE=1 \
+ -s EXPORT_ES6=1 \
  # async is important, or we won't be able to download .wasm easily in observablehq.com
  -s WASM_ASYNC_COMPILATION=1 \
  # having separate .wasm allows for a source map to work
@@ -258,21 +259,21 @@ if test "$enable_perfetto" = "1"
 end
 
 # Build Node.js version
-echo "==== BUILDING NODE.JS VERSION ===="
+echo "==== BUILDING NODE.JS VERSION (ESM) ===="
 run emcc \
  $emcc_options \
  -s ENVIRONMENT=node \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \
- -o musashi-node.out.js
-echo "Written to musashi-node.out.js"
+ -o musashi-node.out.mjs
+echo "Written to musashi-node.out.mjs"
 
 # Build Web version  
-echo "==== BUILDING WEB VERSION ===="
+echo "==== BUILDING WEB VERSION (ESM) ===="
 run emcc \
  $emcc_options \
  -s ENVIRONMENT=web \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \
- -o musashi.out.js
-echo "Written to musashi.out.js"
+ -o musashi.out.mjs
+echo "Written to musashi.out.mjs"

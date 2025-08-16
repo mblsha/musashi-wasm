@@ -52,10 +52,10 @@ jobs:
         
     - name: Verify WASM outputs
       run: |
-        # Check that WebAssembly modules were created
-        test -f musashi.out.js
+        # Check that WebAssembly modules were created (ESM)
+        test -f musashi.out.mjs
         test -f musashi.out.wasm
-        test -f musashi-node.out.js
+        test -f musashi-node.out.mjs
         test -f musashi-node.out.wasm
         
         # Check file sizes are reasonable
@@ -75,7 +75,7 @@ jobs:
         echo "Checking for core M68k function exports..."
         for func in m68k_init m68k_execute m68k_get_reg m68k_set_reg \
                     m68k_disassemble; do
-          if grep -q "_${func}" musashi.out.js; then
+          if grep -q "_${func}" musashi.out.mjs; then
             echo "✓ ${func} exported"
           else
             echo "✗ ${func} NOT exported"
@@ -153,9 +153,9 @@ jobs:
       with:
         name: wasm-modules
         path: |
-          musashi.out.js
+          musashi.out.mjs
           musashi.out.wasm
-          musashi-node.out.js
+          musashi-node.out.mjs
           musashi-node.out.wasm
         retention-days: 7
 
@@ -209,10 +209,10 @@ jobs:
         
     - name: Verify Perfetto WASM outputs
       run: |
-        # Check that WebAssembly modules were created
-        test -f musashi.out.js
+        # Check that WebAssembly modules were created (ESM)
+        test -f musashi.out.mjs
         test -f musashi.out.wasm
-        test -f musashi-node.out.js
+        test -f musashi-node.out.mjs
         test -f musashi-node.out.wasm
         
         # Check file sizes (should be larger with Perfetto)
@@ -231,7 +231,7 @@ jobs:
                     m68k_perfetto_enable_memory m68k_perfetto_enable_instructions \
                     m68k_perfetto_export_trace m68k_perfetto_is_initialized \
                     m68k_perfetto_save_trace m68k_perfetto_free_trace_data; do
-          if grep -q "_${func}" musashi.out.js; then
+          if grep -q "_${func}" musashi.out.mjs; then
             echo "✓ ${func} exported"
           else
             echo "✗ ${func} NOT exported"
@@ -331,8 +331,8 @@ jobs:
       with:
         name: wasm-perfetto-modules
         path: |
-          musashi.out.js
+          musashi.out.mjs
           musashi.out.wasm
-          musashi-node.out.js
+          musashi-node.out.mjs
           musashi-node.out.wasm
         retention-days: 7
