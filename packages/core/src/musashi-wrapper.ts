@@ -432,6 +432,7 @@ export async function getModule(): Promise<MusashiWrapper> {
   let module: any;
   if (isNode) {
     // For Node.js, use the ESM wrapper
+    // @ts-ignore - Dynamic import of .mjs file
     const { default: createMusashiModule } = await import('../wasm/musashi-node-wrapper.mjs');
     module = await createMusashiModule();
     
@@ -447,6 +448,7 @@ export async function getModule(): Promise<MusashiWrapper> {
     // For browser, import the web ESM version
     // Use variable specifier to avoid TS2307 compile-time resolution
     const specifier = '../../../musashi.out.mjs';
+    // @ts-ignore - Dynamic import of .mjs file
     const mod = await import(/* webpackIgnore: true */ specifier);
     const moduleFactory = mod.default;
     module = await moduleFactory();
