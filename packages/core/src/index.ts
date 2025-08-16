@@ -1,17 +1,48 @@
-import type { System, SystemConfig, CpuRegisters, HookCallback, Tracer, TraceConfig, SymbolMap } from './types.js';
+import type {
+  System,
+  SystemConfig,
+  CpuRegisters,
+  HookCallback,
+  Tracer,
+  TraceConfig,
+  SymbolMap,
+} from './types.js';
 import { MusashiWrapper, getModule } from './musashi-wrapper.js';
 
 // Re-export types
-export type { System, SystemConfig, CpuRegisters, HookCallback, Tracer, TraceConfig, SymbolMap };
+export type {
+  System,
+  SystemConfig,
+  CpuRegisters,
+  HookCallback,
+  Tracer,
+  TraceConfig,
+  SymbolMap,
+};
 
 // --- Private Implementation ---
 
 // A map from register names to their numeric index in Musashi.
 const REGISTER_MAP: { [K in keyof CpuRegisters]: number } = {
-  d0: 0,  d1: 1,  d2: 2,  d3: 3,  d4: 4,  d5: 5,  d6: 6,  d7: 7,
-  a0: 8,  a1: 9,  a2: 10, a3: 11, a4: 12, a5: 13, a6: 14,
+  d0: 0,
+  d1: 1,
+  d2: 2,
+  d3: 3,
+  d4: 4,
+  d5: 5,
+  d6: 6,
+  d7: 7,
+  a0: 8,
+  a1: 9,
+  a2: 10,
+  a3: 11,
+  a4: 12,
+  a5: 13,
+  a6: 14,
   sp: 15, // a7
-  pc: 16, sr: 17, ppc: 19
+  pc: 16,
+  sr: 17,
+  ppc: 19,
 };
 
 class TracerImpl implements Tracer {
@@ -28,7 +59,9 @@ class TracerImpl implements Tracer {
 
   start(config: TraceConfig = {}): void {
     if (!this.isAvailable()) {
-      throw new Error('Perfetto tracing is not available in this build of the m68k core.');
+      throw new Error(
+        'Perfetto tracing is not available in this build of the m68k core.'
+      );
     }
     if (this._active) {
       throw new Error('A tracing session is already active.');
@@ -37,7 +70,7 @@ class TracerImpl implements Tracer {
     if (this._musashi.perfettoInit('m68k-ts') !== 0) {
       throw new Error('Failed to initialize Perfetto tracing session.');
     }
-    
+
     // Enable the underlying m68ktrace framework which Perfetto uses
     this._musashi.traceEnable(true);
 
@@ -70,7 +103,7 @@ class TracerImpl implements Tracer {
 
     return Promise.resolve(traceData);
   }
-  
+
   registerFunctionNames(symbols: SymbolMap): void {
     if (!this.isAvailable()) return;
     for (const address in symbols) {

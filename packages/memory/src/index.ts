@@ -12,7 +12,7 @@ export class MemoryRegion<T> {
     private readonly system: System,
     private readonly address: number,
     private readonly size: number,
-    private readonly parser: Parser<T>,
+    private readonly parser: Parser<T>
   ) {}
 
   /** Reads the memory region and returns the parsed structure. */
@@ -24,7 +24,9 @@ export class MemoryRegion<T> {
   /** Writes raw bytes to the memory region. */
   public setBytes(data: Uint8Array): void {
     if (data.length !== this.size) {
-      throw new Error(`Data size (${data.length}) does not match region size (${this.size})`);
+      throw new Error(
+        `Data size (${data.length}) does not match region size (${this.size})`
+      );
     }
     this.system.writeBytes(this.address, data);
   }
@@ -39,7 +41,7 @@ export class MemoryArray<T> {
     private readonly system: System,
     private readonly baseAddress: number,
     private readonly stride: number, // The size of each element in bytes.
-    private readonly parser: Parser<T>,
+    private readonly parser: Parser<T>
   ) {}
 
   /** Reads and parses the element at the given index. */
@@ -52,7 +54,9 @@ export class MemoryArray<T> {
   /** Writes raw bytes to the element at the given index. */
   public setAt(index: number, data: Uint8Array): void {
     if (data.length !== this.stride) {
-      throw new Error(`Data size (${data.length}) does not match stride (${this.stride})`);
+      throw new Error(
+        `Data size (${data.length}) does not match stride (${this.stride})`
+      );
     }
     const address = this.baseAddress + index * this.stride;
     this.system.writeBytes(address, data);
@@ -78,11 +82,12 @@ export class DataParser {
   /** Reads a big-endian 32-bit unsigned integer. */
   static readUint32BE(data: Uint8Array, offset: number = 0): number {
     return (
-      (data[offset] << 24) |
-      (data[offset + 1] << 16) |
-      (data[offset + 2] << 8) |
-      data[offset + 3]
-    ) >>> 0; // Ensure unsigned
+      ((data[offset] << 24) |
+        (data[offset + 1] << 16) |
+        (data[offset + 2] << 8) |
+        data[offset + 3]) >>>
+      0
+    ); // Ensure unsigned
   }
 
   /** Reads a big-endian 16-bit signed integer. */
@@ -97,27 +102,42 @@ export class DataParser {
       (data[offset] << 24) |
       (data[offset + 1] << 16) |
       (data[offset + 2] << 8) |
-      data[offset + 3]
-    ) | 0; // Ensure signed
+      data[offset + 3] |
+      0
+    ); // Ensure signed
   }
 
   /** Writes a big-endian 16-bit unsigned integer. */
-  static writeUint16BE(data: Uint8Array, value: number, offset: number = 0): void {
-    data[offset] = (value >> 8) & 0xFF;
-    data[offset + 1] = value & 0xFF;
+  static writeUint16BE(
+    data: Uint8Array,
+    value: number,
+    offset: number = 0
+  ): void {
+    data[offset] = (value >> 8) & 0xff;
+    data[offset + 1] = value & 0xff;
   }
 
   /** Writes a big-endian 32-bit unsigned integer. */
-  static writeUint32BE(data: Uint8Array, value: number, offset: number = 0): void {
-    data[offset] = (value >> 24) & 0xFF;
-    data[offset + 1] = (value >> 16) & 0xFF;
-    data[offset + 2] = (value >> 8) & 0xFF;
-    data[offset + 3] = value & 0xFF;
+  static writeUint32BE(
+    data: Uint8Array,
+    value: number,
+    offset: number = 0
+  ): void {
+    data[offset] = (value >> 24) & 0xff;
+    data[offset + 1] = (value >> 16) & 0xff;
+    data[offset + 2] = (value >> 8) & 0xff;
+    data[offset + 3] = value & 0xff;
   }
 
   /** Reads a null-terminated ASCII string. */
-  static readCString(data: Uint8Array, offset: number = 0, maxLength?: number): string {
-    const end = maxLength ? Math.min(offset + maxLength, data.length) : data.length;
+  static readCString(
+    data: Uint8Array,
+    offset: number = 0,
+    maxLength?: number
+  ): string {
+    const end = maxLength
+      ? Math.min(offset + maxLength, data.length)
+      : data.length;
     let result = '';
     for (let i = offset; i < end; i++) {
       if (data[i] === 0) break;
@@ -127,8 +147,15 @@ export class DataParser {
   }
 
   /** Writes a null-terminated ASCII string. */
-  static writeCString(data: Uint8Array, value: string, offset: number = 0, maxLength?: number): void {
-    const end = maxLength ? Math.min(offset + maxLength - 1, data.length - 1) : data.length - 1;
+  static writeCString(
+    data: Uint8Array,
+    value: string,
+    offset: number = 0,
+    maxLength?: number
+  ): void {
+    const end = maxLength
+      ? Math.min(offset + maxLength - 1, data.length - 1)
+      : data.length - 1;
     let i = offset;
     for (; i < end && i - offset < value.length; i++) {
       data[i] = value.charCodeAt(i - offset);
