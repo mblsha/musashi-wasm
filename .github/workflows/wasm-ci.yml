@@ -3,6 +3,8 @@ name: WebAssembly CI
 on:
   push:
     branches: [ main, master, wasm ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main, master, wasm ]
   workflow_dispatch:

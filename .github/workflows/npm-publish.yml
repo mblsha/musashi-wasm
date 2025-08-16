@@ -1,4 +1,4 @@
-name: Publish to npm
+name: Publish to npm (reuse CI artifacts)
 
 on:
   release:
@@ -6,77 +6,105 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-publish:
+  publish:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+      id-token: write   # provenance for npm
+      actions: read     # allow reading other runs/artifacts
+    env:
+      GH_TOKEN: ${{ github.token }}   # for gh CLI
 
     steps:
-      - name: Checkout repository at release tag
+      - name: Checkout repo at release tag
         uses: actions/checkout@v4
         with:
           submodules: recursive
           ref: ${{ github.event.release.tag_name }}
+
+      - name: Resolve CI run that built this tag
+        id: find_run
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          # Commit SHA pointed to by the tag we checked out:
+          COMMIT="$(git rev-parse HEAD)"
+          echo "Tag: $TAG"
+          echo "Commit: $COMMIT"
+
+          # Find a successful run of the 'WebAssembly CI' workflow for this commit
+          # Limit to a reasonable window; adjust --limit if you have many runs.
+          gh run list --workflow "WebAssembly CI" --json databaseId,headSha,conclusion,event --limit 50 > runs.json
+          RUN_ID=$(jq -r --arg sha "$COMMIT" '.[] | select(.headSha==$sha and .conclusion=="success") | .databaseId' runs.json | head -n1)
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "No successful 'WebAssembly CI' run found for commit $COMMIT"
+            echo "Make sure WebAssembly CI runs on tags (v*) and artifacts are retained."
+            exit 1
+          fi
+          echo "Found successful CI run: $RUN_ID"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download CI artifacts for this run
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts
+          echo "Downloading artifacts from run ${{ steps.find_run.outputs.run_id }}..."
+          
+          # Download standard WASM build artifacts
+          gh run download "${{ steps.find_run.outputs.run_id }}" --name wasm-modules --dir ci-artifacts/wasm-modules || { 
+            echo "ERROR: Missing 'wasm-modules' artifact"
+            echo "This usually means the WebAssembly CI workflow didn't complete successfully"
+            exit 1
+          }
+          
+          # Download Perfetto WASM build artifacts
+          gh run download "${{ steps.find_run.outputs.run_id }}" --name wasm-perfetto-modules --dir ci-artifacts/wasm-perfetto-modules || { 
+            echo "ERROR: Missing 'wasm-perfetto-modules' artifact"
+            echo "This usually means the Perfetto build in WebAssembly CI didn't complete successfully"
+            exit 1
+          }
+          
+          echo "Downloaded artifacts:"
+          ls -lR ci-artifacts
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-          # no cache: avoid missing lockfile issues
 
-      - name: Setup Emscripten
-        uses: mymindstorm/setup-emsdk@v14
-        with:
-          version: '4.0.12'
-
-      - name: Install fish shell
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y fish
-
-      - name: Create package directory
-        run: mkdir -p npm-package/dist
-
-      # --- Build Standard WASM ---
-      - name: Build standard WASM
-        run: ./build_wasm_simple.sh
-
-      - name: Stage standard WASM artifacts
-        run: |
-          mv musashi-node.out.wasm npm-package/dist/musashi.wasm
-          mv musashi-node.out.js   npm-package/dist/musashi-loader.js
-
-      # --- Build Perfetto prerequisites ---
-      - name: Build protobuf & abseil for Perfetto
+      - name: Prepare npm package from CI artifacts
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x build_protobuf_wasm.sh build_perfetto_wasm_simple.sh
-          ./build_protobuf_wasm.sh
-          # Sanity checks
-          test -f third_party/protobuf-wasm-install/lib/libprotobuf.a
-          ls -1 third_party/abseil-wasm-install/lib/libabsl_*.a | head -n1
-          test -f third_party/retrobus-perfetto/cpp/proto/perfetto.pb.cc
-          test -f third_party/retrobus-perfetto/cpp/proto/perfetto.pb.h
+          mkdir -p npm-package/dist
 
-      # --- Build Perfetto WASM ---
-      - name: Build Perfetto WASM
-        run: ./build_perfetto_wasm_simple.sh
+          # Stage default build from wasm-modules (Node variant)
+          echo "Staging standard WASM build..."
+          cp ci-artifacts/wasm-modules/musashi-node.out.wasm npm-package/dist/musashi.wasm
+          cp ci-artifacts/wasm-modules/musashi-node.out.js   npm-package/dist/musashi-loader.js
 
-      - name: Stage Perfetto WASM artifacts
-        run: |
-          mv musashi-node.out.wasm npm-package/dist/musashi-perfetto.wasm
-          mv musashi-node.out.js   npm-package/dist/musashi-perfetto-loader.js
+          # Stage Perfetto build from wasm-perfetto-modules (Node variant)
+          echo "Staging Perfetto WASM build..."
+          cp ci-artifacts/wasm-perfetto-modules/musashi-node.out.wasm npm-package/dist/musashi-perfetto.wasm
+          cp ci-artifacts/wasm-perfetto-modules/musashi-node.out.js   npm-package/dist/musashi-perfetto-loader.js
 
-      # --- Generate package.json and entry wrappers (ESM + CJS) ---
-      - name: Generate package manifest and wrappers
-        shell: bash
-        run: |
-          set -euo pipefail
+          # Verify all files are present
+          echo "Verifying staged files..."
+          for file in musashi.wasm musashi-loader.js musashi-perfetto.wasm musashi-perfetto-loader.js; do
+            if [ ! -f "npm-package/dist/$file" ]; then
+              echo "ERROR: Missing required file: $file"
+              exit 1
+            fi
+            echo "✓ $file ($(stat -c%s "npm-package/dist/$file") bytes)"
+          done
+
+          # Generate manifest & wrappers (ESM + CJS)
           VERSION_RAW='${{ github.event.release.tag_name }}'
           VERSION="${VERSION_RAW#v}"
+          echo "Package version: $VERSION"
 
           cat > npm-package/package.json <<'JSON'
           {
@@ -84,6 +112,21 @@ jobs:
             "version": "0.0.0",
             "description": "M68k Musashi WebAssembly (default and Perfetto profiling builds)",
             "license": "MIT",
+            "author": "mblsha",
+            "repository": {
+              "type": "git",
+              "url": "git+https://github.com/mblsha/musashi-wasm.git"
+            },
+            "keywords": [
+              "m68k",
+              "68000",
+              "motorola",
+              "emulator",
+              "wasm",
+              "webassembly",
+              "perfetto",
+              "tracing"
+            ],
             "type": "module",
             "exports": {
               ".": {
@@ -113,10 +156,11 @@ jobs:
           }
           JSON
 
-          # ESM wrappers (use fileURLToPath for Node ESM; href for web/bundlers)
+          # ESM wrapper for standard build
           cat > npm-package/index.js <<'JS'
           import { fileURLToPath } from "url";
           import createModule from "./dist/musashi-loader.js";
+          
           export default function init(options = {}) {
             const isNode = typeof process !== "undefined" && !!process.versions?.node;
             const wasmUrl = new URL("./dist/musashi.wasm", import.meta.url);
@@ -126,9 +170,11 @@ jobs:
           }
           JS
 
+          # ESM wrapper for Perfetto build
           cat > npm-package/perf.js <<'JS'
           import { fileURLToPath } from "url";
           import createModule from "./dist/musashi-perfetto-loader.js";
+          
           export default function init(options = {}) {
             const isNode = typeof process !== "undefined" && !!process.versions?.node;
             const wasmUrl = new URL("./dist/musashi-perfetto.wasm", import.meta.url);
@@ -138,10 +184,11 @@ jobs:
           }
           JS
 
-          # CJS wrappers
+          # CJS wrapper for standard build
           cat > npm-package/index.cjs <<'CJS'
           const path = require("path");
           const createModule = require("./dist/musashi-loader.js");
+          
           module.exports = function init(options = {}) {
             const wasmPath = path.join(__dirname, "dist", "musashi.wasm");
             const locateFile = (p) => p.endsWith(".wasm") ? wasmPath : p;
@@ -149,9 +196,11 @@ jobs:
           };
           CJS
 
+          # CJS wrapper for Perfetto build
           cat > npm-package/perf.cjs <<'CJS'
           const path = require("path");
           const createModule = require("./dist/musashi-perfetto-loader.js");
+          
           module.exports = function init(options = {}) {
             const wasmPath = path.join(__dirname, "dist", "musashi-perfetto.wasm");
             const locateFile = (p) => p.endsWith(".wasm") ? wasmPath : p;
@@ -159,18 +208,28 @@ jobs:
           };
           CJS
 
-          # Copy docs if present
+          # Copy documentation files if present
           [ -f README.md ] && cp README.md npm-package/ || true
           [ -f LICENSE ]   && cp LICENSE   npm-package/ || true
 
-          # Stamp the version from the tag
+          # Set the version from the tag
           npm --prefix npm-package version "$VERSION" --no-git-tag-version
+          
+          echo "Prepared npm package structure:"
+          ls -lR npm-package
 
-      - name: List final package contents
-        run: ls -lR npm-package
+      - name: Verify package integrity
+        working-directory: npm-package
+        run: |
+          echo "Running npm pack dry-run to verify package..."
+          npm pack --dry-run
+          echo "Package verification successful!"
 
       - name: Publish to npm
         working-directory: npm-package
-        run: npm publish --access public --provenance
+        run: |
+          echo "Publishing to npm..."
+          npm publish --access public --provenance
+          echo "✅ Successfully published to npm!"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
