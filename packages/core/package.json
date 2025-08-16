@@ -2,13 +2,13 @@
   "name": "@m68k/core",
   "version": "1.0.0",
   "description": "M68k CPU emulator core with WebAssembly backend",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "import": "./dist/index.js"
     }
   },
   "scripts": {
@@ -30,8 +30,18 @@
     "typescript": "^5.3.3"
   },
   "jest": {
-    "preset": "ts-jest",
     "testEnvironment": "node",
+    "extensionsToTreatAsEsm": [".ts"],
+    "transform": {
+      "^.+\\.ts$": [
+        "ts-jest",
+        { "useESM": true, "tsconfig": "./tsconfig.json" }
+      ]
+    },
+    "moduleNameMapper": {
+      "^\\./musashi-wrapper\\.js$": "<rootDir>/src/musashi-wrapper.ts",
+      "^\\./types\\.js$": "<rootDir>/src/types.ts"
+    },
     "roots": ["<rootDir>/src"],
     "testMatch": ["**/*.test.ts"]
   }
