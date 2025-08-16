@@ -2,14 +2,19 @@
 import { jest } from '@jest/globals';
 import type { System } from './types.js';
 
-// Mock BEFORE importing the SUT using ESM-compatible API
-await jest.unstable_mockModule('./musashi-wrapper.js', async () => {
-  // Re-export the mock module's actual ESM exports
-  return await import('./__mocks__/musashi-wrapper.ts');
-});
+let createSystem: (cfg: any) => Promise<System>;
 
-// Now import the SUT (after the mock is in place)
-const { createSystem } = await import('./index.js');
+beforeAll(async () => {
+  // Mock BEFORE importing the SUT using ESM-compatible API
+  // Map to .js specifier; jest will route it to the .ts file via moduleNameMapper
+  await jest.unstable_mockModule('./musashi-wrapper.js', async () => {
+    // Re-export the mock module's actual ESM exports
+    return await import('./__mocks__/musashi-wrapper.js');
+  });
+
+  // Now import the SUT (after the mock is in place)
+  ({ createSystem } = await import('./index.js'));
+});
 
 describe('@m68k/core', () => {
   let system: System;
@@ -59,8 +64,6 @@ describe('@m68k/core', () => {
     
     system = await createSystem({
       rom,
-      romBase: 0x000000,
-      ramBase: 0x100000,
       ramSize: 0x1000
     });
   });
@@ -80,6 +83,10 @@ describe('@m68k/core', () => {
 
   it('should read and write memory', () => {
     const ramBase = 0x100000;
+    
+    // Verify initial memory is zero
+    const initialValue = system.read(ramBase, 4);
+    expect(initialValue).toBe(0);
     
     // Write a 32-bit value
     system.write(ramBase, 4, 0x12345678);
@@ -147,9 +154,12 @@ describe('@m68k/core', () => {
   it('should support probe hooks', async () => {
     const addresses: number[] = [];
     
-    const removeHook = system.probe(0x400, (addr) => {
-      addresses.push(addr);
-      return false; // Continue execution
+    // Initial PC should be 0x400 from reset vector
+    const initialPc = system.getRegisters().pc;
+    expect(initialPc).toBe(0x400);
+    
+    const removeHook = system.probe(0x400, (sys) => {
+      addresses.push(sys.getRegisters().pc);
     });
     
     // Execute some instructions
@@ -157,13 +167,14 @@ describe('@m68k/core', () => {
     
     // Should have called the hook for the probe address
     expect(addresses.length).toBeGreaterThan(0);
+    expect(addresses[0]).toBe(0x400);
     
     // Clean up
     removeHook();
   });
 
   it('should check tracer availability', () => {
-    const tracer = system.getTracer();
+    const tracer = system.tracer;
     expect(tracer).toBeDefined();
     
     // Mock doesn't have Perfetto
@@ -171,7 +182,7 @@ describe('@m68k/core', () => {
   });
 
   it('should handle tracer when not available', () => {
-    const tracer = system.getTracer();
+    const tracer = system.tracer;
     
     // Should throw when trying to start without Perfetto
     expect(() => {
@@ -182,15 +193,13 @@ describe('@m68k/core', () => {
   it('should register symbol names without crashing', () => {
     // Should not throw
     expect(() => {
-      system.registerSymbols({
-        functions: {
-          0x400: 'main',
-          0x500: 'helper'
-        },
-        memory: {
-          0x100000: 'buffer',
-          0x100100: 'data'
-        }
+      system.tracer.registerFunctionNames({
+        0x400: 'main',
+        0x500: 'helper'
+      });
+      system.tracer.registerMemoryNames({
+        0x100000: 'buffer',
+        0x100100: 'data'
       });
     }).not.toThrow();
   });

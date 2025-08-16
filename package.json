@@ -7,6 +7,7 @@
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
+    "test:core": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --projects packages/core --runInBand --verbose --no-cache",
     "clean": "npm run clean --workspaces",
     "typecheck": "npm run typecheck --workspaces"
   },
