@@ -47,6 +47,24 @@ jobs:
           mv musashi-node.out.js   npm-package/dist/musashi-loader.js
 
       # --- Build Perfetto WASM ---
+      - name: Build protobuf dependencies for Perfetto
+        run: |
+          # Build protobuf and abseil for WebAssembly
+          cd third_party
+          ./build_protobuf_wasm.sh
+          ./build_abseil_wasm.sh
+          
+          # Generate protobuf files for Perfetto
+          mkdir -p retrobus-perfetto/proto
+          protobuf-3.21.12/build.host/protoc \
+            --cpp_out=retrobus-perfetto/proto \
+            -I retrobus-perfetto/proto \
+            retrobus-perfetto/proto/perfetto.proto
+          
+          # Copy to expected location for Makefile
+          cp retrobus-perfetto/cpp/proto/perfetto.pb.* retrobus-perfetto/proto/ || true
+          cd ..
+      
       - name: Build Perfetto WASM
         run: ./build_perfetto_wasm_simple.sh
 
