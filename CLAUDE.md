@@ -190,6 +190,7 @@ The emulator provides two complementary hook systems:
   - `cycles`: Cycle count for this instruction
 - **Usage**: Detailed instruction analysis, performance profiling, advanced debugging
 - **No Filtering**: Always called for every instruction (use internal logic to filter)
+- **JavaScript Integration**: Available via `setFullInstrHookFunc()` method in wrapper classes
 
 #### Hook System Implementation
 - All hooks are called via `m68k_instruction_hook_wrapper()` before each instruction
