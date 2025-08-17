@@ -2,11 +2,16 @@
   "required_status_checks": {
     "strict": true,
     "contexts": [
-      "build-all-targets",
-      "sanitizer-tests",
-      "perfetto-build",
-      "wasm-build",
-      "wasm-perfetto-build"
+      "Native CI / Native Build & Tests (Debug, gcc)",
+      "Native CI / Native Build & Tests (Debug, clang)",
+      "Native CI / Native Build & Tests (Release, gcc)",
+      "Native CI / Native Build & Tests (Release, clang)",
+      "Native CI / Sanitizer Tests (address)",
+      "Native CI / Sanitizer Tests (undefined)",
+      "Native CI / Sanitizer Tests (thread)",
+      "WebAssembly CI / WebAssembly Build & Tests (false)",
+      "WebAssembly CI / WebAssembly Build & Tests (true)",
+      "TypeScript CI / Lint & Type-check (no WASM builds)"
     ]
   },
   "enforce_admins": true,
