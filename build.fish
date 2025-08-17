@@ -296,3 +296,13 @@ run emcc \
  --post-js post.js \
  -o musashi.out.mjs
 echo "Written to musashi.out.mjs"
+
+# Build Universal version (for npm package - works in both Node.js and browsers)
+echo "==== BUILDING UNIVERSAL VERSION (ESM) ===="
+run emcc \
+ $emcc_options \
+ -s ENVIRONMENT=web,webview,worker,node \
+ -s EXPORT_NAME=createMusashi \
+ --post-js post.js \
+ -o musashi-universal.out.mjs
+echo "Written to musashi-universal.out.mjs"

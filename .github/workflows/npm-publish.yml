@@ -150,10 +150,10 @@ jobs:
           # Verify required files exist and have reasonable sizes
           echo "🔍 Verifying artifact contents..."
           REQUIRED_FILES=(
-            "ci-artifacts/wasm-modules/musashi-node.out.wasm"
-            "ci-artifacts/wasm-modules/musashi-node.out.mjs"
-            "ci-artifacts/wasm-perfetto-modules/musashi-node.out.wasm"
-            "ci-artifacts/wasm-perfetto-modules/musashi-node.out.mjs"
+            "ci-artifacts/wasm-modules/musashi-universal.out.wasm"
+            "ci-artifacts/wasm-modules/musashi-universal.out.mjs"
+            "ci-artifacts/wasm-perfetto-modules/musashi-universal.out.wasm"
+            "ci-artifacts/wasm-perfetto-modules/musashi-universal.out.mjs"
           )
           
           for file in "${REQUIRED_FILES[@]}"; do
@@ -183,15 +183,15 @@ jobs:
           set -euo pipefail
           mkdir -p npm-package/dist
 
-          # Stage default build from wasm-modules (Node variant, ESM)
-          echo "Staging standard WASM build (ESM)..."
-          cp ci-artifacts/wasm-modules/musashi-node.out.wasm npm-package/dist/musashi.wasm
-          cp ci-artifacts/wasm-modules/musashi-node.out.mjs  npm-package/dist/musashi-loader.mjs
+          # Stage default build from wasm-modules (Universal variant for both Node.js and browsers, ESM)
+          echo "Staging standard WASM build (Universal ESM)..."
+          cp ci-artifacts/wasm-modules/musashi-universal.out.wasm npm-package/dist/musashi.wasm
+          cp ci-artifacts/wasm-modules/musashi-universal.out.mjs  npm-package/dist/musashi-loader.mjs
 
-          # Stage Perfetto build from wasm-perfetto-modules (Node variant, ESM)
-          echo "Staging Perfetto WASM build (ESM)..."
-          cp ci-artifacts/wasm-perfetto-modules/musashi-node.out.wasm npm-package/dist/musashi-perfetto.wasm
-          cp ci-artifacts/wasm-perfetto-modules/musashi-node.out.mjs  npm-package/dist/musashi-perfetto-loader.mjs
+          # Stage Perfetto build from wasm-perfetto-modules (Universal variant for both Node.js and browsers, ESM)
+          echo "Staging Perfetto WASM build (Universal ESM)..."
+          cp ci-artifacts/wasm-perfetto-modules/musashi-universal.out.wasm npm-package/dist/musashi-perfetto.wasm
+          cp ci-artifacts/wasm-perfetto-modules/musashi-universal.out.mjs  npm-package/dist/musashi-perfetto-loader.mjs
 
           # Verify all files are present
           echo "Verifying staged files..."
