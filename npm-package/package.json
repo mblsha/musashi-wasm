@@ -1,6 +1,6 @@
 {
   "name": "musashi-wasm",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "WebAssembly port of the Musashi M68000 CPU emulator with optional Perfetto tracing support",
   "type": "module",
   "files": [

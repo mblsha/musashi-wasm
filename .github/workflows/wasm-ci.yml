@@ -102,6 +102,8 @@ jobs:
           test -f musashi.out.wasm
           test -f musashi-node.out.mjs
           test -f musashi-node.out.wasm
+          test -f musashi-universal.out.mjs
+          test -f musashi-universal.out.wasm
           ls -lh *.out.mjs *.out.wasm || true
 
       # Prepare WASM files for TypeScript tests
@@ -153,6 +155,8 @@ jobs:
             musashi.out.wasm
             musashi-node.out.mjs
             musashi-node.out.wasm
+            musashi-universal.out.mjs
+            musashi-universal.out.wasm
           retention-days: 14
 
       - name: Upload WASM artifacts (perfetto)
@@ -165,6 +169,8 @@ jobs:
             musashi.out.wasm
             musashi-node.out.mjs
             musashi-node.out.wasm
+            musashi-universal.out.mjs
+            musashi-universal.out.wasm
           retention-days: 14
 
       # Metrics and cache info
