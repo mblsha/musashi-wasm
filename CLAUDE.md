@@ -306,25 +306,56 @@ To enable Perfetto tracing in WebAssembly builds:
 ### Creating a Release
 The project uses an automated release workflow that publishes to npm:
 
-1. **Create a Git Tag**:
+1. **Make Changes and Create PR**:
    ```bash
+   # Create a feature branch for your changes
+   git checkout -b feature/your-changes
+   
+   # Make your changes, including version bump in npm-package/package.json
+   # Commit your changes
+   git commit -m "Your changes description"
+   
+   # Push to GitHub
+   git push origin feature/your-changes
+   
+   # Create a Pull Request to master
+   gh pr create --base master --head feature/your-changes
+   ```
+
+2. **Merge PR to master**:
+   - Get PR reviewed and approved
+   - Merge PR to master branch
+   - CI/CD will run tests on master
+
+3. **Create a Git Tag** (after PR is merged):
+   ```bash
+   # Switch to master and pull latest changes
+   git checkout master
+   git pull origin master
+   
    # Tag should follow semantic versioning (v1.2.3)
    git tag v0.1.2
    git push origin v0.1.2
    ```
 
-2. **Create GitHub Release**:
+4. **Create GitHub Release**:
    - Go to GitHub Releases page
    - Click "Create a new release"
    - Select the tag created above
    - Add release notes describing changes
    - Click "Publish release"
 
-3. **Automated npm Publishing**:
+5. **Automated npm Publishing**:
    - The `npm-publish.yml` workflow automatically triggers on release publication
    - Downloads artifacts from the latest successful WebAssembly CI run
    - Creates npm package with both standard and Perfetto builds
    - Publishes to npm as `musashi-wasm` package
+
+**Important**: Always create releases from the master branch after merging changes via PR. This ensures:
+- Code review and approval process is followed
+- CI/CD tests pass before release
+- Release artifacts are built from tested code
+- npm package is published from stable, reviewed code
 
 ### Release Workflow Features
 - **Artifact Reuse**: Downloads pre-built WASM files from CI instead of rebuilding
