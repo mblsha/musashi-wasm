@@ -6,12 +6,17 @@
   "files": [
     "dist",
     "lib",
+    "index-browser.mjs",
     "index.mjs",
     "perf.mjs"
   ],
   "exports": {
     ".": {
       "import": "./index.mjs",
+      "types": "./lib/index.d.ts"
+    },
+    "./browser": {
+      "import": "./index-browser.mjs",
       "types": "./lib/index.d.ts"
     },
     "./perfetto": {
