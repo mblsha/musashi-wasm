@@ -3,7 +3,7 @@
 # Setup script for GitHub branch protection on musashi-wasm repository
 # This script applies the branch protection rules defined in branch-protection.json
 
-set -e
+set -Eeuo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -29,9 +29,9 @@ if ! gh auth status &> /dev/null; then
     exit 1
 fi
 
-# Repository information
-REPO="mblsha/musashi-wasm"
-BRANCH="master"
+# Repository information - auto-detect repo and branch
+REPO="${REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
+BRANCH="${BRANCH:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)}"
 CONFIG_FILE="branch-protection.json"
 
 # Check if config file exists
@@ -46,40 +46,62 @@ echo "Branch: $BRANCH"
 echo "Config: $CONFIG_FILE"
 echo ""
 
+# Parse command line arguments
+FORCE_YES=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -y|--yes)
+            FORCE_YES=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [-y|--yes]"
+            exit 1
+            ;;
+    esac
+done
+
 # Check current protection status
 echo "Checking current branch protection status..."
 if gh api "repos/$REPO/branches/$BRANCH/protection" &> /dev/null; then
     echo -e "${YELLOW}Branch protection already exists. It will be updated.${NC}"
-    METHOD="PUT"
 else
     echo "No existing branch protection found. It will be created."
-    METHOD="PUT"
 fi
 echo ""
 
-# List required status checks
+# List required status checks from JSON if jq is available
 echo "The following status checks will be required:"
-echo "  - build-all-targets (Native CI)"
-echo "  - sanitizer-tests (Native CI)"
-echo "  - perfetto-build (Native CI)"
-echo "  - wasm-build (WebAssembly CI)"
-echo "  - wasm-perfetto-build (WebAssembly CI)"
+if command -v jq &> /dev/null && [ -f "$CONFIG_FILE" ]; then
+    jq -r '.required_status_checks.contexts[]' "$CONFIG_FILE" | while read -r check; do
+        echo "  - $check"
+    done
+else
+    echo "  - build-all-targets (Native CI)"
+    echo "  - sanitizer-tests (Native CI)"
+    echo "  - perfetto-build (Native CI)"
+    echo "  - wasm-build (WebAssembly CI)"
+    echo "  - wasm-perfetto-build (WebAssembly CI)"
+fi
 echo ""
 
-# Confirm with user
-read -p "Do you want to apply these branch protection rules to $BRANCH? (y/N) " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Aborted by user."
-    exit 0
+# Confirm with user (unless -y flag is used)
+if [ "$FORCE_YES" = false ]; then
+    read -p "Do you want to apply these branch protection rules to $BRANCH? (y/N) " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Aborted by user."
+        exit 0
+    fi
 fi
 
 echo ""
 echo "Applying branch protection rules..."
 
-# Apply the protection rules
+# Apply the protection rules (always use PUT method)
 if gh api "repos/$REPO/branches/$BRANCH/protection" \
-    --method "$METHOD" \
+    --method PUT \
     --input "$CONFIG_FILE"; then
     echo -e "${GREEN}✓ Branch protection rules applied successfully!${NC}"
 else
@@ -97,7 +119,7 @@ fi
 
 echo ""
 echo "Branch protection has been configured with:"
-echo "  ✓ Require pull request reviews (1 approval)"
+echo "  ✓ No required PR approvals (0)"
 echo "  ✓ Dismiss stale PR approvals on new commits"
 echo "  ✓ Require status checks to pass"
 echo "  ✓ Require branches to be up to date"
@@ -110,8 +132,6 @@ echo -e "${GREEN}Setup complete!${NC}"
 echo ""
 echo "Next steps:"
 echo "1. Create a test PR to verify the protection rules"
-echo "2. Consider adding a CODEOWNERS file for automatic review assignments"
-echo "3. Update README.md with contribution guidelines"
 echo ""
 echo "To view the current protection status:"
 echo "  gh api repos/$REPO/branches/$BRANCH/protection | jq"
