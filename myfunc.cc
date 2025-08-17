@@ -14,6 +14,7 @@ extern "C" {
 typedef int (*read_mem_t)(unsigned int address, int size);
 typedef void (*write_mem_t)(unsigned int address, int size, unsigned int value);
 typedef int (*pc_hook_t)(unsigned int pc);
+typedef int (*instr_hook_t)(unsigned int pc, unsigned int ir, unsigned int cycles);
 } // extern "C"
 
 static bool _initialized = false;
@@ -21,6 +22,7 @@ static bool _enable_printf_logging = false;
 static read_mem_t _read_mem = 0;
 static write_mem_t _write_mem = 0;
 static pc_hook_t _pc_hook = 0;
+static instr_hook_t _instr_hook = 0;  // Full instruction hook (3 params)
 static std::unordered_set<unsigned int> _pc_hook_addrs;
 
 /* ======================================================================== */
@@ -138,6 +140,11 @@ extern "C" {
     _pc_hook = func;
   }
   
+  // Full instruction hook setter (3 params: pc, ir, cycles)
+  void set_full_instr_hook_func(instr_hook_t func) {
+    _instr_hook = func;
+  }
+  
   // JavaScript callback setters - these are what TypeScript actually calls
   void set_read8_callback(int32_t fp) {
     js_read8_callback = (read8_callback_t)fp;
@@ -187,12 +194,17 @@ extern "C" {
     _pc_hook = 0;
   }
   
+  void clear_instr_hook_func() {
+    _instr_hook = 0;
+  }
+  
   void reset_myfunc_state() {
     _initialized = false;
     _enable_printf_logging = false;
     _read_mem = 0;
     _write_mem = 0;
     _pc_hook = 0;
+    _instr_hook = 0;
     _pc_hook_addrs.clear();
     _regions.clear();
     _function_names.clear();
@@ -394,6 +406,15 @@ int _pc_hook_filtering_aware(unsigned int pc);
 int my_instruction_hook_function(unsigned int pc_raw) {
   const uint32_t pc = norm_pc(pc_raw);
   
+  if (_enable_printf_logging) {
+    static int hook_count = 0;
+    if (hook_count < 5) {
+      printf("DEBUG: my_instruction_hook_function called with pc=0x%x, _pc_hook=%p, js_probe_callback=%p\n", 
+             pc, (void*)_pc_hook, (void*)js_probe_callback);
+      hook_count++;
+    }
+  }
+  
   // Call JS probe callback if registered
   if (js_probe_callback) {
     int js_result = js_probe_callback(pc);
@@ -412,24 +433,38 @@ int my_instruction_hook_function(unsigned int pc_raw) {
 
 // New filtering-aware callback that handles filtering internally
 int _pc_hook_filtering_aware(unsigned int pc) {
-  if (!_pc_hook_addrs.empty()) {
-    // Debug: Check what addresses we're looking for
+  // When _pc_hook_addrs is empty, hook all addresses (backward compatible)
+  // When _pc_hook_addrs has entries, only hook those specific addresses
+  if (_pc_hook_addrs.empty()) {
+    // Hook all addresses - this is the default behavior
+    if (_enable_printf_logging) {
+      static int hook_all_count = 0;
+      if (hook_all_count < 5) {  // Limit debug output
+        printf("DEBUG: Hook all addresses mode - calling hook for PC=0x%x\n", pc);
+        hook_all_count++;
+      }
+    }
+    return _pc_hook(pc);
+  } else {
+    // Only hook specific addresses
     static bool debug_once = true;
     if (debug_once && _enable_printf_logging) {
       debug_once = false;
-      printf("DEBUG: Looking for addresses:");
+      printf("DEBUG: Filtering mode - looking for addresses:");
       for (auto addr : _pc_hook_addrs) {
-        printf(" %x", addr);
+        printf(" 0x%x", addr);
       }
       printf("\n");
     }
     
     if (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end()) {
+      if (_enable_printf_logging) {
+        printf("DEBUG: Address filter match - calling hook for PC=0x%x\n", pc);
+      }
       return _pc_hook(pc);
     }
-    return 0; // filtered out - but we still called this function
+    return 0; // filtered out
   }
-  return _pc_hook(pc); // no filter: hook everything
 }
 
 // This is the new wrapper called by the core
@@ -438,9 +473,23 @@ int _pc_hook_filtering_aware(unsigned int pc) {
 __attribute__((noinline, used))
 #endif
 extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, unsigned int cycles) {
+    if (_enable_printf_logging) {
+        static int wrapper_count = 0;
+        if (wrapper_count < 5) {
+            printf("DEBUG: m68k_instruction_hook_wrapper called with pc=0x%x, ir=0x%x, cycles=%d\n", pc, ir, cycles);
+            wrapper_count++;
+        }
+    }
+    
 #ifdef BUILD_TESTS
     // Trace first (non-breaking)
     (void)m68k_trace_instruction_hook(pc, (uint16_t)ir, (int)cycles);
+
+    // Call full instruction hook if set (gets all 3 params)
+    if (_instr_hook) {
+        int result = _instr_hook(pc, ir, cycles);
+        if (result != 0) return result;
+    }
 
     // Always call the unified hook (JS probe + optional legacy filter)
     // This ensures JS probe callbacks work in tests
@@ -451,6 +500,15 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
     if (trace_result != 0) { 
         m68k_end_timeslice(); 
         return trace_result; 
+    }
+
+    // Call full instruction hook if set (gets all 3 params)
+    if (_instr_hook) {
+        int result = _instr_hook(pc, ir, cycles);
+        if (result != 0) {
+            m68k_end_timeslice();
+            return result;
+        }
     }
 
     const int js_result = my_instruction_hook_function(pc);

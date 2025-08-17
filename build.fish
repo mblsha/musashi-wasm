@@ -27,11 +27,17 @@ echo "==== TOOLCHAIN VERIFICATION ===="
 # Fish may not inherit PATH properly from bash - ensure Emscripten tools are in PATH
 if test -n "$EMSDK"
     echo "Found EMSDK: $EMSDK"
-    set -gx PATH $EMSDK/upstream/emscripten $EMSDK $PATH
+    # Handle both standard emsdk structure and Homebrew installation
+    if test -d "$EMSDK/upstream/emscripten"
+        set -gx PATH $EMSDK/upstream/emscripten $EMSDK $PATH
+    else
+        # Homebrew installation: tools are directly in EMSDK directory
+        set -gx PATH $EMSDK $PATH
+    end
 else
     echo "EMSDK not set, trying to find Emscripten..."
     # Look for emcc in common locations
-    for emcc_path in /home/runner/work/_temp/*/emsdk-main/upstream/emscripten
+    for emcc_path in /home/runner/work/_temp/*/emsdk-main/upstream/emscripten /opt/homebrew/Cellar/emscripten/*/libexec
         if test -f "$emcc_path/emcc"
             echo "Found emcc at: $emcc_path"
             set -gx PATH $emcc_path (dirname $emcc_path) $PATH
@@ -44,10 +50,19 @@ end
 echo "Current PATH: $PATH"
 
 # Test if we can find emcc directly before using which
+# Handle both standard emsdk structure and Homebrew installation
 if test -x "$EMSDK/upstream/emscripten/emcc"
     echo "emcc found at: $EMSDK/upstream/emscripten/emcc"
+else if test -x "$EMSDK/emcc"
+    echo "emcc found at: $EMSDK/emcc (Homebrew installation)"
 else
-    die "emcc not found at expected location: $EMSDK/upstream/emscripten/emcc"
+    echo "WARNING: emcc not found at expected EMSDK locations, checking PATH..."
+    # Fall back to checking if emcc is available in PATH (like Homebrew installations)
+    if which emcc >/dev/null 2>&1
+        echo "emcc found in PATH: $(which emcc)"
+    else
+        die "emcc not found in EMSDK ($EMSDK) or PATH"
+    end
 end
 
 # Now try the which commands (these should work after PATH is set)
@@ -91,6 +106,8 @@ set -l exported_functions \
     _clear_regions \
     _clear_pc_hook_addrs \
     _clear_pc_hook_func \
+    _set_full_instr_hook_func \
+    _clear_instr_hook_func \
     _reset_myfunc_state \
     _register_function_name \
     _register_memory_name \
