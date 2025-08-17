@@ -117,6 +117,12 @@ class Musashi {
     return ptr;
   }
   
+  setFullInstrHookFunc(func) {
+    const ptr = this.module.addFunction(func, 'ii');
+    this.module._set_full_instr_hook_func(ptr);
+    return ptr;
+  }
+  
   removeFunction(ptr) {
     this.module.removeFunction(ptr);
   }
@@ -249,6 +255,12 @@ export class Musashi {
     return ptr;
   }
   
+  setFullInstrHookFunc(func) {
+    const ptr = this.module.addFunction(func, 'ii');
+    this.module._set_full_instr_hook_func(ptr);
+    return ptr;
+  }
+  
   removeFunction(ptr) {
     this.module.removeFunction(ptr);
   }
@@ -375,6 +387,12 @@ class MusashiPerfetto {
   setPCHookFunc(func) {
     const ptr = this.module.addFunction(func, 'ii');
     this.module._set_pc_hook_func(ptr);
+    return ptr;
+  }
+  
+  setFullInstrHookFunc(func) {
+    const ptr = this.module.addFunction(func, 'ii');
+    this.module._set_full_instr_hook_func(ptr);
     return ptr;
   }
   
