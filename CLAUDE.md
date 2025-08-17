@@ -64,7 +64,6 @@ Key functions exposed to JavaScript:
 - Register Access: `_m68k_get_reg`, `_m68k_set_reg`, `_get_d_reg`, `_set_d_reg`, `_get_a_reg`, `_set_a_reg`, `_get_pc_reg`, `_set_pc_reg`, `_get_sr_reg`, `_set_sr_reg`, `_get_sp_reg`
 - Memory Callbacks: `_set_read_mem_func`, `_set_write_mem_func`, `_set_read8_callback`, `_set_write8_callback`, `_set_probe_callback`
 - PC Hooks: `_set_pc_hook_func`, `_add_pc_hook_addr`, `_clear_pc_hook_addrs`, `_clear_pc_hook_func`
-- Instruction Hooks: `_set_full_instr_hook_func`, `_clear_instr_hook_func` (gets PC, instruction register, and cycles)
 - Memory Management: `_add_region`, `_clear_regions` (maps memory regions)
 - Symbol Registration: `_register_function_name`, `_register_memory_name`, `_register_memory_range`, `_clear_registered_names`
 - Debug: `_enable_printf_logging`, `_reset_myfunc_state`
@@ -169,40 +168,12 @@ The emulator has a two-tier memory system:
 1. **Memory Regions** (via `add_region`): Pre-allocated memory blocks mapped to specific addresses, checked first
 2. **Callback Functions**: If no region matches, falls back to read_mem/write_mem callbacks
 
-### Hook System Architecture
-
-The emulator provides two complementary hook systems:
-
-#### 1. PC Hooks (Legacy, JavaScript-friendly)
-- **Function**: `_set_pc_hook_func(callback)` - Sets a PC-only hook callback
-- **Callback Signature**: `int hook(unsigned int pc)`
-- **Filtering**: Use `_add_pc_hook_addr(address)` to hook specific addresses only
-  - Empty filter set = hook ALL addresses (default behavior)
-  - Non-empty filter set = hook ONLY specified addresses
-- **Usage**: Simple JavaScript callbacks, breakpoint-style debugging
-- **JavaScript Integration**: Works with `_set_probe_callback()` for WASM environments
-
-#### 2. Full Instruction Hooks (Advanced, C/C++ friendly)
-- **Function**: `_set_full_instr_hook_func(callback)` - Sets a full instruction hook callback
-- **Callback Signature**: `int hook(unsigned int pc, unsigned int ir, unsigned int cycles)`
-  - `pc`: Program counter (instruction address)
-  - `ir`: Instruction register (opcode)
-  - `cycles`: Cycle count for this instruction
-- **Usage**: Detailed instruction analysis, performance profiling, advanced debugging
-- **No Filtering**: Always called for every instruction (use internal logic to filter)
-
-#### Hook System Implementation
-- All hooks are called via `m68k_instruction_hook_wrapper()` before each instruction
+### Instruction Hook System
+- `my_instruction_hook_function` is called before EVERY instruction execution
 - Return 0 to continue execution, non-zero to break out of execution loop
-- Hooks are called in this order: Tracing → Full Instruction Hook → PC Hook/JavaScript Probe
-- **Critical for Testing**: PC hooks are the most reliable way to verify instruction execution
-- Hook functions can call `m68k_end_timeslice()` to stop execution gracefully
-
-#### Clearing Hooks
-- `_clear_pc_hook_func()` - Removes PC hook callback
-- `_clear_instr_hook_func()` - Removes full instruction hook callback
-- `_clear_pc_hook_addrs()` - Clears PC address filter (reverts to "hook all")
-- `_reset_myfunc_state()` - Resets all hooks and callbacks to initial state
+- Hook must be registered via `set_pc_hook_func` in myfunc.cc
+- Can use `add_pc_hook_addr` to track specific addresses (currently all addresses are hooked)
+- **Critical for Testing**: PC hooks are the most reliable way to verify instruction execution - track them in a vector to verify execution flow
 
 ### CPU Execution Model
 - `m68k_execute(cycles)` runs instructions until cycle count exhausted
@@ -301,55 +272,6 @@ To enable Perfetto tracing in WebAssembly builds:
 - All M68k CPU tests are now enabled and passing (previously 7 of 9 were disabled)
 - Sanitizer builds catch memory issues like alloc-dealloc mismatches and uninitialized reads
 
-## Release Process
-
-### Creating a Release
-The project uses an automated release workflow that publishes to npm:
-
-1. **Create a Git Tag**:
-   ```bash
-   # Tag should follow semantic versioning (v1.2.3)
-   git tag v0.1.2
-   git push origin v0.1.2
-   ```
-
-2. **Create GitHub Release**:
-   - Go to GitHub Releases page
-   - Click "Create a new release"
-   - Select the tag created above
-   - Add release notes describing changes
-   - Click "Publish release"
-
-3. **Automated npm Publishing**:
-   - The `npm-publish.yml` workflow automatically triggers on release publication
-   - Downloads artifacts from the latest successful WebAssembly CI run
-   - Creates npm package with both standard and Perfetto builds
-   - Publishes to npm as `musashi-wasm` package
-
-### Release Workflow Features
-- **Artifact Reuse**: Downloads pre-built WASM files from CI instead of rebuilding
-- **Dual Builds**: Packages both standard and Perfetto-enabled WASM modules
-- **ESM-Only**: Publishes modern ES module format (`.mjs` files)
-- **Provenance**: Includes npm provenance for supply chain security
-- **Manual Trigger**: Supports manual workflow dispatch for republishing
-
-### NPM Package Structure
-```
-musashi-wasm/
-├── dist/
-│   ├── musashi.wasm              # Standard build
-│   ├── musashi-loader.mjs        # Standard ESM loader
-│   ├── musashi-perfetto.wasm     # Perfetto build
-│   └── musashi-perfetto-loader.mjs # Perfetto ESM loader
-├── index.mjs                     # Standard build entry point
-├── perf.mjs                      # Perfetto build entry point
-└── package.json                  # ESM-only configuration
-```
-
-### Release Prerequisites
-- **NPM_TOKEN**: Must be configured in GitHub repository secrets
-- **WebAssembly CI**: Must complete successfully for the release commit
-- **Semantic Versioning**: Release tags must follow `v1.2.3` format
 
 ## Troubleshooting
 
@@ -381,18 +303,6 @@ Module._set_read8_callback(Module.addFunction(readMem, 'ii'));
 Module._set_write8_callback(Module.addFunction(writeMem, 'vii'));
 ```
 
-#### Instruction Hooks vs PC Hooks Confusion
-**Problem**: Unclear which hook system to use.
-
-**Guidelines**:
-- Use **PC Hooks** (`_set_pc_hook_func`) for:
-  - JavaScript/WASM integration
-  - Simple breakpoint-style debugging
-  - Address-filtered monitoring
-- Use **Full Instruction Hooks** (`_set_full_instr_hook_func`) for:
-  - C/C++ native code
-  - Detailed instruction analysis (opcode + cycle data)
-  - Performance profiling
 
 ### Build Issues
 
@@ -441,8 +351,7 @@ Module._set_write8_callback(Module.addFunction(writeMem, 'vii'));
 **Solutions**:
 1. **Use address filtering**: `_add_pc_hook_addr()` to limit hook scope
 2. **Optimize callback code**: Minimize work in hook functions
-3. **Disable hooks when not needed**: Use `_clear_pc_hook_func()` 
-4. **Use instruction hooks judiciously**: Full hooks provide more data but have higher overhead
+3. **Disable hooks when not needed**: Use `_clear_pc_hook_func()`
 
 ## Known Issues
 
