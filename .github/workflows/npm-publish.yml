@@ -10,6 +10,11 @@ on:
         required: true
         type: string
 
+# Prevent concurrent runs that could interfere with each other
+concurrency:
+  group: npm-publish-${{ github.event.release.tag_name || inputs.tag_name }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -19,6 +24,7 @@ jobs:
       actions: read     # allow reading other runs/artifacts
     env:
       GH_TOKEN: ${{ github.token }}   # for gh CLI
+    timeout-minutes: 15  # Prevent hanging workflows
 
     steps:
       - name: Checkout repo at release tag
@@ -27,52 +33,138 @@ jobs:
           submodules: recursive
           ref: ${{ github.event.release.tag_name || inputs.tag_name }}
 
-      - name: Resolve CI run that built this tag
-        id: find_run
+      - name: Validate release and tag
+        id: validate
         shell: bash
         run: |
           set -euo pipefail
           TAG="${{ github.event.release.tag_name || inputs.tag_name }}"
-          # Commit SHA pointed to by the tag we checked out:
           COMMIT="$(git rev-parse HEAD)"
+          
           echo "Tag: $TAG"
           echo "Commit: $COMMIT"
-
-          # Find a successful run of the 'WebAssembly CI' workflow for this commit
-          # Limit to a reasonable window; adjust --limit if you have many runs.
-          gh run list --workflow "WebAssembly CI" --json databaseId,headSha,conclusion,event --limit 50 > runs.json
-          RUN_ID=$(jq -r --arg sha "$COMMIT" '.[] | select(.headSha==$sha and .conclusion=="success") | .databaseId' runs.json | head -n1)
-          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-            echo "No successful 'WebAssembly CI' run found for commit $COMMIT"
-            echo "Make sure WebAssembly CI runs on tags (v*) and artifacts are retained."
+          
+          # Validate tag format (should be semantic version)
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "ERROR: Tag '$TAG' does not follow semantic versioning format (v1.2.3 or v1.2.3-alpha.1)"
             exit 1
           fi
-          echo "Found successful CI run: $RUN_ID"
-          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-
-      - name: Download CI artifacts for this run
+          
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          
+      - name: Wait for and resolve CI run
+        id: find_run
         shell: bash
         run: |
           set -euo pipefail
+          COMMIT="${{ steps.validate.outputs.commit }}"
+          TAG="${{ steps.validate.outputs.tag }}"
+          
+          echo "Looking for successful WebAssembly CI run for commit: $COMMIT"
+          
+          # Wait for CI to complete with retries (max 10 minutes)
+          MAX_ATTEMPTS=20
+          WAIT_SECONDS=30
+          
+          for attempt in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Attempt $attempt/$MAX_ATTEMPTS: Searching for successful CI run..."
+            
+            # Search for successful runs, increasing limit over time
+            SEARCH_LIMIT=$((25 + attempt * 5))
+            gh run list --workflow "WebAssembly CI" --json databaseId,headSha,conclusion,event,createdAt --limit $SEARCH_LIMIT > runs.json
+            
+            # Debug: show what we found
+            echo "Found runs for this commit:"
+            jq -r --arg sha "$COMMIT" '.[] | select(.headSha==$sha) | "  Run " + (.databaseId|tostring) + ": " + .conclusion + " (" + .event + ")"' runs.json || true
+            
+            # Look for successful run
+            RUN_ID=$(jq -r --arg sha "$COMMIT" '.[] | select(.headSha==$sha and .conclusion=="success") | .databaseId' runs.json | head -n1)
+            
+            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
+              echo "✅ Found successful CI run: $RUN_ID"
+              echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            
+            # Check if there are any failed runs
+            FAILED_COUNT=$(jq -r --arg sha "$COMMIT" '[.[] | select(.headSha==$sha and .conclusion=="failure")] | length' runs.json)
+            if [ "$FAILED_COUNT" -gt 0 ]; then
+              echo "⚠️  Found $FAILED_COUNT failed CI run(s) for this commit"
+            fi
+            
+            if [ $attempt -lt $MAX_ATTEMPTS ]; then
+              echo "No successful run found yet, waiting ${WAIT_SECONDS}s before retry..."
+              sleep $WAIT_SECONDS
+            fi
+          done
+          
+          echo "❌ TIMEOUT: No successful 'WebAssembly CI' run found for commit $COMMIT after $MAX_ATTEMPTS attempts"
+          echo "Please check:"
+          echo "  1. WebAssembly CI workflow is configured to run on tags (v*)"
+          echo "  2. The CI run completed successfully"
+          echo "  3. Artifacts are being retained (retention-days > 0)"
+          echo "  4. There are no failures in the WebAssembly CI workflow"
+          exit 1
+
+      - name: Download and verify CI artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID="${{ steps.find_run.outputs.run_id }}"
           mkdir -p ci-artifacts
-          echo "Downloading artifacts from run ${{ steps.find_run.outputs.run_id }}..."
+          
+          echo "📦 Downloading artifacts from CI run: $RUN_ID"
+          
+          # List available artifacts first for debugging
+          echo "Available artifacts for this run:"
+          gh run view "$RUN_ID" --json artifacts --jq '.artifacts[] | "  " + .name + " (" + (.sizeInBytes|tostring) + " bytes)"' || true
           
           # Download standard WASM build artifacts
-          gh run download "${{ steps.find_run.outputs.run_id }}" --name wasm-modules --dir ci-artifacts/wasm-modules || { 
-            echo "ERROR: Missing 'wasm-modules' artifact"
-            echo "This usually means the WebAssembly CI workflow didn't complete successfully"
+          echo "Downloading wasm-modules..."
+          if ! gh run download "$RUN_ID" --name wasm-modules --dir ci-artifacts/wasm-modules; then
+            echo "❌ ERROR: Failed to download 'wasm-modules' artifact"
+            echo "Available artifacts:"
+            gh run view "$RUN_ID" --json artifacts --jq '.artifacts[].name' || true
             exit 1
-          }
+          fi
           
           # Download Perfetto WASM build artifacts
-          gh run download "${{ steps.find_run.outputs.run_id }}" --name wasm-perfetto-modules --dir ci-artifacts/wasm-perfetto-modules || { 
-            echo "ERROR: Missing 'wasm-perfetto-modules' artifact"
-            echo "This usually means the Perfetto build in WebAssembly CI didn't complete successfully"
+          echo "Downloading wasm-perfetto-modules..."
+          if ! gh run download "$RUN_ID" --name wasm-perfetto-modules --dir ci-artifacts/wasm-perfetto-modules; then
+            echo "❌ ERROR: Failed to download 'wasm-perfetto-modules' artifact"
+            echo "Available artifacts:"
+            gh run view "$RUN_ID" --json artifacts --jq '.artifacts[].name' || true
             exit 1
-          }
+          fi
           
-          echo "Downloaded artifacts:"
+          echo "✅ Successfully downloaded all artifacts"
+          echo "📁 Downloaded artifact contents:"
           ls -lR ci-artifacts
+          
+          # Verify required files exist and have reasonable sizes
+          echo "🔍 Verifying artifact contents..."
+          REQUIRED_FILES=(
+            "ci-artifacts/wasm-modules/musashi-node.out.wasm"
+            "ci-artifacts/wasm-modules/musashi-node.out.mjs"
+            "ci-artifacts/wasm-perfetto-modules/musashi-node.out.wasm"
+            "ci-artifacts/wasm-perfetto-modules/musashi-node.out.mjs"
+          )
+          
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ ERROR: Required file missing: $file"
+              exit 1
+            fi
+            
+            size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0")
+            if [ "$size" -lt 10000 ]; then  # Minimum reasonable size
+              echo "❌ ERROR: File too small (likely corrupt): $file ($size bytes)"
+              exit 1
+            fi
+            
+            echo "✅ $file ($size bytes)"
+          done
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -106,10 +198,16 @@ jobs:
             echo "✓ $file ($(stat -c%s "npm-package/dist/$file") bytes)"
           done
 
-          # Generate manifest & wrappers (ESM + CJS)
-          VERSION_RAW='${{ github.event.release.tag_name || inputs.tag_name }}'
+          # Validate and set version
+          VERSION_RAW='${{ steps.validate.outputs.tag }}'
           VERSION="${VERSION_RAW#v}"
-          echo "Package version: $VERSION"
+          echo "📋 Package version: $VERSION"
+          
+          # Validate version format
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "❌ ERROR: Invalid version format: $VERSION"
+            exit 1
+          fi
 
           cat > npm-package/package.json <<'JSON'
           {
@@ -204,8 +302,42 @@ jobs:
       - name: Publish to npm
         working-directory: npm-package
         run: |
-          echo "Publishing to npm..."
+          echo "🚀 Publishing to npm..."
+          echo "Package: $(cat package.json | jq -r '.name + "@" + .version')"
+          
+          # Check if this version already exists
+          PACKAGE_NAME=$(cat package.json | jq -r '.name')
+          PACKAGE_VERSION=$(cat package.json | jq -r '.version')
+          
+          if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+            echo "⚠️  Package $PACKAGE_NAME@$PACKAGE_VERSION already exists on npm"
+            echo "Skipping publish (this is not an error for re-runs)"
+            exit 0
+          fi
+          
           npm publish --access public --provenance
-          echo "✅ Successfully published to npm!"
+          echo "✅ Successfully published $PACKAGE_NAME@$PACKAGE_VERSION to npm!"
+          
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          
+      - name: Report success
+        if: success()
+        run: |
+          echo "🎉 NPM package published successfully!"
+          echo "Release: ${{ steps.validate.outputs.tag }}"
+          echo "Commit: ${{ steps.validate.outputs.commit }}"
+          echo "CI Run: ${{ steps.find_run.outputs.run_id }}"
+          echo "Package: $(cat npm-package/package.json | jq -r '.name + "@" + .version')"
+          
+      - name: Report failure details
+        if: failure()
+        run: |
+          echo "❌ NPM publish workflow failed"
+          echo "Release: ${{ github.event.release.tag_name || inputs.tag_name }}"
+          echo "Please check the logs above for specific error details"
+          echo "Common issues:"
+          echo "  - WebAssembly CI not completed or failed"
+          echo "  - Missing NPM_TOKEN secret"
+          echo "  - Package version already exists"
+          echo "  - Network/registry issues"
