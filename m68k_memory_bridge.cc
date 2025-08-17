@@ -10,17 +10,14 @@ extern "C" {
 static inline uint32_t addr24(uint32_t a) { return a & 0x00FFFFFFu; }
 
 // Build big-endian words/longs from 8-bit reads to avoid host-endian issues.
+// Minimal fix: delegate multi-byte BE reads to my_read_memory to avoid
+// double big-endian composition and keep behavior consistent with JS handlers.
 static inline unsigned int be16_read(uint32_t a) {
-    a = addr24(a);
-    const unsigned int hi = my_read_memory(a, 1) & 0xFFu;
-    const unsigned int lo = my_read_memory(addr24(a + 1), 1) & 0xFFu;
-    return (hi << 8) | lo;
+    return my_read_memory(addr24(a), 2);
 }
 
 static inline unsigned int be32_read(uint32_t a) {
-    const unsigned int hi = be16_read(a);
-    const unsigned int lo = be16_read(a + 2);
-    return (hi << 16) | lo;
+    return my_read_memory(addr24(a), 4);
 }
 
 extern "C" {
@@ -31,11 +28,11 @@ unsigned int m68k_read_memory_8(unsigned int address) {
 }
 
 unsigned int m68k_read_memory_16(unsigned int address) { 
-    return be16_read(address); 
+    return my_read_memory(addr24(address), 2); 
 }
 
 unsigned int m68k_read_memory_32(unsigned int address) { 
-    return be32_read(address); 
+    return my_read_memory(addr24(address), 4); 
 }
 
 void m68k_write_memory_8(unsigned int address, unsigned int value) { 
