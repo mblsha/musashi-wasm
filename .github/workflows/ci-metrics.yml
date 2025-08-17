@@ -1,0 +1,30 @@
+name: CI Performance Metrics
+
+on:
+  workflow_run:
+    workflows:
+      - WebAssembly CI
+      - TypeScript CI
+      - Native CI
+    types: [completed]
+
+jobs:
+  collect-metrics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect and report
+        id: metrics
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const wr = context.payload.workflow_run;
+            const durationMin = Math.floor((new Date(wr.updated_at) - new Date(wr.created_at)) / 60000);
+            core.notice(`Workflow: ${wr.name} | Duration: ${durationMin}m | Status: ${wr.conclusion}`);
+            core.setOutput('duration_minutes', String(durationMin));
+
+      - name: Check for regression (>15m)
+        run: |
+          if [ ${{ steps.metrics.outputs.duration_minutes }} -gt 15 ]; then
+            echo "⚠️ CI run over 15 minutes"
+            exit 1
+          fi

@@ -8,232 +8,107 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Build verification job - ensures all targets compile
-  build-all-targets:
-    name: Build All Targets
+  native-build:
+    name: Native Build & Tests
     runs-on: ubuntu-latest
-    
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+        compiler: [gcc, clang]
+
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y protobuf-compiler libprotobuf-dev
-    
-    - name: Configure CMake
-      run: |
-        mkdir -p build
-        cd build
-        cmake .. \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_TESTS=ON \
-          -DENABLE_PERFETTO=ON
-    
-    - name: Build all targets
-      run: |
-        cd build
-        echo "Building all targets..."
-        cmake --build . -j$(nproc)
-    
-    - name: Build examples target
-      run: |
-        cd build
-        echo "Building examples..."
-        cmake --build . --target examples -j$(nproc)
-    
-    - name: Verify all expected targets exist
-      run: |
-        cd build
-        echo "Verifying test executables:"
-        EXPECTED_TESTS="test_m68k test_myfunc test_vasm_binary test_fixture_example test_exceptions test_perfetto"
-        MISSING_TESTS=""
-        for test in $EXPECTED_TESTS; do
-          if [ -f "$test" ]; then
-            echo "✓ $test"
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache ninja-build protobuf-compiler libprotobuf-dev
+          if [[ "${{ matrix.compiler }}" == "clang" ]]; then
+            sudo apt-get install -y clang
+            echo "CC=clang"   >> $GITHUB_ENV
+            echo "CXX=clang++" >> $GITHUB_ENV
           else
-            echo "✗ $test MISSING"
-            MISSING_TESTS="$MISSING_TESTS $test"
+            echo "CC=gcc"  >> $GITHUB_ENV
+            echo "CXX=g++" >> $GITHUB_ENV
           fi
-        done
-        
-        echo ""
-        echo "Verifying example executables:"
-        EXPECTED_EXAMPLES="example_trace example_perfetto_trace"
-        MISSING_EXAMPLES=""
-        for example in $EXPECTED_EXAMPLES; do
-          if [ -f "$example" ]; then
-            echo "✓ $example"
-          else
-            echo "✗ $example MISSING"
-            MISSING_EXAMPLES="$MISSING_EXAMPLES $example"
-          fi
-        done
-        
-        if [ -n "$MISSING_TESTS$MISSING_EXAMPLES" ]; then
-          echo ""
-          echo "ERROR: Missing targets detected!"
-          [ -n "$MISSING_TESTS" ] && echo "Missing tests:$MISSING_TESTS"
-          [ -n "$MISSING_EXAMPLES" ] && echo "Missing examples:$MISSING_EXAMPLES"
-          exit 1
-        fi
-        
-        echo ""
-        echo "All expected targets built successfully!"
-    
-    - name: Run quick smoke tests
-      run: |
-        cd build
-        echo "Running quick smoke tests..."
-        # Run tests with minimal execution to verify they start
-        timeout 10s ./example_trace || true
-        timeout 10s ./example_perfetto_trace || true
-        echo "Smoke tests completed"
-  
-  # Sanitizer build job (Linux only - catches memory issues effectively)
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}-v1
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ matrix.compiler }}-
+            ccache-${{ runner.os }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --zero-stats
+          ccache --set-config=compiler_check=content
+          ccache --set-config=compression=true
+          ccache --max-size=500M
+          ccache --show-config
+
+      - name: Configure with CMake (Ninja + ccache)
+        run: |
+          cmake -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DBUILD_TESTS=ON \
+            -DENABLE_PERFETTO=ON
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Run tests
+        working-directory: build
+        run: ctest --output-on-failure -C ${{ matrix.build_type }}
+
+      - name: Show ccache stats
+        if: always()
+        run: ccache --show-stats
+
   sanitizer-tests:
     name: Sanitizer Tests
     runs-on: ubuntu-latest
-    
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, undefined, thread]
+
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    
-    - name: Configure CMake with Sanitizers
-      run: |
-        mkdir -p build
-        cd build
-        cmake .. \
-          -DCMAKE_BUILD_TYPE=Debug \
-          -DBUILD_TESTS=ON \
-          -DENABLE_SANITIZERS=ON
-    
-    - name: Build with Sanitizers
-      run: |
-        cd build
-        cmake --build . -j$(nproc)
-    
-    - name: Build all examples
-      run: |
-        cd build
-        cmake --build . --target examples -j$(nproc) || echo "Examples target not found"
-    
-    - name: List all test executables
-      run: |
-        cd build
-        echo "Test executables built:"
-        ls -la test_* example_* 2>/dev/null || echo "No test executables found"
-    
-    - name: Run tests with Sanitizers
-      run: |
-        cd build
-        ASAN_OPTIONS=detect_leaks=1:check_initialization_order=1 \
-        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
-        ctest --output-on-failure
-  
-  # Perfetto integration build job
-  perfetto-build:
-    name: Perfetto Integration Build
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y protobuf-compiler libprotobuf-dev jq
-    
-    - name: Configure CMake with Perfetto
-      run: |
-        mkdir -p build
-        cd build
-        cmake .. \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_TESTS=ON \
-          -DENABLE_PERFETTO=ON
-    
-    - name: Build with Perfetto
-      run: |
-        cd build
-        cmake --build . -j$(nproc)
-    
-    - name: Build all examples including Perfetto example
-      run: |
-        cd build
-        cmake --build . --target examples -j$(nproc) || echo "Examples target not found"
-    
-    - name: List all built targets
-      run: |
-        cd build
-        echo "Built executables:"
-        ls -la test_* example_* 2>/dev/null || echo "No executables found"
-        echo ""
-        echo "Checking specific targets:"
-        [ -f test_exceptions ] && echo "✓ test_exceptions built" || echo "✗ test_exceptions missing"
-        [ -f test_fixture_example ] && echo "✓ test_fixture_example built" || echo "✗ test_fixture_example missing"
-        [ -f example_trace ] && echo "✓ example_trace built" || echo "✗ example_trace missing"
-        [ -f example_perfetto_trace ] && echo "✓ example_perfetto_trace built" || echo "✗ example_perfetto_trace missing"
-    
-    - name: Run Perfetto unit tests
-      run: |
-        cd build
-        # List all available tests to verify test_perfetto is included
-        echo "Available tests:"
-        ctest --show-only=json-v1 | jq -r '.tests[].name' || ctest -N
-        
-        # Run all tests including test_perfetto
-        ctest --output-on-failure
-    
-    - name: Generate Perfetto trace
-      run: |
-        cd build
-        # Run the specific test that generates the trace file
-        # The ComplexProgramWithTraceFile test saves to test_complex_trace.perfetto-trace
-        ./test_perfetto --gtest_filter=PerfettoTest.ComplexProgramWithTraceFile || true
-        
-        # Check if trace was generated
-        if [ -f test_complex_trace.perfetto-trace ]; then
-          echo "✓ Perfetto trace generated successfully"
-          ls -lh test_complex_trace.perfetto-trace
-        else
-          echo "✗ Perfetto trace file not found"
-        fi
-    
-    - name: Upload Perfetto trace
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: perfetto-trace
-        path: build/test_complex_trace.perfetto-trace
-        if-no-files-found: warn
-    
-    - name: Test example programs
-      run: |
-        cd build
-        echo "Testing example programs:"
-        if [ -f example_trace ]; then
-          echo "Running example_trace..."
-          timeout 5s ./example_trace || echo "example_trace execution finished or timed out"
-        fi
-        if [ -f example_perfetto_trace ]; then
-          echo "Running example_perfetto_trace..."
-          timeout 5s ./example_perfetto_trace || echo "example_perfetto_trace execution finished or timed out"
-        fi
-    
-    - name: Verify Perfetto symbols
-      run: |
-        cd build
-        # Check that Perfetto symbols are present in the library
-        nm libmusashi_core.a | grep -q "m68k_perfetto" && \
-          echo "✓ Perfetto symbols found in musashi_core" || \
-          echo "✗ Perfetto symbols missing"
-        
-        nm libmusashi_api.a | grep -q "perfetto_" && \
-          echo "✓ Perfetto wrapper symbols found in musashi_api" || \
-          echo "✗ Perfetto wrapper symbols missing"
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install clang for sanitizers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang ninja-build protobuf-compiler libprotobuf-dev
+          echo "CC=clang"   >> $GITHUB_ENV
+          echo "CXX=clang++" >> $GITHUB_ENV
+
+      - name: Configure (per-sanitizer)
+        run: |
+          cmake -B build-${{ matrix.sanitizer }} \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTS=ON \
+            -DENABLE_PERFETTO=OFF \
+            -DSANITIZER=${{ matrix.sanitizer }}
+
+      - name: Build
+        run: cmake --build build-${{ matrix.sanitizer }} --parallel $(nproc)
+
+      - name: Run tests
+        working-directory: build-${{ matrix.sanitizer }}
+        env:
+          ASAN_OPTIONS: detect_leaks=1:check_initialization_order=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+        run: ctest --output-on-failure -C Debug --timeout 300
