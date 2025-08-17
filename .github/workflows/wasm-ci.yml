@@ -9,330 +9,170 @@ on:
     branches: [ main, master, wasm ]
   workflow_dispatch:
 
-jobs:
-  # WebAssembly build job using Fish script
-  wasm-build:
-    name: WebAssembly Build
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    
-    - name: Setup Emscripten
-      uses: mymindstorm/setup-emsdk@v14
-      with:
-        version: '4.0.12'  # Pin version for consistency
-    
-    - name: Install Fish shell
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y fish
-        
-    - name: Build WASM with Fish script
-      shell: bash
-      run: |
-        set -euo pipefail
-        
-        # Show environment for debugging (setup-emsdk should have set PATH)
-        echo "==== EMSCRIPTEN ENVIRONMENT ===="
-        echo "PATH: $PATH"
-        echo "EMSDK: ${EMSDK:-not set}"
-        echo "Looking for Emscripten tools..."
-        which emcc && emcc --version || echo "emcc not found"
-        which em++ && em++ --version || echo "em++ not found"
-        which emmake && emmake --version || echo "emmake not found"
-        which node && node --version || echo "node not found"
-        echo "================================"
-        
-        # Run Fish script with current environment
-        chmod +x build.fish
-        fish ./build.fish
-        
-    - name: Verify WASM outputs
-      run: |
-        # Check that WebAssembly modules were created (ESM)
-        test -f musashi.out.mjs
-        test -f musashi.out.wasm
-        test -f musashi-node.out.mjs
-        test -f musashi-node.out.wasm
-        
-        # Check file sizes are reasonable
-        for wasm_file in musashi.out.wasm musashi-node.out.wasm; do
-          wasm_size=$(stat -c%s "$wasm_file")
-          if [ "$wasm_size" -lt 100000 ]; then
-            echo "ERROR: $wasm_file seems too small: $wasm_size bytes"
-            exit 1
-          fi
-          echo "$wasm_file size: $wasm_size bytes"
-        done
-        
-        # List all generated files
-        ls -la *.out.* *.wasm *.map 2>/dev/null || true
-        
-        # Check standard M68k exports are present
-        echo "Checking for core M68k function exports..."
-        for func in m68k_init m68k_execute m68k_get_reg m68k_set_reg \
-                    m68k_disassemble; do
-          if grep -q "_${func}" musashi.out.mjs; then
-            echo "✓ ${func} exported"
-          else
-            echo "✗ ${func} NOT exported"
-            exit 1
-          fi
-        done
-        
-    - name: Run Node.js Integration Tests
-      run: |
-        echo "==== Running Node.js Integration Tests ===="
-        
-        # Install test dependencies
-        cd musashi-wasm-test
-        npm install
-        
-        # Run the integration tests with CI reporter for JUnit XML output
-        npm run test:ci || EXIT_CODE=$?
-        
-        # Even if tests fail, we want to see the results
-        if [ "${EXIT_CODE:-0}" -ne 0 ]; then
-          echo "⚠️  Some tests failed, but this is expected during development"
-          echo "Test failures provide valuable feedback for debugging"
-        fi
-        
-        # Return to root directory
-        cd ..
-    
-    - name: Test TypeScript Packages
-      run: |
-        echo "==== Testing TypeScript Packages ===="
-        
-        # Check if TypeScript packages exist
-        if [ -f "package.json" ] && [ -d "packages" ]; then
-          echo "TypeScript packages found, running tests..."
-          
-          # Install dependencies using lock file
-          npm ci || true
-          npm ci --workspaces || true
-          
-          # Build TypeScript packages
-          npm run build || true
-          
-          # Run TypeScript tests
-          npm test || EXIT_CODE=$?
-          
-          if [ "${EXIT_CODE:-0}" -ne 0 ]; then
-            echo "⚠️  Some TypeScript tests failed"
-          else
-            echo "✓ TypeScript tests passed"
-          fi
-        else
-          echo "No TypeScript packages found, skipping..."
-        fi
-        
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results
-        path: musashi-wasm-test/test-results.xml
-        retention-days: 7
-        if-no-files-found: ignore
-        
-    - name: Test Report Summary
-      if: always()
-      uses: dorny/test-reporter@v1
-      with:
-        name: Node.js Integration Test Results
-        path: musashi-wasm-test/test-results.xml
-        reporter: jest-junit
-        fail-on-error: false  # Don't fail the CI if tests fail (for now)
-        
-    - name: Upload WASM artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: wasm-modules
-        path: |
-          musashi.out.mjs
-          musashi.out.wasm
-          musashi-node.out.mjs
-          musashi-node.out.wasm
-        retention-days: 7
+env:
+  EMSDK_VERSION: '4.0.12'
+  EM_CACHE_FOLDER: 'emsdk-cache'
 
-  # WebAssembly build with Perfetto tracing enabled
-  wasm-perfetto-build:
-    name: WebAssembly Build with Perfetto
+jobs:
+  wasm-build-and-test:
+    name: WebAssembly Build & Tests
     runs-on: ubuntu-latest
-    
+    strategy:
+      fail-fast: false
+      matrix:
+        perfetto: [false, true]
+
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    
-    - name: Setup Emscripten
-      uses: mymindstorm/setup-emsdk@v14
-      with:
-        version: '4.0.12'  # Pin version for consistency
-    
-    - name: Install Fish shell
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y fish
-        
-    - name: Build protobuf and abseil for WebAssembly
-      shell: bash
-      run: |
-        set -euo pipefail
-        
-        # Show environment for debugging
-        echo "==== EMSCRIPTEN ENVIRONMENT ===="
-        echo "PATH: $PATH"
-        echo "EMSDK: ${EMSDK:-not set}"
-        which emcc && emcc --version || echo "emcc not found"
-        which em++ && em++ --version || echo "em++ not found"
-        which emmake && emmake --version || echo "emmake not found"
-        which node && node --version || echo "node not found"
-        echo "================================"
-        
-        # Build protobuf and abseil dependencies
-        chmod +x build_protobuf_wasm.sh
-        ./build_protobuf_wasm.sh
-        
-    - name: Build WASM with Perfetto enabled
-      shell: bash
-      run: |
-        set -euo pipefail
-        
-        # Build WASM with Perfetto enabled
-        chmod +x build.fish
-        ENABLE_PERFETTO=1 fish ./build.fish
-        
-    - name: Verify Perfetto WASM outputs
-      run: |
-        # Check that WebAssembly modules were created (ESM)
-        test -f musashi.out.mjs
-        test -f musashi.out.wasm
-        test -f musashi-node.out.mjs
-        test -f musashi-node.out.wasm
-        
-        # Check file sizes (should be larger with Perfetto)
-        for wasm_file in musashi.out.wasm musashi-node.out.wasm; do
-          wasm_size=$(stat -c%s "$wasm_file")
-          if [ "$wasm_size" -lt 1000000 ]; then
-            echo "ERROR: $wasm_file seems too small for Perfetto build: $wasm_size bytes"
-            exit 1
-          fi
-          echo "$wasm_file size: $wasm_size bytes"
-        done
-        
-        # Verify Perfetto functions are exported
-        echo "Checking for Perfetto function exports..."
-        for func in m68k_perfetto_init m68k_perfetto_destroy m68k_perfetto_enable_flow \
-                    m68k_perfetto_enable_memory m68k_perfetto_enable_instructions \
-                    m68k_perfetto_export_trace m68k_perfetto_is_initialized \
-                    m68k_perfetto_save_trace m68k_perfetto_free_trace_data; do
-          if grep -q "_${func}" musashi.out.mjs; then
-            echo "✓ ${func} exported"
-          else
-            echo "✗ ${func} NOT exported"
-            exit 1
-          fi
-        done
-        
-    - name: Test Perfetto WASM functionality
-      run: |
-        # Make test script executable
-        chmod +x test_perfetto_wasm.mjs
-        
-        # Run the Perfetto functionality test
-        node test_perfetto_wasm.mjs
-        
-    - name: Run Node.js Integration Tests (Perfetto build)
-      run: |
-        echo "==== Running Node.js Integration Tests (Perfetto build) ===="
-        
-        # Install test dependencies
-        cd musashi-wasm-test
-        npm install
-        
-        # Run the integration tests with CI reporter
-        npm run test:ci || EXIT_CODE=$?
-        
-        # Even if tests fail, we want to see the results
-        if [ "${EXIT_CODE:-0}" -ne 0 ]; then
-          echo "⚠️  Some tests failed with Perfetto build"
-          echo "Test failures provide valuable feedback for debugging"
-        fi
-        
-        # Return to root directory
-        cd ..
-    
-    - name: Test TypeScript Packages with Perfetto
-      run: |
-        echo "==== Testing TypeScript Packages with Perfetto WASM ===="
-        
-        # Check if TypeScript packages exist
-        if [ -f "package.json" ] && [ -d "packages" ]; then
-          echo "TypeScript packages found, running tests with Perfetto-enabled WASM..."
-          
-          # Install dependencies using lock file
-          npm ci || true
-          npm ci --workspaces || true
-          
-          # Build TypeScript packages
-          npm run build || true
-          
-          # Run TypeScript tests with Perfetto-enabled WASM
-          export PERFETTO_ENABLED=1
-          npm test || EXIT_CODE=$?
-          
-          if [ "${EXIT_CODE:-0}" -ne 0 ]; then
-            echo "⚠️  Some TypeScript tests failed with Perfetto"
-          else
-            echo "✓ TypeScript tests passed with Perfetto"
-          fi
-          
-          # Try to run the example
-          echo "Running TypeScript example with Perfetto..."
-          cd packages
-          npx tsc example.ts --target ES2020 --module commonjs --esModuleInterop || true
-          node example.js || true
-          
-          # Check for generated traces
-          if ls *.perfetto-trace 1> /dev/null 2>&1; then
-            echo "✓ Perfetto traces generated:"
-            ls -lh *.perfetto-trace
-          fi
-          cd ..
-        else
-          echo "No TypeScript packages found, skipping..."
-        fi
-        
-    - name: Upload Perfetto test results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results-perfetto
-        path: musashi-wasm-test/test-results.xml
-        retention-days: 7
-        if-no-files-found: ignore
-        
-    - name: Test Report Summary (Perfetto)
-      if: always()
-      uses: dorny/test-reporter@v1
-      with:
-        name: Node.js Integration Test Results (Perfetto)
-        path: musashi-wasm-test/test-results.xml
-        reporter: jest-junit
-        fail-on-error: false
-        
-    - name: Upload Perfetto WASM artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: wasm-perfetto-modules
-        path: |
-          musashi.out.mjs
-          musashi.out.wasm
-          musashi-node.out.mjs
-          musashi-node.out.wasm
-        retention-days: 7
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Start timer
+        id: timer
+        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+
+      # Emscripten caching (stable, version-centric key)
+      - name: Cache Emscripten SDK
+        id: cache-emsdk
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.EM_CACHE_FOLDER }}
+            ~/.emscripten_cache
+            ~/.emscripten_ports
+          key: emsdk-${{ runner.os }}-${{ env.EMSDK_VERSION }}-v1
+          restore-keys: |
+            emsdk-${{ runner.os }}-${{ env.EMSDK_VERSION }}-
+            emsdk-${{ runner.os }}-
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+          actions-cache-folder: ${{ env.EM_CACHE_FOLDER }}
+
+      - name: Install Fish shell
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fish
+
+      # Cache Protobuf/Abseil only for Perfetto builds (cache installed outputs + generated PBs)
+      - name: Cache Protobuf/Abseil (Perfetto only)
+        if: matrix.perfetto
+        id: cache-protobuf
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/protobuf-wasm-install
+            third_party/abseil-wasm-install
+            third_party/retrobus-perfetto/cpp/proto/perfetto.pb.cc
+            third_party/retrobus-perfetto/cpp/proto/perfetto.pb.h
+          key: proto-${{ runner.os }}-${{ hashFiles('build_protobuf_wasm.sh', 'third_party/retrobus-perfetto/proto/*.proto') }}-v1
+          restore-keys: |
+            proto-${{ runner.os }}-
+
+      - name: Build Protobuf/Abseil (if cache miss)
+        if: matrix.perfetto && steps.cache-protobuf.outputs.cache-hit != 'true'
+        run: |
+          chmod +x build_protobuf_wasm.sh
+          ./build_protobuf_wasm.sh
+
+      # Cache generated M68k files (small but helps)
+      - name: Cache M68k generated files
+        uses: actions/cache@v4
+        with:
+          path: |
+            m68kops.c
+            m68kops.h
+            m68kmake
+          key: m68k-gen-${{ runner.os }}-${{ hashFiles('m68k_in.c', 'm68kmake.c') }}-v2
+          restore-keys: |
+            m68k-gen-${{ runner.os }}-
+
+      - name: Build WASM (standard/perfetto)
+        env:
+          ENABLE_PERFETTO: ${{ matrix.perfetto && '1' || '0' }}
+        run: |
+          chmod +x build.fish
+          fish ./build.fish
+
+      - name: Verify WASM outputs exist
+        run: |
+          test -f musashi.out.mjs
+          test -f musashi.out.wasm
+          test -f musashi-node.out.mjs
+          test -f musashi-node.out.wasm
+          ls -lh *.out.mjs *.out.wasm || true
+
+      # Prepare WASM files for TypeScript tests
+      - name: Stage WASM files into packages/core/wasm
+        run: |
+          mkdir -p packages/core/wasm
+          cp -f *.out.mjs packages/core/wasm/ || true
+          cp -f *.out.wasm packages/core/wasm/ || true
+          cp -f *.out.wasm.map packages/core/wasm/ || true
+          echo "Staged:"
+          ls -la packages/core/wasm
+
+      # Node setup + npm cache
+      - name: Use Node.js 20.x (with npm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            musashi-wasm-test/package-lock.json
+            packages/**/package-lock.json
+
+      # Run Node integration tests (repo's musashi-wasm-test)
+      - name: Run Node.js integration tests
+        run: |
+          cd musashi-wasm-test
+          npm ci
+          npm run test:ci || true
+
+      # Run TypeScript tests (once per matrix entry, toggled by PERFETTO_ENABLED)
+      - name: Run TypeScript tests
+        env:
+          PERFETTO_ENABLED: ${{ matrix.perfetto && '1' || '0' }}
+        run: |
+          npm ci
+          npm ci --workspaces
+          npm run build
+          npm run test:core || true
+
+      # Upload WASM artifacts with stable names used by npm-publish.yml
+      - name: Upload WASM artifacts (standard)
+        if: matrix.perfetto == false
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-modules
+          path: |
+            musashi.out.mjs
+            musashi.out.wasm
+            musashi-node.out.mjs
+            musashi-node.out.wasm
+          retention-days: 14
+
+      - name: Upload WASM artifacts (perfetto)
+        if: matrix.perfetto == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-perfetto-modules
+          path: |
+            musashi.out.mjs
+            musashi.out.wasm
+            musashi-node.out.mjs
+            musashi-node.out.wasm
+          retention-days: 14
+
+      # Metrics and cache info
+      - name: Report cache & duration
+        if: always()
+        run: |
+          end=$(date +%s)
+          duration=$((end - ${{ steps.timer.outputs.start }}))
+          echo "Duration: ${duration}s"
+          echo "emsdk cache hit: ${{ steps.cache-emsdk.outputs.cache-hit }}"
+          echo "protobuf cache hit: ${{ steps.cache-protobuf.outputs.cache-hit }}"

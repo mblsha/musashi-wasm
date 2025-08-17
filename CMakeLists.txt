@@ -15,15 +15,27 @@ option(BUILD_TESTS "Build unit tests" ON)
 option(ENABLE_SANITIZERS "Enable address and undefined behavior sanitizers" OFF)
 option(ENABLE_PERFETTO "Enable Perfetto tracing support" OFF)
 
+# Fine-grained sanitizer selection (preferred over ENABLE_SANITIZERS if set)
+set(SANITIZER "" CACHE STRING "one of: address, undefined, thread")
+
+if(SANITIZER STREQUAL "address")
+    add_compile_options(-fsanitize=address)
+    add_link_options(-fsanitize=address)
+elseif(SANITIZER STREQUAL "undefined")
+    add_compile_options(-fsanitize=undefined)
+    add_link_options(-fsanitize=undefined)
+elseif(SANITIZER STREQUAL "thread")
+    add_compile_options(-fsanitize=thread)
+    add_link_options(-fsanitize=thread)
+elseif(ENABLE_SANITIZERS)
+    # Backward-compatible: enable ASAN+UBSAN if SANITIZER not explicitly set
+    add_compile_options(-fsanitize=address -fsanitize=undefined)
+    add_link_options(-fsanitize=address -fsanitize=undefined)
+endif()
+
 # Add compiler warnings
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -pedantic)
-endif()
-
-# Add sanitizers if requested
-if(ENABLE_SANITIZERS)
-    add_compile_options(-fsanitize=address -fsanitize=undefined)
-    add_link_options(-fsanitize=address -fsanitize=undefined)
 endif()
 
 # Configure Perfetto if requested
@@ -139,19 +151,25 @@ target_include_directories(musashi_api PUBLIC
 
 # Build vasm assembler for tests
 if(BUILD_TESTS)
-    # Build vasm as an external project
-    add_custom_target(vasm_build
-        COMMAND ${CMAKE_MAKE_PROGRAM} CPU=m68k SYNTAX=mot
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/vasm
-        COMMENT "Building vasm assembler"
-    )
+    # vasm uses a traditional Makefile that requires 'make', not ninja
+    # When CMAKE_MAKE_PROGRAM is ninja, we need to explicitly use make
+    get_filename_component(MAKE_PROGRAM_NAME "${CMAKE_MAKE_PROGRAM}" NAME)
+    if("${MAKE_PROGRAM_NAME}" STREQUAL "ninja")
+        set(VASM_MAKE_COMMAND make)
+    else()
+        set(VASM_MAKE_COMMAND "${CMAKE_MAKE_PROGRAM}")
+    endif()
     
-    # Create vasm executable target that depends on the build
-    add_executable(vasm IMPORTED GLOBAL)
-    set_target_properties(vasm PROPERTIES
-        IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/third_party/vasm/vasmm68k_mot
+    # Set vasm executable path variable
+    set(VASM_EXECUTABLE ${CMAKE_SOURCE_DIR}/third_party/vasm/vasmm68k_mot)
+    
+    # Build vasm executable with custom command
+    add_custom_command(
+        OUTPUT ${VASM_EXECUTABLE}
+        COMMAND ${VASM_MAKE_COMMAND} CPU=m68k SYNTAX=mot
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/vasm
+        COMMENT "Building vasm assembler with ${VASM_MAKE_COMMAND}"
     )
-    add_dependencies(vasm vasm_build)
 endif()
 
 # Build tests if requested
@@ -300,11 +318,11 @@ if(BUILD_TESTS)
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/tests/test_program.bin
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/tests
-        COMMAND ${CMAKE_SOURCE_DIR}/third_party/vasm/vasmm68k_mot 
+        COMMAND ${VASM_EXECUTABLE}
                 -Fbin 
                 -o ${CMAKE_CURRENT_BINARY_DIR}/tests/test_program.bin
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_program.s
-        DEPENDS vasm ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_program.s
+        DEPENDS ${VASM_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_program.s
         COMMENT "Assembling M68k test program with vasm"
     )
     
@@ -316,11 +334,11 @@ if(BUILD_TESTS)
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/tests/test_mergesort.bin
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/tests
-        COMMAND ${CMAKE_SOURCE_DIR}/third_party/vasm/vasmm68k_mot 
+        COMMAND ${VASM_EXECUTABLE}
                 -Fbin 
                 -o ${CMAKE_CURRENT_BINARY_DIR}/tests/test_mergesort.bin
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mergesort.s
-        DEPENDS vasm ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mergesort.s
+        DEPENDS ${VASM_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mergesort.s
         COMMENT "Assembling M68k merge sort program with vasm"
     )
     

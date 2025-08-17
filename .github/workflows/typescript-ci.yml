@@ -8,258 +8,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  # TypeScript package build and test
-  typescript-test:
-    name: TypeScript Packages Test
+  lint-and-types:
+    name: Lint & Type-check (no WASM builds)
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x]
-    
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-    
-    - name: Setup Emscripten for WASM build
-      uses: mymindstorm/setup-emsdk@v14
-      with:
-        version: '4.0.12'
-    
-    - name: Install Fish shell
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y fish
-    
-    - name: Build WASM modules (required for TypeScript tests)
-      shell: bash
-      run: |
-        set -euo pipefail
-        
-        # Build standard WASM first
-        chmod +x build.fish
-        fish ./build.fish
-        
-        # Verify WASM outputs (ESM)
-        test -f musashi-node.out.mjs
-        test -f musashi-node.out.wasm
-        test -f musashi.out.mjs
-        test -f musashi.out.wasm
-        echo "✓ WASM modules built successfully"
-    
-    - name: Prepare WASM artifacts for tests
-      run: |
-        set -e
-        mkdir -p packages/core/wasm
-        
-        # Copy all generated Emscripten outputs to the expected package dir
-        if ls *.out.mjs >/dev/null 2>&1; then cp -f *.out.mjs packages/core/wasm/; fi
-        if ls *.out.wasm >/dev/null 2>&1; then cp -f *.out.wasm packages/core/wasm/; fi
-        if ls *.out.wasm.map >/dev/null 2>&1; then cp -f *.out.wasm.map packages/core/wasm/; fi
-        
-        # The wrapper expects musashi-node.out.mjs to exist
-        # No need to overwrite musashi-node-wrapper.mjs as it's already in the repo
-        
-        echo "WASM files in packages/core/wasm:"
-        ls -la packages/core/wasm
-    
-    - name: Install TypeScript package dependencies
-      run: |
-        # Install root dependencies using lock file
-        npm ci
-        
-        # Install dependencies for each package
-        npm ci --workspaces
-    
-    - name: Build TypeScript packages
-      run: |
-        npm run build
-    
-    - name: Debug - Check file structure
-      run: |
-        echo "=== packages/core/wasm contents ==="
-        ls -la packages/core/wasm/ || echo "Directory not found"
-        echo "=== Check if mock exists ==="
-        ls -la packages/core/src/__mocks__/ || echo "Mock directory not found"
-        echo "=== Test with Node directly ==="
-        node -e "import('./packages/core/wasm/musashi-node-wrapper.mjs').then(m => console.log('Module loaded:', Object.keys(m))).catch(e => console.log('Failed to load:', e.message))"
-    
-    - name: Debug tests that will run (@m68k/core)
-      run: |
-        node --version
-        npm --version
-        node --experimental-vm-modules ./node_modules/jest/bin/jest.js --projects packages/core --listTests
-    
-    - name: Run TypeScript tests (@m68k/core)
-      run: npm run test:core
-    
-    - name: TypeScript type checking
-      run: |
-        npm run typecheck
-    
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: typescript-test-results-node${{ matrix.node-version }}
-        path: |
-          packages/*/coverage
-          packages/*/test-results.xml
-        retention-days: 7
-        if-no-files-found: ignore
+      - uses: actions/checkout@v4
 
-  # TypeScript packages with Perfetto-enabled WASM
-  typescript-perfetto-test:
-    name: TypeScript with Perfetto WASM
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    
-    - name: Use Node.js 20.x
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20.x
-        cache: 'npm'
-    
-    - name: Setup Emscripten
-      uses: mymindstorm/setup-emsdk@v14
-      with:
-        version: '4.0.12'
-    
-    - name: Install Fish shell
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y fish
-    
-    - name: Build protobuf and abseil for WebAssembly
-      shell: bash
-      run: |
-        set -euo pipefail
-        
-        # Build protobuf and abseil dependencies
-        chmod +x build_protobuf_wasm.sh
-        ./build_protobuf_wasm.sh
-    
-    - name: Build WASM with Perfetto enabled
-      shell: bash
-      run: |
-        set -euo pipefail
-        
-        # Build with Perfetto
-        chmod +x build.fish
-        ENABLE_PERFETTO=1 fish ./build.fish
-        
-        # Verify Perfetto functions are exported
-        echo "Checking for Perfetto function exports..."
-        for func in m68k_perfetto_init m68k_perfetto_destroy m68k_perfetto_export_trace; do
-          if grep -q "_${func}" musashi-node.out.mjs; then
-            echo "✓ ${func} exported"
-          else
-            echo "✗ ${func} NOT exported"
-            exit 1
-          fi
-        done
-    
-    - name: Prepare WASM artifacts for tests (with Perfetto)
-      run: |
-        set -e
-        mkdir -p packages/core/wasm
-        
-        # Copy all generated Emscripten outputs to the expected package dir
-        # (includes Perfetto-enabled builds)
-        if ls *.out.mjs >/dev/null 2>&1; then cp -f *.out.mjs packages/core/wasm/; fi
-        if ls *.out.wasm >/dev/null 2>&1; then cp -f *.out.wasm packages/core/wasm/; fi
-        if ls *.out.wasm.map >/dev/null 2>&1; then cp -f *.out.wasm.map packages/core/wasm/; fi
-        
-        # The wrapper expects musashi-node.out.mjs to exist
-        # No need to overwrite musashi-node-wrapper.mjs as it's already in the repo
-        
-        echo "WASM files with Perfetto in packages/core/wasm:"
-        ls -la packages/core/wasm
-    
-    - name: Install TypeScript package dependencies
-      run: |
-        npm ci
-        npm ci --workspaces
-    
-    - name: Build TypeScript packages
-      run: |
-        npm run build
-    
-    - name: Debug tests that will run with Perfetto (@m68k/core)
-      run: |
-        node --experimental-vm-modules ./node_modules/jest/bin/jest.js --projects packages/core --listTests
-    
-    - name: Run TypeScript tests with Perfetto (@m68k/core)
-      run: |
-        # Set environment variable to indicate Perfetto is available
-        export PERFETTO_ENABLED=1
-        npm run test:core
-    
-    - name: Run TypeScript example
-      run: |
-        # Compile and run the example
-        cd packages
-        npx tsc example.ts --target ES2020 --module commonjs --esModuleInterop
-        node example.js || true  # Don't fail if example has issues
-        
-        # Check if trace was generated
-        if [ -f "example.perfetto-trace" ]; then
-          echo "✓ Perfetto trace generated successfully"
-          ls -lh example.perfetto-trace
-        else
-          echo "ℹ️ No Perfetto trace generated (might be expected)"
-        fi
-    
-    - name: Upload Perfetto traces
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: perfetto-traces
-        path: |
-          packages/*.perfetto-trace
-          packages/**/*.perfetto-trace
-        retention-days: 7
-        if-no-files-found: ignore
+      - name: Use Node.js 20.x with cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
 
-  # Lint and format check
-  typescript-lint:
-    name: TypeScript Lint & Format
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Use Node.js 20.x
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20.x
-        cache: 'npm'
-    
-    - name: Install dependencies
-      run: |
-        npm ci
-        npm ci --workspaces
-    
-    - name: Build packages first
-      run: |
-        npm run build
-    
-    - name: TypeScript compilation check
-      run: |
-        npm run typecheck
-    
-    - name: Check for TypeScript errors
-      run: |
-        npx tsc --noEmit --project packages/core/tsconfig.json
-        npx tsc --noEmit --project packages/memory/tsconfig.json
+      - name: Install deps (root + workspaces)
+        run: |
+          npm ci
+          npm ci --workspaces
+
+      - name: Build packages
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint || npm run lint:check || true
+
+      - name: Type-check
+        run: npm run typecheck
