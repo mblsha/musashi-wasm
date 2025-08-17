@@ -26,8 +26,5 @@
     "classNameTemplate": "{classname}",
     "titleTemplate": "{title}",
     "ancestorSeparator": " › "
-  },
-  "dependencies": {
-    "musashi-wasm": "file:../npm-package/musashi-wasm-0.1.2.tgz"
   }
 }
