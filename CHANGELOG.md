@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2025-08-17
+
+### 🐛 Bug Fixes
+
+- **Browser compatibility fix**: Fixed critical browser compatibility issue where `fileURLToPath` was imported at the top level, breaking Vite/webpack builds
+  - The fix uses conditional dynamic imports - Node.js modules are only loaded in Node.js environments
+  - Browser environments now use `URL.href` directly without importing Node.js-specific modules
+  - This resolves build errors in modern bundlers like Vite and webpack
+
+### 📚 Documentation
+
+- **Hook function clarification**: Clarified hook function usage in documentation
+  - `_set_pc_hook_func` takes only PC parameter (signature 'ii'): `int hook(unsigned int pc)`
+  - `_set_full_instr_hook_func` provides PC, instruction register, and cycles (signature 'iiii'): `int hook(unsigned int pc, unsigned int ir, unsigned int cycles)`
+  - Added clear guidance on when to use each hook type for different use cases
+
 ## [0.1.1] - 2025-08-16
 
 ### 🚨 Breaking Changes

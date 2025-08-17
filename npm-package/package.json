@@ -1,24 +1,26 @@
 {
   "name": "musashi-wasm",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "WebAssembly port of the Musashi M68000 CPU emulator with optional Perfetto tracing support",
   "type": "module",
   "files": [
     "dist",
-    "lib"
+    "lib",
+    "index.mjs",
+    "perf.mjs"
   ],
   "exports": {
     ".": {
-      "import": "./lib/index.mjs",
+      "import": "./index.mjs",
       "types": "./lib/index.d.ts"
     },
     "./perfetto": {
-      "import": "./lib/perfetto.mjs",
+      "import": "./perf.mjs",
       "types": "./lib/perfetto.d.ts"
     }
   },
   "types": "./lib/index.d.ts",
-  "main": "./lib/index.mjs",
+  "main": "./index.mjs",
   "keywords": [
     "m68k",
     "m68000",

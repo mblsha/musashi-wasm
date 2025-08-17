@@ -109,6 +109,43 @@ if (system.tracer.isAvailable()) {
 
 View traces at [ui.perfetto.dev](https://ui.perfetto.dev).
 
+## Hook Functions
+
+The emulator provides two types of hook functions for monitoring and debugging:
+
+### PC Hooks
+For simple breakpoint-style debugging and JavaScript/WASM integration:
+
+```javascript
+// Set PC hook function - signature: int hook(unsigned int pc)
+Module._set_pc_hook_func(Module.addFunction(myHook, 'ii'));
+
+// Hook specific addresses only (optional filtering)
+Module._add_pc_hook_addr(0x1000);  // Hook only address 0x1000
+Module._add_pc_hook_addr(0x2000);  // Also hook address 0x2000
+
+// Clear PC hook
+Module._clear_pc_hook_func();
+Module._clear_pc_hook_addrs();     // Clear address filter (hook all)
+```
+
+### Full Instruction Hooks
+For detailed instruction analysis with opcode and cycle information:
+
+```javascript
+// Set full instruction hook - signature: int hook(unsigned int pc, unsigned int ir, unsigned int cycles)
+Module._set_full_instr_hook_func(Module.addFunction(detailedHook, 'iiii'));
+
+// Clear instruction hook
+Module._clear_instr_hook_func();
+```
+
+**When to use which:**
+- Use **PC Hooks** for breakpoints, simple debugging, and JavaScript integration
+- Use **Full Instruction Hooks** for performance analysis, detailed instruction tracing, and when you need opcode/cycle data
+
+Both hook functions should return 0 to continue execution, or non-zero to break out of the execution loop.
+
 ## Project Structure
 
 ```
