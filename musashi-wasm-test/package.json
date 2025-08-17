@@ -28,6 +28,6 @@
     "ancestorSeparator": " › "
   },
   "dependencies": {
-    "musashi-wasm": "file:../npm-package/musashi-wasm-0.1.2.tgz"
+    "musashi-wasm": "file:../npm-package"
   }
 }
