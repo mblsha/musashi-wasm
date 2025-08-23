@@ -162,6 +162,98 @@ Each test fixture sets up:
 - Dummy execution with m68k_execute(1) to handle initialization overhead
 - PC hook tracking via std::vector<unsigned int> for instruction verification
 
+### SingleStep Instruction Validation Framework
+
+The SingleStep testing framework provides comprehensive validation of individual M68000 instruction emulation against reference test data from the [SingleStepTests/m68000](https://github.com/SingleStepTests/m68000) repository.
+
+#### Framework Overview
+- **Test Data Source**: JSON-based test cases generated using MAME's microcoded M68000 emulator
+- **Coverage**: 100+ instruction types with 2,500+ test cases per instruction
+- **Dual Environment**: Both native C++ and WebAssembly validation
+- **Format**: Each test includes initial state, expected final state, and bus transaction logs
+
+#### Native C++ Testing
+```bash
+# Build and run SingleStep tests
+mkdir -p build && cd build
+cmake .. -DBUILD_TESTS=ON
+make test_singlestep -j8
+
+# Run specific instruction tests
+./test_singlestep --gtest_filter="*TestNOP"
+./test_singlestep --gtest_filter="*RunSelectedInstructions"
+
+# Run all SingleStep tests via CTest
+ctest -R singlestep --output-on-failure
+```
+
+#### WebAssembly Testing
+```bash
+# Run SingleStep WASM validation
+cd musashi-wasm-test
+npm test -- --testNamePattern="singlestep"
+
+# Run individual instruction tests
+npm test -- tests/singlestep_wasm.test.js
+```
+
+#### Test Data Structure
+Each SingleStep test case contains:
+- **Name**: Instruction mnemonic and opcode (e.g., "000 NOP 4e71")
+- **Initial State**: All CPU registers (D0-D7, A0-A7, PC, SR, USP, SSP) and memory contents
+- **Final State**: Expected CPU state after instruction execution
+- **Transactions**: Detailed bus transaction log with cycle-accurate memory accesses
+- **Length**: Instruction execution time in cycles
+
+#### Framework Components
+
+**C++ Classes** (`tests/singlestep_test.h/.cpp`):
+- `SingleStepTest`: Individual test case representation
+- `ProcessorState`: CPU register and memory state
+- `SingleStepTestSuite`: Collection of tests for an instruction type
+- `TestResult`/`SuiteResult`: Test execution results and reporting
+
+**Test Integration** (`tests/test_singlestep.cpp`):
+- `SingleStepBase`: GoogleTest fixture with M68k emulator setup
+- JSON parsing and state comparison
+- Comprehensive error reporting with register-level differences
+
+**WebAssembly Harness** (`musashi-wasm-test/tests/singlestep_wasm.test.js`):
+- `SingleStepTestRunner`: WASM module integration
+- JavaScript-based test execution and validation
+- Memory callback setup and state extraction
+
+#### Current Status and Findings
+
+**Framework Status**: ✅ Fully operational
+- Successfully loads and parses JSON test data
+- Executes instructions in both native and WASM environments  
+- Captures detailed before/after processor states
+- Provides comprehensive error reporting
+
+**Validation Results**: 🔍 Systematic analysis in progress
+- Initial implementation reveals systematic differences
+- Detailed failure reports enable targeted debugging
+- Framework ready for instruction-by-instruction analysis
+
+**Usage for Development**:
+1. **Regression Testing**: Validate changes don't break existing instructions
+2. **New Instruction Development**: Test new opcodes against reference implementation
+3. **Accuracy Verification**: Systematic validation of emulation precision
+4. **Performance Analysis**: Compare execution cycles and memory access patterns
+
+#### Test Data Location
+- **Source Repository**: `third_party/m68000/` (cloned from SingleStepTests/m68000)
+- **JSON Files**: `third_party/m68000/v1/*.json` (decoded from binary format)
+- **Coverage**: NOP, MOVE, ADD, SUB, CMP, and 95+ other instruction types
+
+#### Extending the Framework
+To add new instruction validation:
+1. Ensure JSON test file exists in `third_party/m68000/v1/`
+2. Add instruction to test arrays in `test_singlestep.cpp` and `singlestep_wasm.test.js`
+3. Run tests to identify emulation discrepancies
+4. Use detailed error reports to guide implementation fixes
+
 ## Important Implementation Details
 
 ### Memory System

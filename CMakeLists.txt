@@ -346,6 +346,22 @@ if(BUILD_TESTS)
         DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/tests/test_mergesort.bin
     )
     
+    # Build SingleStep test for validating individual instruction emulation
+    add_executable(test_singlestep
+        tests/test_singlestep.cpp
+        tests/singlestep_test.cpp
+    )
+    
+    target_link_libraries(test_singlestep
+        musashi_api
+        GTest::gtest_main
+    )
+    
+    # Force fetched gtest headers BEFORE system headers
+    if(GTEST_INCLUDES)
+        target_include_directories(test_singlestep PRIVATE BEFORE ${GTEST_INCLUDES})
+    endif()
+    
     # Register tests with CTest
     include(GoogleTest)
     gtest_discover_tests(test_myfunc)
@@ -353,6 +369,7 @@ if(BUILD_TESTS)
     gtest_discover_tests(test_vasm_binary)
     gtest_discover_tests(test_fixture_example)
     gtest_discover_tests(test_exceptions)
+    gtest_discover_tests(test_singlestep)
     
     if(ENABLE_PERFETTO)
         gtest_discover_tests(test_perfetto)
