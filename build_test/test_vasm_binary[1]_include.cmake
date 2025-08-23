@@ -1,0 +1,5 @@
+if(EXISTS "/Users/mblsha/src/github/Musashi/build_test/test_vasm_binary[1]_tests.cmake")
+  include("/Users/mblsha/src/github/Musashi/build_test/test_vasm_binary[1]_tests.cmake")
+else()
+  add_test(test_vasm_binary_NOT_BUILT test_vasm_binary_NOT_BUILT)
+endif()

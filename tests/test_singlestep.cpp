@@ -21,23 +21,39 @@ extern "C" {
     void set_sr_reg(uint16_t value);
     uint32_t get_sr_reg(void);
     uint32_t get_sp_reg(void);
+    void set_usp_reg(uint32_t value);
+    void set_isp_reg(uint32_t value);
+    
+    // Direct M68k API access for missing functions  
+    unsigned int m68k_get_reg(void* context, m68k_register_t reg);
+    void m68k_set_reg(m68k_register_t reg, unsigned int value);
 }
 
 using namespace singlestep;
 
 DECLARE_M68K_TEST(SingleStepBase) {
 public:
-    // Override PC hook for transaction tracking
+    // Override PC hook for transaction tracking only (do not stop here)
     int OnPcHook(unsigned int pc) override {
         pc_hooks.push_back(pc);
-        // Stop after one instruction
-        return pc_hooks.size() >= 2 ? 1 : 0;
+        if (pc_hooks.size() <= 3) {
+            printf("DEBUG: PC hook called with pc=0x%x (%u)\n", pc, pc);
+        }
+        return 0; // Do not stop in PC hook
+    }
+
+    // Use full-instruction hook to stop exactly after one instruction executes
+    int OnInstrHook(unsigned int pc, unsigned int ir, unsigned int cycles) override {
+        (void)pc; (void)ir; (void)cycles;
+        // Break after the first executed instruction
+        return ++instr_count_ >= 1 ? 1 : 0;
     }
 
     // Run a single test case and return results
     TestResult runSingleTest(const SingleStepTest& test) {
         TestResult result;
         result.test_name = test.name;
+        current_test = &test; // Store reference for extractFinalState
         
         try {
             // Set up initial state
@@ -75,37 +91,70 @@ private:
             set_a_reg(i, state.a[i]);
         }
         
-        // Set special registers
-        set_pc_reg(state.pc);
-        set_sr_reg(state.sr);
-        // Note: USP/SSP setup is more complex and may require specific handling
-        
-        // Set up memory
+        // Set up memory FIRST
         state.applyToMemory(memory.data(), memory.size());
         
-        // Note: Prefetch setup would require deeper integration
+        // Apply SR once to set flags
+        set_sr_reg(state.sr);
+        
+        // Robustly set both USP and SSP shadows, then set current SP according to desired S
+        const uint16_t srDesired = state.sr;
+        // Set USP shadow: must be in supervisor mode for M68K_REG_USP to write REG_USP
+        set_sr_reg((uint16_t)((srDesired | 0x2000) & ~0x1000)); // S=1, M=0
+        m68k_set_reg(M68K_REG_USP, state.usp);
+        // Set ISP shadow: must be NOT in supervisor for M68K_REG_ISP to write REG_ISP
+        set_sr_reg((uint16_t)(srDesired & ~0x2000)); // S=0
+        m68k_set_reg(M68K_REG_ISP, state.ssp);
+        // Finally set current SP to match desired mode
+        if (srDesired & 0x2000) {
+            set_sr_reg((uint16_t)((srDesired | 0x2000) & ~0x1000)); // S=1, M=0
+            m68k_set_reg(M68K_REG_SP, state.ssp);
+        } else {
+            set_sr_reg((uint16_t)(srDesired & ~0x2000)); // S=0
+            m68k_set_reg(M68K_REG_SP, state.usp);
+        }
+        // Restore full desired SR (flags, etc.)
+        set_sr_reg(srDesired);
+
+        // Set the architectural PC directly to the provided initial PC
+        set_pc_reg(state.pc);
+        instr_count_ = 0; // reset per-test instruction counter
     }
     
     void extractFinalState(ProcessorState& state) {
         // Get registers using wrapper functions
         for (int i = 0; i < 8; i++) {
             state.d[i] = get_d_reg(i);
-            state.a[i] = get_a_reg(i);
+            // Don't extract A7 directly - it's the active stack pointer
+            if (i < 7) {
+                state.a[i] = get_a_reg(i);
+            }
         }
         
-        // Get special registers
+        // Read architectural PC and SR directly after one instruction executed
         state.pc = get_pc_reg();
         state.sr = static_cast<uint16_t>(get_sr_reg());
-        state.ssp = get_sp_reg(); // This gets current stack pointer
-        state.usp = 0; // USP extraction more complex
         
-        // Extract prefetch would require deeper integration
-        state.prefetch[0] = 0;
-        state.prefetch[1] = 0;
+        // Always extract both stacks explicitly
+        state.usp = m68k_get_reg(NULL, M68K_REG_USP);
+        state.ssp = m68k_get_reg(NULL, M68K_REG_ISP);
+        
+        // Set A7 to the active stack pointer based on current mode
+        if (state.sr & 0x2000) {
+            state.a[7] = state.ssp; // supervisor mode
+        } else {
+            state.a[7] = state.usp; // user mode
+        }
+        
+        // Prefetch queue not compared; leave zeros
         
         // Extract memory changes would require tracking
         state.extractFromMemory(memory.data(), memory.size());
     }
+
+private:
+    const SingleStepTest* current_test = nullptr; // For accessing test data in extractFinalState
+    int instr_count_ = 0;
 
 protected:    
     // Get the test data path

@@ -15,6 +15,9 @@ extern "C" {
     void set_pc_hook_func(int (*func)(unsigned int pc));
     void clear_pc_hook_addrs();
     void clear_pc_hook_func();
+    // Full-instruction hook (pc, ir, cycles)
+    void set_full_instr_hook_func(int (*func)(unsigned int pc, unsigned int ir, unsigned int cycles));
+    void clear_instr_hook_func();
     void reset_myfunc_state();
     void clear_regions();
     void add_region(unsigned int start, unsigned int size, void* data);
@@ -33,6 +36,10 @@ public:
         pc_hooks.push_back(pc);
         return 0; // Continue by default
     }
+    virtual int OnInstrHook(unsigned int pc, unsigned int ir, unsigned int cycles) {
+        (void)pc; (void)ir; (void)cycles;
+        return 0; // Continue by default
+    }
     
 protected:
     std::vector<uint8_t> memory;
@@ -40,7 +47,8 @@ protected:
     
     void SetUp() override {
         instance = static_cast<Derived*>(this);
-        memory.resize(1024 * 1024, 0);
+        // Use 24-bit address space (16MB) to cover all test addresses
+        memory.resize(16 * 1024 * 1024, 0);
         memset(memory.data(), 0, memory.size());
         pc_hooks.clear();
         
@@ -56,6 +64,7 @@ protected:
         set_read_mem_func(read_memory_static);
         set_write_mem_func(write_memory_static);
         set_pc_hook_func(pc_hook_static);
+        set_full_instr_hook_func(instr_hook_static);
         
         write_long(0, 0x1000);  /* Initial SP */
         write_long(4, 0x400);   /* Initial PC */
@@ -67,6 +76,7 @@ protected:
     }
     
     void TearDown() override {
+        clear_instr_hook_func();
         OnTearDown(); // Allow derived classes to add teardown
         instance = nullptr;
     }
@@ -163,6 +173,9 @@ private:
     
     static int pc_hook_static(unsigned int pc) {
         return instance ? instance->OnPcHook(pc) : 0;
+    }
+    static int instr_hook_static(unsigned int pc, unsigned int ir, unsigned int cycles) {
+        return instance ? instance->OnInstrHook(pc, ir, cycles) : 0;
     }
 };
 

@@ -1,0 +1,32 @@
+Start testing: Aug 23 11:58 AEST
+----------------------------------------------------------
+38/40 Testing: SingleStepBase.TestNOP
+38/40 Test: SingleStepBase.TestNOP
+Command: "/Users/mblsha/src/github/Musashi/build_test/test_singlestep" "--gtest_filter=SingleStepBase.TestNOP" "--gtest_also_run_disabled_tests"
+Directory: /Users/mblsha/src/github/Musashi/build_test
+"SingleStepBase.TestNOP" start time: Aug 23 11:58 AEST
+Output:
+----------------------------------------------------------
+Running main() from /Users/mblsha/src/github/Musashi/build_test/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = SingleStepBase.TestNOP
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from SingleStepBase
+[ RUN      ] SingleStepBase.TestNOP
+Running 10 tests for ../third_party/m68000/v1/NOP.json...
+../third_party/m68000/v1/NOP.json: 10/10 passed (100%)
+[       OK ] SingleStepBase.TestNOP (278 ms)
+[----------] 1 test from SingleStepBase (278 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (278 ms total)
+[  PASSED  ] 1 test.
+<end of output>
+Test time =   0.29 sec
+----------------------------------------------------------
+Test Passed.
+"SingleStepBase.TestNOP" end time: Aug 23 11:58 AEST
+"SingleStepBase.TestNOP" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Aug 23 11:58 AEST

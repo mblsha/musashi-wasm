@@ -231,16 +231,44 @@ Each SingleStep test case contains:
 - Captures detailed before/after processor states
 - Provides comprehensive error reporting
 
-**Validation Results**: 🔍 Systematic analysis in progress
-- Initial implementation reveals systematic differences
-- Detailed failure reports enable targeted debugging
-- Framework ready for instruction-by-instruction analysis
+**Validation Results**: 🔍 Systematic emulation accuracy issues identified
+
+Based on comprehensive analysis with codex agent assistance, the following specific discrepancies have been identified:
+
+1. **PC Offset Problem** (+4 bytes consistent across tests)
+   - **Expected**: PC advances by 2 bytes for NOP (e.g., 911852 → 911854)
+   - **Actual**: PC advances by 6 bytes (e.g., 911852 → 911858)
+   - **Root Cause**: CPU initialization and prefetch behavior differs from MAME reference
+   - **Status**: Partial fix attempted by enabling `M68K_EMULATE_PREFETCH`, requires deeper investigation
+
+2. **Status Register Bit Differences** (-9 consistently)
+   - **Expected**: 777 (0x309, binary 1100001001)
+   - **Actual**: 768 (0x300, binary 1100000000)
+   - **Analysis**: C flag (bit 0) and X flag (bit 3) being cleared when they shouldn't
+   - **Impact**: Affects flag state validation in arithmetic operations
+
+3. **USP/SSP Mode Confusion**
+   - **Issue**: A7 register and USP/SSP values getting swapped
+   - **Cause**: Supervisor/User mode switching not properly handled during state extraction
+   - **Status**: Logic improved with supervisor mode detection, needs validation
+
+4. **Prefetch Queue Missing** (returns [0,0])
+   - **Expected**: Values like [55472, 12907] representing prefetched instructions
+   - **Actual**: [0, 0] despite enabling prefetch emulation
+   - **Status**: M68K_REG_PREF_DATA API integration added, needs debugging
+
+**Overall Assessment**: Framework provides excellent foundation for systematic debugging
+- Current pass rate: 0% for NOP (most basic instruction)
+- Detailed per-register difference reporting enables precise debugging
+- Issues are systematic and consistent, suggesting specific emulation implementation gaps
+- Framework ready for comprehensive instruction accuracy improvement project
 
 **Usage for Development**:
 1. **Regression Testing**: Validate changes don't break existing instructions
 2. **New Instruction Development**: Test new opcodes against reference implementation
-3. **Accuracy Verification**: Systematic validation of emulation precision
+3. **Accuracy Verification**: Systematic validation of emulation precision vs MAME implementation
 4. **Performance Analysis**: Compare execution cycles and memory access patterns
+5. **Emulation Debugging**: Pinpoint specific register/flag/memory discrepancies
 
 #### Test Data Location
 - **Source Repository**: `third_party/m68000/` (cloned from SingleStepTests/m68000)

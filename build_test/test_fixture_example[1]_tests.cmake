@@ -1,0 +1,5 @@
+add_test([=[QuickTest.SimpleAddition]=]  /Users/mblsha/src/github/Musashi/build_test/test_fixture_example [==[--gtest_filter=QuickTest.SimpleAddition]==] --gtest_also_run_disabled_tests)
+set_tests_properties([=[QuickTest.SimpleAddition]=]  PROPERTIES WORKING_DIRECTORY /Users/mblsha/src/github/Musashi/build_test SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
+add_test([=[AdvancedTest.InterruptCounting]=]  /Users/mblsha/src/github/Musashi/build_test/test_fixture_example [==[--gtest_filter=AdvancedTest.InterruptCounting]==] --gtest_also_run_disabled_tests)
+set_tests_properties([=[AdvancedTest.InterruptCounting]=]  PROPERTIES WORKING_DIRECTORY /Users/mblsha/src/github/Musashi/build_test SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
+set(  test_fixture_example_TESTS QuickTest.SimpleAddition AdvancedTest.InterruptCounting)

@@ -491,10 +491,13 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
         if (result != 0) return result;
     }
 
-    // Always call the unified hook (JS probe + optional legacy filter)
-    // This ensures JS probe callbacks work in tests
-    (void)my_instruction_hook_function(pc);  // ignore result in tests
-    return 0; // never break in tests
+    // Call the unified hook (JS probe + optional legacy filter)
+    // IMPORTANT for SingleStep tests: honor a non-zero return to break after one instruction
+    int hook_result = my_instruction_hook_function(pc);
+    if (hook_result != 0) {
+        return hook_result;
+    }
+    return 0;
 #else
     int trace_result = m68k_trace_instruction_hook(pc, (uint16_t)ir, (int)cycles);
     if (trace_result != 0) { 
@@ -585,4 +588,3 @@ extern "C" {
     return result;
   }
 } // extern "C"
-

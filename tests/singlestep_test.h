@@ -81,6 +81,10 @@ struct SingleStepTest {
     // Parse a test case from JSON object string
     static SingleStepTest parseFromJson(const std::string& json_object);
     
+    // Helper functions for JSON parsing
+    static void parseProcessorState(const std::string& section, ProcessorState& state);
+    static void parseRegisterValue(const std::string& section, const std::string& pattern, uint32_t& value);
+    
     // Get instruction opcode from test name
     uint16_t getOpcode() const;
     
