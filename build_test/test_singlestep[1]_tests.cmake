@@ -1,7 +1,0 @@
-add_test([=[SingleStepBase.TestNOP]=]  /Users/mblsha/src/github/Musashi/build_test/test_singlestep [==[--gtest_filter=SingleStepBase.TestNOP]==] --gtest_also_run_disabled_tests)
-set_tests_properties([=[SingleStepBase.TestNOP]=]  PROPERTIES WORKING_DIRECTORY /Users/mblsha/src/github/Musashi/build_test SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
-add_test([=[SingleStepBase.TestADD_b]=]  /Users/mblsha/src/github/Musashi/build_test/test_singlestep [==[--gtest_filter=SingleStepBase.TestADD_b]==] --gtest_also_run_disabled_tests)
-set_tests_properties([=[SingleStepBase.TestADD_b]=]  PROPERTIES WORKING_DIRECTORY /Users/mblsha/src/github/Musashi/build_test SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
-add_test([=[SingleStepBase.RunSelectedInstructions]=]  /Users/mblsha/src/github/Musashi/build_test/test_singlestep [==[--gtest_filter=SingleStepBase.RunSelectedInstructions]==] --gtest_also_run_disabled_tests)
-set_tests_properties([=[SingleStepBase.RunSelectedInstructions]=]  PROPERTIES WORKING_DIRECTORY /Users/mblsha/src/github/Musashi/build_test SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
-set(  test_singlestep_TESTS SingleStepBase.TestNOP SingleStepBase.TestADD_b SingleStepBase.RunSelectedInstructions)
