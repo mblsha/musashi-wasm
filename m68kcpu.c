@@ -1305,5 +1305,24 @@ void m68k_state_register(const char *type, int index)
 #endif /* M68K_COMPILE_FOR_MAME */
 
 /* ======================================================================== */
+/* ========================== DIAGNOSTIC HOOKS =========================== */
+/* ======================================================================== */
+
+/* Default implementation of vector jump notification hook.
+ * This is a weak symbol that can be overridden by the host application.
+ * The myfunc.cc implementation will override this with a more feature-rich version.
+ */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((weak))
+#endif
+void musashi_notify_vector_jump(unsigned int vector, unsigned int new_pc, unsigned int pre_pc)
+{
+    /* Default implementation does nothing */
+    (void)vector;
+    (void)new_pc;
+    (void)pre_pc;
+}
+
+/* ======================================================================== */
 /* ============================== END OF FILE ============================= */
 /* ======================================================================== */
