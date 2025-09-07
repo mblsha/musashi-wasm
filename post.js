@@ -1,7 +1,4 @@
 // post.js
-// CommonJS-compatible export for Node.js
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports.getModule = function() {
-        return Module;
-    };
-}
+// Additional helper for accessing the Module after initialization
+// This file is appended to the Emscripten-generated code
+// The Module variable is already exported by Emscripten's module system

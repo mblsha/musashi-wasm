@@ -1,0 +1,55 @@
+{
+  "name": "musashi-wasm",
+  "version": "0.1.5",
+  "description": "WebAssembly port of the Musashi M68000 CPU emulator with optional Perfetto tracing support",
+  "type": "module",
+  "files": [
+    "dist",
+    "lib",
+    "index-browser.mjs",
+    "index.mjs",
+    "perf.mjs"
+  ],
+  "exports": {
+    ".": {
+      "import": "./index.mjs",
+      "types": "./lib/index.d.ts"
+    },
+    "./browser": {
+      "import": "./index-browser.mjs",
+      "types": "./lib/index.d.ts"
+    },
+    "./perfetto": {
+      "import": "./perf.mjs",
+      "types": "./lib/perfetto.d.ts"
+    }
+  },
+  "types": "./lib/index.d.ts",
+  "main": "./index.mjs",
+  "keywords": [
+    "m68k",
+    "m68000",
+    "motorola",
+    "emulator",
+    "cpu",
+    "wasm",
+    "webassembly",
+    "perfetto",
+    "tracing"
+  ],
+  "author": "Musashi Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mblsha/Musashi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mblsha/Musashi/issues"
+  },
+  "homepage": "https://github.com/mblsha/Musashi#readme"
+  ,
+  "scripts": {
+    "build": "node ./scripts/generate-wrapper.js",
+    "prepare": "npm run build"
+  }
+}

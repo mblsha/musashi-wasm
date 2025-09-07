@@ -1,0 +1,30 @@
+{
+  "name": "musashi-wasm-test",
+  "version": "1.0.0",
+  "description": "Minimalistic integration test for the Musashi M68k WASM module on Node.js.",
+  "main": "index.js",
+  "scripts": {
+    "test": "NODE_OPTIONS='--experimental-vm-modules' npx jest",
+    "test:ci": "NODE_OPTIONS='--experimental-vm-modules' npx jest --ci --reporters=default --reporters=jest-junit"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "jest-junit": "^16.0.0"
+  },
+  "type": "module",
+  "jest": {
+    "testTimeout": 10000,
+    "testEnvironment": "node",
+    "transform": {}
+  },
+  "jest-junit": {
+    "outputDirectory": ".",
+    "outputName": "test-results.xml",
+    "suiteName": "Musashi WASM Integration Tests",
+    "classNameTemplate": "{classname}",
+    "titleTemplate": "{title}",
+    "ancestorSeparator": " › "
+  }
+}

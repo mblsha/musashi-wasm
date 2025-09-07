@@ -1,0 +1,33 @@
+{
+  "name": "@m68k/monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "test:ci": "npm run test:ci --workspaces",
+    "test:core": "NODE_OPTIONS='--experimental-vm-modules' npx jest --projects packages/core --runInBand --verbose --no-cache",
+    "clean": "npm run clean --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "lint": "npm run lint --workspaces",
+    "lint:fix": "npm run lint:fix --workspaces",
+    "format": "npm run format --workspaces",
+    "format:check": "npm run format:check --workspaces",
+    "build:wasm": "bash -c 'export EMSDK=$(dirname $(dirname $(readlink -f $(which emcc))))/libexec && ./build.fish'",
+    "build:wasm:perfetto": "bash -c 'export EMSDK=$(dirname $(dirname $(readlink -f $(which emcc))))/libexec && ENABLE_PERFETTO=1 ./build.fish'",
+    "build:protobuf": "./build_protobuf_wasm.sh",
+    "test:local-ci": "./test_ci_locally.sh",
+    "test:with-wasm": "./test_with_real_wasm.sh",
+    "dev:wasm": "npm run build:wasm && npm run test:with-wasm"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "prettier": "^3.1.0",
+    "typescript": "^5.3.3"
+  }
+}

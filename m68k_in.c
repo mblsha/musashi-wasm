@@ -9228,10 +9228,27 @@ M68KMAKE_OP(rte, 32, ., .)
 
 		if(CPU_TYPE_IS_000(CPU_TYPE))
 		{
-			new_sr = m68ki_pull_16();
-			new_pc = m68ki_pull_32();
-			m68ki_jump(new_pc);
+			/* 68000 RTE: Fixed 6-byte frame on supervisor stack
+			 * CRITICAL: Must explicitly pop from SSP, not current SP!
+			 * On 68000, SSP is at REG_SP_BASE[4] (S=1, M=0)
+			 */
+			
+			/* Explicitly pop from SSP (not the current A7 alias) */
+			uint ssp = REG_SP_BASE[4];  /* 4 = supervisor stack for 68000 */
+			new_sr = m68ki_read_16(ssp);
+			ssp += 2;
+			new_pc = m68ki_read_32(ssp);
+			ssp += 4;
+			
+			/* Commit SSP (we are still in S=1 so REG_SP must reflect SSP as well) */
+			REG_SP_BASE[4] = MASK_OUT_ABOVE_32(ssp);
+			REG_SP = REG_SP_BASE[4];
+			
+			/* Apply SR (may swap A7 to USP if S clears) */
 			m68ki_set_sr(new_sr);
+			
+			/* Jump to restored PC */
+			m68ki_jump(new_pc);
 			m68ki_trace_rte(source_pc, new_pc);
 
 			CPU_INSTR_MODE = INSTRUCTION_YES;
@@ -9248,8 +9265,8 @@ M68KMAKE_OP(rte, 32, ., .)
 				new_sr = m68ki_pull_16();
 				new_pc = m68ki_pull_32();
 				m68ki_fake_pull_16();	/* format word */
-				m68ki_jump(new_pc);
-				m68ki_set_sr(new_sr);
+				m68ki_set_sr(new_sr);  /* Set SR first (handles S-bit changes) */
+				m68ki_jump(new_pc);    /* Then jump */
 				m68ki_trace_rte(source_pc, new_pc);
 				CPU_INSTR_MODE = INSTRUCTION_YES;
 				CPU_RUN_MODE = RUN_MODE_NORMAL;
@@ -9275,8 +9292,8 @@ M68KMAKE_OP(rte, 32, ., .)
 				m68ki_fake_pull_32();
 				m68ki_fake_pull_32();
 				m68ki_fake_pull_32();
-				m68ki_jump(new_pc);
-				m68ki_set_sr(new_sr);
+				m68ki_set_sr(new_sr);  /* Set SR first (handles S-bit changes) */
+				m68ki_jump(new_pc);    /* Then jump */
 				m68ki_trace_rte(source_pc, new_pc);
 				CPU_INSTR_MODE = INSTRUCTION_YES;
 				CPU_RUN_MODE = RUN_MODE_NORMAL;
@@ -9298,8 +9315,8 @@ rte_loop:
 				new_sr = m68ki_pull_16();
 				new_pc = m68ki_pull_32();
 				m68ki_fake_pull_16();	/* format word */
-				m68ki_jump(new_pc);
-				m68ki_set_sr(new_sr);
+				m68ki_set_sr(new_sr);  /* Set SR first (handles S-bit changes) */
+				m68ki_jump(new_pc);    /* Then jump */
 				m68ki_trace_rte(source_pc, new_pc);
 				CPU_INSTR_MODE = INSTRUCTION_YES;
 				CPU_RUN_MODE = RUN_MODE_NORMAL;
@@ -9315,8 +9332,8 @@ rte_loop:
 				new_pc = m68ki_pull_32();
 				m68ki_fake_pull_16();	/* format word */
 				m68ki_fake_pull_32();	/* address */
-				m68ki_jump(new_pc);
-				m68ki_set_sr(new_sr);
+				m68ki_set_sr(new_sr);  /* Set SR first (handles S-bit changes) */
+				m68ki_jump(new_pc);    /* Then jump */
 				m68ki_trace_rte(source_pc, new_pc);
 				CPU_INSTR_MODE = INSTRUCTION_YES;
 				CPU_RUN_MODE = RUN_MODE_NORMAL;

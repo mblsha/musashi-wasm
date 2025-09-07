@@ -946,6 +946,11 @@ void m68k_set_cpu_type(unsigned int cpu_type)
 /* ASG: removed per-instruction interrupt checks */
 int m68k_execute(int num_cycles)
 {
+	/* If the CPU is already in STOP state, report 0 cycles consumed */
+	if (CPU_STOPPED) {
+		return 0;
+	}
+	
 	/* eat up any reset cycles */
 	if (RESET_CYCLES) {
 	    int rc = RESET_CYCLES;
@@ -993,7 +998,8 @@ int m68k_execute(int num_cycles)
 			uint executed_cycles = CYC_INSTRUCTION[REG_IR]; /* Capture cycle cost */
 			
 			/* Call external hook to peek at CPU */
-			if (m68ki_instr_hook(REG_PC, REG_IR, executed_cycles)) {
+			/* Use REG_PPC which contains the actual instruction start address */
+			if (m68ki_instr_hook(REG_PPC, REG_IR, executed_cycles)) {
 				break;
 			}
 			

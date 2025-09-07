@@ -12,6 +12,7 @@
 #include <sstream>
 #include <algorithm>
 #include <iomanip>
+#include <cctype>
 #include "m68k.h"
 #include "m68ktrace.h"
 
@@ -101,7 +102,6 @@ protected:
         write_long(4, 0x400);   /* Initial PC */
         
         m68k_pulse_reset();
-        m68k_execute(1);  /* Dummy execution */
     }
     
     void TearDown() override {
@@ -146,13 +146,45 @@ protected:
         memory[addr + 1] = value & 0xFF;
     }
     
+    /* Utility to normalize mnemonics by stripping size suffixes */
+    static std::string NormalizeMnemonic(const std::string& s) {
+        std::string result = s;
+        std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+        auto dot = result.find('.');
+        if (dot != std::string::npos) result.erase(dot); // strip .w/.l/.b
+        return result;
+    }
+    
     /* Trace analysis utilities */
     int CountInstructionType(const std::string& pattern) {
         int count = 0;
+        std::string norm_pattern = NormalizeMnemonic(pattern);
+        
         for (const auto& t : trace) {
-            if (t.mnemonic.find(pattern) != std::string::npos ||
-                t.full_disasm.find(pattern) != std::string::npos) {
-                count++;
+            std::string norm_mnemonic = NormalizeMnemonic(t.mnemonic);
+            
+            // For branch detection, be more precise
+            if (pattern == "b") {
+                // Only count actual branch instructions, not .b size suffixes
+                if (norm_mnemonic == "bra" || norm_mnemonic == "bsr" || 
+                    norm_mnemonic == "bcc" || norm_mnemonic == "bcs" || 
+                    norm_mnemonic == "beq" || norm_mnemonic == "bne" || 
+                    norm_mnemonic == "bge" || norm_mnemonic == "bgt" || 
+                    norm_mnemonic == "ble" || norm_mnemonic == "blt" || 
+                    norm_mnemonic == "bhi" || norm_mnemonic == "bls" || 
+                    norm_mnemonic == "bmi" || norm_mnemonic == "bpl" || 
+                    norm_mnemonic == "bvc" || norm_mnemonic == "bvs" ||
+                    norm_mnemonic.substr(0, 2) == "db") { // dbcc variants
+                    count++;
+                }
+            } else {
+                // For CMP instructions, match by prefix to catch cmp, cmpi, cmpa, cmpm
+                if (norm_pattern == "cmp" && norm_mnemonic.rfind("cmp", 0) == 0) {
+                    count++;
+                } else if (norm_mnemonic == norm_pattern) {
+                    // For other patterns, do exact match after normalization
+                    count++;
+                }
             }
         }
         return count;
@@ -163,11 +195,39 @@ protected:
         int current_depth = 0;
         
         for (const auto& t : trace) {
-            if (t.mnemonic == "bsr") {
+            // Case-insensitive check for BSR/JSR/RTS
+            std::string lower_mnemonic = t.mnemonic;
+            std::transform(lower_mnemonic.begin(), lower_mnemonic.end(), 
+                          lower_mnemonic.begin(), ::tolower);
+            
+            if (lower_mnemonic == "bsr" || lower_mnemonic == "jsr") {
                 current_depth++;
                 max_depth = std::max(max_depth, current_depth);
-            } else if (t.mnemonic == "rts") {
+            } else if (lower_mnemonic == "rts") {
                 current_depth--;
+            }
+        }
+        return max_depth;
+    }
+    
+    /* Normalized recursion depth that starts counting from 0 */
+    int AnalyzeRecursionDepthNormalized() {
+        int max_depth = 0;
+        int current_depth = 0;
+        bool saw_root = false;
+        
+        for (const auto& t : trace) {
+            std::string norm_mnemonic = NormalizeMnemonic(t.mnemonic);
+            
+            if (norm_mnemonic == "bsr" || norm_mnemonic == "jsr") {
+                if (!saw_root) {
+                    saw_root = true;      // root call establishes depth 0
+                } else {
+                    current_depth++;      // deeper levels start after root
+                    max_depth = std::max(max_depth, current_depth);
+                }
+            } else if (norm_mnemonic == "rts") {
+                if (saw_root && current_depth > 0) current_depth--;
             }
         }
         return max_depth;
@@ -178,12 +238,16 @@ protected:
         int depth = 0;
         
         for (const auto& instr : trace) {
-            if (instr.mnemonic == "bsr") {
+            std::string lower_mnemonic = instr.mnemonic;
+            std::transform(lower_mnemonic.begin(), lower_mnemonic.end(), 
+                          lower_mnemonic.begin(), ::tolower);
+            
+            if (lower_mnemonic == "bsr") {
                 for (int i = 0; i < depth; i++) printf("  ");
                 printf("→ CALL %s (D0=%d, D1=%d, D2=%d)\n", 
                        instr.operands.c_str(), instr.d0, instr.d1, instr.d2);
                 depth++;
-            } else if (instr.mnemonic == "rts") {
+            } else if (lower_mnemonic == "rts") {
                 depth--;
                 for (int i = 0; i < depth; i++) printf("  ");
                 printf("← RETURN\n");
