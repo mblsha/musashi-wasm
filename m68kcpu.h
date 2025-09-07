@@ -1057,7 +1057,7 @@ static inline uint m68ki_read_imm_16(void)
 #if M68K_SEPARATE_READS
 #if M68K_EMULATE_PMMU
 	if (PMMU_ENABLED)
-	    address = pmmu_translate_addr(address);
+	    { uint address = REG_PC; address = pmmu_translate_addr(address); REG_PC = address; }
 #endif
 #endif
 
@@ -1092,7 +1092,7 @@ static inline uint m68ki_read_imm_32(void)
 #if M68K_SEPARATE_READS
 #if M68K_EMULATE_PMMU
 	if (PMMU_ENABLED)
-	    address = pmmu_translate_addr(address);
+	    { uint address = REG_PC; address = pmmu_translate_addr(address); REG_PC = address; }
 #endif
 #endif
 
