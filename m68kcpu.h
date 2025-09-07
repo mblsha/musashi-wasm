@@ -1677,8 +1677,29 @@ static inline uint m68ki_init_exception(void)
 /* 3 word stack frame (68000 only) */
 static inline void m68ki_stack_frame_3word(uint pc, uint sr)
 {
-	m68ki_push_32(pc);
-	m68ki_push_16(sr);
+	/* CRITICAL: Explicitly push to SSP on 68000 to ensure correct stack usage.
+	 * On 68000, SSP is at index 4 when FLAG_S=4 (supervisor mode).
+	 * We must ensure we are pushing to SSP even if called from user mode. */
+	if(CPU_TYPE == CPU_TYPE_000)
+	{
+		uint32_t ssp = REG_SP_BASE[4];  /* SSP on 68000 */
+		/* Push PC first (as 32-bit value) */
+		ssp = MASK_OUT_ABOVE_32(ssp - 4);
+		m68ki_write_32(ssp, pc);
+		/* Push SR last (as 16-bit value) */
+		ssp = MASK_OUT_ABOVE_32(ssp - 2);
+		m68ki_write_16(ssp, sr);
+		/* Update SSP */
+		REG_SP_BASE[4] = ssp;
+		/* If we are in supervisor mode, update current SP too */
+		if(FLAG_S) REG_SP = ssp;
+	}
+	else
+	{
+		/* Non-68000: use current stack */
+		m68ki_push_32(pc);
+		m68ki_push_16(sr);
+	}
 }
 
 /* Format 0 stack frame.
@@ -2085,7 +2106,7 @@ static inline void m68ki_exception_illegal(void)
 	}
 	#endif /* M68K_EMULATE_ADDRESS_ERROR */
 
-	m68ki_stack_frame_0000(REG_PPC, sr, EXCEPTION_ILLEGAL_INSTRUCTION);
+	m68ki_stack_frame_0000(REG_PC, sr, EXCEPTION_ILLEGAL_INSTRUCTION);
 	m68ki_jump_vector(EXCEPTION_ILLEGAL_INSTRUCTION);
 
 	/* Use up some clock cycles and undo the instruction's cycles */
