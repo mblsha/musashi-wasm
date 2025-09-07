@@ -93,6 +93,7 @@ run emmake make -j8 ENABLE_PERFETTO=$enable_perfetto
 set -l exported_functions \
     _malloc \
     _free \
+    _set_entry_point \
     _m68k_set_reg \
     _m68k_get_reg \
     _m68k_init \
