@@ -38,6 +38,14 @@ extern "C" {
 #endif
 
 #include "m68k.h"
+/* Diagnostic hook implemented in myfunc.cc to log vector jumps */
+#ifdef __cplusplus
+extern "C" {
+#endif
+void musashi_notify_vector_jump(unsigned int vector, unsigned int new_pc, unsigned int pre_pc);
+#ifdef __cplusplus
+}
+#endif
 #include "m68ktrace.h"
 
 #include <limits.h>
@@ -1483,9 +1491,12 @@ static inline void m68ki_jump(uint new_pc)
 
 static inline void m68ki_jump_vector(uint vector)
 {
-	REG_PC = (vector<<2) + REG_VBR;
-	REG_PC = m68ki_read_data_32(REG_PC);
-	m68ki_pc_changed(REG_PC);
+	/* Read the vector address without clobbering PC, then jump */
+	uint32_t pre_pc = REG_PC;
+	uint32_t vector_addr = (vector<<2) + REG_VBR;
+	uint32_t new_pc = m68ki_read_data_32(vector_addr);
+	musashi_notify_vector_jump(vector, new_pc, pre_pc);
+	m68ki_jump(new_pc);
 }
 
 
