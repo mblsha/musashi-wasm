@@ -248,6 +248,13 @@ extern "C" {
     if (_enable_printf_logging)
       printf("clear_registered_names: cleared all names\n");
   }
+
+  // Diagnostic: notify when core jumps via exception vector
+  void musashi_notify_vector_jump(unsigned int vector, unsigned int new_pc, unsigned int pre_pc) {
+    if (_enable_printf_logging) {
+      printf("VECTOR: vec=%u pre_pc=0x%08x -> new_pc=0x%08x\n", vector, pre_pc, new_pc);
+    }
+  }
   
   const char* get_function_name(unsigned int address) {
     auto it = _function_names.find(address);
