@@ -197,6 +197,20 @@ extern "C" {
   void clear_instr_hook_func() {
     _instr_hook = 0;
   }
+
+  // Provide a clean entry helper that sets sane CPU state and jumps to pc
+  // without re-priming reset vectors. This avoids spurious early vectoring
+  // into BIOS space on hosts without a BIOS mapping.
+  void set_entry_point(uint32_t pc) {
+    // Supervisor mode, IRQ masked, trace off
+    m68k_set_reg(M68K_REG_SR, 0x2700);
+    // Clear any pending IRQ
+    m68k_set_irq(0);
+    // Ensure VBR is 0 on 68000
+    m68k_set_reg(M68K_REG_VBR, 0);
+    // Set PC last to flush prefetch and take effect immediately
+    m68k_set_reg(M68K_REG_PC, pc);
+  }
   
   void reset_myfunc_state() {
     _initialized = false;
@@ -585,4 +599,3 @@ extern "C" {
     return result;
   }
 } // extern "C"
-
