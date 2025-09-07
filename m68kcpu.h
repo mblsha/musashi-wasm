@@ -44,6 +44,11 @@ extern "C" {
 
 #include <setjmp.h>
 
+/* Host-side diagnostics hooks (defined in myfunc.cc). These are C symbols
+ * and must be visible to both C and C++ translation units. */
+void musashi_notify_vector_jump(unsigned int vector, unsigned int new_pc, unsigned int pre_pc);
+void musashi_notify_illegal(unsigned int ir, unsigned int pc, unsigned int ppc, unsigned int sr);
+
 /* ======================================================================== */
 /* ==================== ARCHITECTURE-DEPENDANT DEFINES ==================== */
 /* ======================================================================== */
@@ -1491,13 +1496,15 @@ static inline void m68ki_jump(uint new_pc)
 
 static inline void m68ki_jump_vector(uint vector)
 {
-	/* Read the vector address from the vector table.
-	 * On 68000, VBR is always 0.
-	 * CRITICAL: Don't overwrite PC before reading! */
-	uint32_t vector_addr = (vector<<2) + REG_VBR;
-	uint32_t new_pc = m68ki_read_data_32(vector_addr);
-	/* Now jump to the vector handler */
-	m68ki_jump(new_pc);
+    /* Read the vector address from the vector table.
+     * On 68000, VBR is always 0.
+     * CRITICAL: Don't overwrite PC before reading! */
+    uint32_t vector_addr = (vector<<2) + REG_VBR;
+    uint32_t new_pc = m68ki_read_data_32(vector_addr);
+    /* Diagnostic: notify host about vector jump (vector id, new_pc, pre-PC) */
+    musashi_notify_vector_jump(vector, new_pc, REG_PC);
+    /* Now jump to the vector handler */
+    m68ki_jump(new_pc);
 }
 
 
@@ -2091,7 +2098,10 @@ extern int m68ki_illg_callback(int);
 /* Exception for illegal instructions */
 static inline void m68ki_exception_illegal(void)
 {
-	uint sr;
+    uint sr;
+
+    /* Diagnostic: notify host before handling illegal instruction */
+    musashi_notify_illegal(REG_IR, REG_PC, REG_PPC, m68ki_get_sr());
 
 	M68K_DO_LOG((M68K_LOG_FILEHANDLE "%s at %08x: illegal instruction %04x (%s)\n",
 				 m68ki_cpu_names[CPU_TYPE], ADDRESS_68K(REG_PPC), REG_IR,

@@ -156,7 +156,15 @@ set -l exported_functions \
     _get_sr_reg \
     _set_isp_reg \
     _set_usp_reg \
-    _get_sp_reg
+    _get_sp_reg \
+    _early_trace_reset \
+    _early_trace_enable \
+    _early_trace_count \
+    _early_trace_pc \
+    _early_trace_ir \
+    _enable_bios_nop_mapping \
+    _set_stop_pc \
+    _clear_stop_pc
 
 # Add Perfetto functions only if enabled
 if test "$enable_perfetto" = "1"
