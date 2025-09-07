@@ -186,6 +186,50 @@ TEST_F(M68kTest, ConditionCodes) {
     EXPECT_TRUE((sr & 0x04) != 0) << "Zero flag should be set";
 }
 
+// Ensure that after writing reset vectors and pulsing reset, the CPU starts
+// fetching instructions from the vector-specified PC (user code), not a vector
+// in a high BIOS region. This relies on the core reading vectors without
+// clobbering PC first, and on a clean prefetch state.
+TEST_F(M68kTest, ResetToEntryVectors_FirstFetchFromUserPC) {
+    // Arrange: vectors -> SP=0x1000, PC=0x400; write NOPs at 0x400
+    write_word(0x0400, 0x4E71); // NOP
+    write_word(0x0402, 0x4E71); // NOP
+    write_long(0x0000, 0x00001000); // SP
+    write_long(0x0004, 0x00000400); // PC
+
+    // Act: reset and execute a couple instructions
+    m68k_pulse_reset();
+    unsigned int pc0 = m68k_get_reg(NULL, M68K_REG_PC);
+    EXPECT_EQ(pc0, 0x00000400u);
+    m68k_execute(4);
+    unsigned int pc1 = m68k_get_reg(NULL, M68K_REG_PC);
+
+    // Assert: PC advances from user code region, not a high vector/BIOS
+    EXPECT_LT(pc1, 0x00C00000u);
+}
+
+// Simulate a "clean entry" by setting SR and PC directly and verify the first
+// fetch happens from user ROM address, not via an immediate vector jump.
+TEST_F(M68kTest, SetEntryPoint_CleanFirstFetch) {
+    // Arrange: NOPs at 0x400
+    write_word(0x0400, 0x4E71);
+    write_word(0x0402, 0x4E71);
+
+    // Ensure no pending IRQ, supervisor mode, and set PC
+    m68k_set_irq(0);
+    m68k_set_reg(M68K_REG_SR, 0x2700);
+    m68k_set_reg(M68K_REG_PC, 0x00000400);
+
+    // Act
+    unsigned int pc0 = m68k_get_reg(NULL, M68K_REG_PC);
+    EXPECT_EQ(pc0, 0x00000400u);
+    m68k_execute(4);
+    unsigned int pc1 = m68k_get_reg(NULL, M68K_REG_PC);
+
+    // Assert: Still in user region
+    EXPECT_LT(pc1, 0x00C00000u);
+}
+
 // Test interrupt handling with stack frame validation
 TEST_F(M68kTest, InterruptHandling) {
     // Set up interrupt vector for level 2 autovector (vector 26 = 0x68)
@@ -270,4 +314,3 @@ TEST_F(M68kTest, InterruptHandling) {
     unsigned int final_sp = m68k_get_reg(NULL, M68K_REG_SP);
     EXPECT_EQ(final_sp, initial_sp) << "SP should return to original after RTE";
 }
-
