@@ -18,9 +18,14 @@
 #define UINT64_MAX ((uint64_t)-1)
 #endif
 
-/* Stop-PC accessors from myfunc.cc (C linkage) */
+/* Stop-PC accessors from myfunc.cc (C linkage). Optional for embedders. */
+#ifdef MUSASHI_HAVE_STOP_PC_API
 extern "C" unsigned int get_stop_pc(void);
 extern "C" unsigned int is_stop_pc_enabled(void);
+#else
+static inline unsigned int get_stop_pc(void) { return 0u; }
+static inline unsigned int is_stop_pc_enabled(void) { return 0u; }
+#endif
 
 /* ======================================================================== */
 /* ========================== INTERNAL STRUCTURES ======================== */
@@ -255,19 +260,20 @@ int m68k_trace_flow_hook(m68k_trace_flow_type type, uint32_t source_pc,
             first_ram_d[i] = m68k_get_reg(nullptr, static_cast<m68k_register_t>(M68K_REG_D0 + i));
             first_ram_a[i] = m68k_get_reg(nullptr, static_cast<m68k_register_t>(M68K_REG_A0 + i));
         }
-        /* Also print a concise JSON-ish line to stdout so tests/harnesses
-         * see the snapshot even if they don't poll the exports. */
+        }
+        /* Optional diagnostic print; enable with -DM68K_TRACE_RAM_FLOW_LOG=1 */
+#ifdef M68K_TRACE_RAM_FLOW_LOG
         printf("[first-ram-flow/native] type=%u src=%x dst=%x ret=%x D=%x,%x,%x,%x,%x,%x,%x,%x A=%x,%x,%x,%x,%x,%x,%x,%x\n",
                (unsigned)first_ram_flow_evt.type,
                (unsigned)first_ram_flow_evt.src,
                (unsigned)first_ram_flow_evt.dst,
                (unsigned)first_ram_flow_evt.ret,
-               (unsigned)first_ram_d[0], (unsigned)first_ram_d[1], (unsigned)first_ram_d[2], (unsigned)first_ram_d[3],
-               (unsigned)first_ram_d[4], (unsigned)first_ram_d[5], (unsigned)first_ram_d[6], (unsigned)first_ram_d[7],
-               (unsigned)first_ram_a[0], (unsigned)first_ram_a[1], (unsigned)first_ram_a[2], (unsigned)first_ram_a[3],
-               (unsigned)first_ram_a[4], (unsigned)first_ram_a[5], (unsigned)first_ram_a[6], (unsigned)first_ram_a[7]
+               (unsigned)first_ram_flow_d[0], (unsigned)first_ram_flow_d[1], (unsigned)first_ram_flow_d[2], (unsigned)first_ram_flow_d[3],
+               (unsigned)first_ram_flow_d[4], (unsigned)first_ram_flow_d[5], (unsigned)first_ram_flow_d[6], (unsigned)first_ram_flow_d[7],
+               (unsigned)first_ram_flow_a[0], (unsigned)first_ram_flow_a[1], (unsigned)first_ram_flow_a[2], (unsigned)first_ram_flow_a[3],
+               (unsigned)first_ram_flow_a[4], (unsigned)first_ram_flow_a[5], (unsigned)first_ram_flow_a[6], (unsigned)first_ram_flow_a[7]
         );
-        }
+#endif
     }
 
     if (g_trace.enabled && g_trace.flow_enabled && g_trace.flow_callback) {

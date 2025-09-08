@@ -9204,12 +9204,8 @@ M68KMAKE_OP(rtd, 32, ., .)
     if(CPU_TYPE_IS_010_PLUS(CPU_TYPE))
     {
         uint new_pc = m68ki_pull_32();
-        /* 68000-class addressing is 24-bit; ensure popped PC is masked */
-        if (CPU_TYPE_IS_000(CPU_TYPE))
-            new_pc &= 0x00ffffff;
-
-		m68ki_trace_t0();			   /* auto-disable (see m68kcpu.h) */
-		REG_A[7] = MASK_OUT_ABOVE_32(REG_A[7] + MAKE_INT_16(OPER_I_16()));
+        m68ki_trace_t0();			   /* auto-disable (see m68kcpu.h) */
+        REG_A[7] = MASK_OUT_ABOVE_32(REG_A[7] + MAKE_INT_16(OPER_I_16()));
         m68ki_jump(new_pc);
         return;
     }
