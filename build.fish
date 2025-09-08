@@ -225,7 +225,17 @@ set -l exported_functions \
     _mem_trace_pc \
     _mem_trace_addr \
     _mem_trace_value \
-    _mem_trace_size
+    _mem_trace_size \
+    _first_ram_flow_has \
+    _first_ram_flow_clear \
+    _first_ram_flow_type \
+    _first_ram_flow_src \
+    _first_ram_flow_dst \
+    _first_ram_flow_ret \
+    _first_ram_flow_d \
+    _first_ram_flow_a \
+    _get_stop_pc \
+    _is_stop_pc_enabled
 
 # Add Perfetto functions only if enabled
 if test "$enable_perfetto" = "1"
@@ -253,7 +263,9 @@ set -l runtime_funcs_to_include \
     '$setValue' \
     '$UTF8ToString' \
     '$stringToUTF8' \
-    '$writeArrayToMemory'
+    '$writeArrayToMemory' \
+    '$saveSetjmp' \
+    '$testSetjmp'
 
 # Heap views and runtime methods exported via EXPORTED_RUNTIME_METHODS
 # Note: In Emscripten 4.x, some functions need to be in both places for compatibility
@@ -274,7 +286,9 @@ set -l runtime_methods \
     setValue \
     UTF8ToString \
     stringToUTF8 \
-    writeArrayToMemory
+    writeArrayToMemory \
+    saveSetjmp \
+    testSetjmp
 
 set -l object_files m68kcpu.o m68kops.o myfunc.o m68k_memory_bridge.o m68ktrace.o m68kdasm.o
 
@@ -294,6 +308,7 @@ set -l emcc_options \
  # https://emscripten.org/docs/porting/guidelines/function_pointer_issues.html
 #  -s SAFE_HEAP \
  -s ASSERTIONS=2 \
+ -s STACK_SIZE=262144 \
 #  -s RESERVED_FUNCTION_POINTERS=256 \
  # default is 16MB, ALLOW_MEMORY_GROWTH is alternative.
 #  -s INITIAL_MEMORY=16MB \
@@ -301,9 +316,10 @@ set -l emcc_options \
  # https://github.com/emscripten-core/emscripten/issues/7082#issuecomment-462957723
 #  -s EMULATE_FUNCTION_POINTER_CASTS \
  # https://github.com/emscripten-core/emscripten/issues/7082#issuecomment-462957723
+-s ALLOW_TABLE_GROWTH=1 \
  -s ALLOW_TABLE_GROWTH=1 \
- -s SUPPORT_LONGJMP=wasm \
- # Longjmp support can trigger conflicts with exception settings on 4.x. Keep default here.
+ -s SUPPORT_LONGJMP=0 \
+ -s ALLOW_TABLE_GROWTH=1 \
 #  -s USE_OFFSET_CONVERTER=1 \
  # without this it didn't find the .wasm file?
  -s MODULARIZE=1 \
@@ -316,8 +332,7 @@ set -l emcc_options \
 #  -fsanitize=address \
  # important since we want to operate on 32 and 64-bit numbers
  -sWASM_BIGINT \
- # Enable JS exceptions for Perfetto support (WASM exceptions cause linker crash)
- -sDISABLE_EXCEPTION_CATCHING=1 \
+ -sDISABLE_EXCEPTION_CATCHING=0 \
  -s ERROR_ON_UNDEFINED_SYMBOLS=0 \
  -Wl,--gc-sections
 
@@ -354,6 +369,7 @@ end
 echo "==== BUILDING NODE.JS VERSION (ESM) ===="
 run emcc \
  $emcc_options \
+ --pre-js pre.js \
  -s ENVIRONMENT=node \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \
@@ -364,6 +380,7 @@ echo "Written to musashi-node.out.mjs"
 echo "==== BUILDING WEB VERSION (ESM) ===="
 run emcc \
  $emcc_options \
+ --pre-js pre.js \
  -s ENVIRONMENT=web \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \
@@ -374,6 +391,7 @@ echo "Written to musashi.out.mjs"
 echo "==== BUILDING UNIVERSAL VERSION (ESM) ===="
 run emcc \
  $emcc_options \
+ --pre-js pre.js \
  -s ENVIRONMENT=web,webview,worker,node \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \

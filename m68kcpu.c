@@ -52,6 +52,13 @@ extern void m68ki_build_opcode_table(void);
 #include "m68kfpu.c"
 #include "m68kmmu.h" // uses some functions from m68kfpu.c which are static !
 
+/* Provide prototype for end-of-instruction boundary hook implemented in C++ */
+#ifdef __cplusplus
+extern "C" int m68k_instruction_end_boundary_hook(unsigned int pc);
+#else
+extern int m68k_instruction_end_boundary_hook(unsigned int pc);
+#endif
+
 /* ======================================================================== */
 /* ================================= DATA ================================= */
 /* ======================================================================== */
@@ -602,7 +609,9 @@ static void default_instr_hook_callback(unsigned int pc)
 
 
 #if M68K_EMULATE_ADDRESS_ERROR
-	#include <setjmp.h>
+#if M68K_EMULATE_ADDRESS_ERROR
+#include <setjmp.h>
+#endif
 	#ifdef _BSD_SETJMP_H
 	sigjmp_buf m68ki_aerr_trap;
 	#else
@@ -1010,8 +1019,8 @@ int m68k_execute(int num_cycles)
 			m68ki_instruction_jump_table[REG_IR]();
 			USE_CYCLES(executed_cycles);
 			
-			/* Get PC after instruction execution */
-			post_pc = REG_PC;
+            /* Get PC after instruction execution */
+            post_pc = REG_PC;
 			
 			/* FIXED: Use REG_IR which contains the correct opcode */
 			uint16_t opcode = REG_IR;
@@ -1061,18 +1070,38 @@ int m68k_execute(int num_cycles)
 					is_flow_instruction = 1;
 				}
 				
-				if (is_flow_instruction) {
-					/* Call flow tracing hook */
-					if (flow_type == M68K_TRACE_FLOW_CALL) {
-						m68k_trace_flow_hook(flow_type, pre_pc, post_pc, pre_pc + 2);
-					} else if (flow_type == M68K_TRACE_FLOW_RETURN) {
-						m68k_trace_flow_hook(flow_type, pre_pc, post_pc, 0);
-					} else if (flow_type == M68K_TRACE_FLOW_JUMP) {
-						/* Only trace if jump was actually taken (PC changed) */
-						m68k_trace_flow_hook(flow_type, pre_pc, post_pc, 0);
+            if (is_flow_instruction) {
+                /* Call flow tracing hook */
+                if (flow_type == M68K_TRACE_FLOW_CALL) {
+                    m68k_trace_flow_hook(flow_type, pre_pc, post_pc, pre_pc + 2);
+                } else if (flow_type == M68K_TRACE_FLOW_RETURN) {
+                    m68k_trace_flow_hook(flow_type, pre_pc, post_pc, 0);
+                } else if (flow_type == M68K_TRACE_FLOW_JUMP) {
+                    /* Only trace if jump was actually taken (PC changed) */
+                    m68k_trace_flow_hook(flow_type, pre_pc, post_pc, 0);
+                }
+            }
+
+            /* Diagnostic: if execution moved into RAM region (0x100000..0x200000),
+             * emit a synthetic JUMP flow event to help locate first wrong edge.
+             * This complements instruction-based flow tracing, and is safe even
+             * if a prior flow event was already recorded for this instruction.
+             */
+            if (post_pc >= 0x100000 && post_pc < 0x200000) {
+                m68k_trace_flow_hook(M68K_TRACE_FLOW_JUMP, pre_pc, post_pc, 0);
+            }
+			}
+
+			/* Invoke end-of-instruction boundary hook with post-PC before
+			 * fetching the next instruction. This aligns hook timing with
+			 * the local backend and prevents the next-opcode read from being
+			 * counted in the previous instruction's step.
+			 */
+				{
+					if (m68k_instruction_end_boundary_hook(post_pc)) {
+						break;
 					}
 				}
-			}
 			
 			/* THIS IS THE KEY FIX: Update the global trace cycle counter */
 			m68k_trace_update_cycles(executed_cycles);

@@ -27,6 +27,10 @@ static std::unordered_set<unsigned int> _pc_hook_addrs;
 static bool _bios_nop_map = false; // Diagnostic: map BIOS fetches to NOPs
 static bool _stop_pc_enabled = false;
 static unsigned int _stop_pc = 0;
+// Prefer invoking pc_hook at end-of-instruction boundary (post-PC) rather
+// than at start-of-instruction (pre-PC). This matches local backend behavior
+// and makes per-instruction read/write streams deterministic.
+static bool _pc_hook_at_end_boundary = true;
 
 // Early instruction trace (wrapper-level): captures first N (pc, ir)
 static bool _early_trace_enabled = false;
@@ -154,6 +158,10 @@ extern "C" {
     if (_enable_printf_logging) {
       printf("ILLEGAL: ir=0x%x pc=0x%x ppc=0x%x sr=0x%x\n", ir, pc, ppc, sr);
     }
+    // Also feed this into the flow tracer so the RAM-flow snapshot can latch
+    // in environments where we reached RAM via an illegal fetch.
+    // Treat this as an EXCEPTION flow from ppc -> pc (destination).
+    m68k_trace_flow_hook(M68K_TRACE_FLOW_EXCEPTION, ppc, pc, 0);
   }
   void set_read_mem_func(read_mem_t func) {
     if (_enable_printf_logging)
@@ -263,6 +271,18 @@ extern "C" {
     if (_enable_printf_logging)
       printf("clear_stop_pc\n");
   }
+
+  // Control whether pc_hook runs at end-of-instruction (1) or start (0)
+  void set_pc_hook_boundary_mode(int end_boundary) {
+    _pc_hook_at_end_boundary = (end_boundary != 0);
+    if (_enable_printf_logging)
+      printf("set_pc_hook_boundary_mode: %s\n", _pc_hook_at_end_boundary ? "end" : "start");
+  }
+
+  /* Accessors for stop-pc so other subsystems (e.g., tracer) can avoid
+   * treating a return-to-sentinel as a meaningful RAM-flow edge. */
+  unsigned int get_stop_pc(void) { return _stop_pc; }
+  unsigned int is_stop_pc_enabled(void) { return _stop_pc_enabled ? 1u : 0u; }
 
   // Provide a clean entry helper that sets sane CPU state and jumps to pc
   // without re-priming reset vectors. This avoids spurious early vectoring
@@ -608,14 +628,35 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
             return result;
         }
     }
-
-    const int js_result = my_instruction_hook_function(pc);
-    if (js_result != 0) { 
-        m68k_end_timeslice(); 
-        return js_result; 
+    // Always invoke JS pc_hook at start-of-instruction as a deterministic
+    // boundary. End-of-instruction hook (below in m68kcpu.c) provides an
+    // additional boundary before the next opcode fetch.
+    {
+        const int js_result = my_instruction_hook_function(pc);
+        if (js_result != 0) {
+            m68k_end_timeslice();
+            return js_result;
+        }
     }
     return 0;
 #endif
+}
+
+// Called at end-of-instruction boundary (post-PC)
+extern "C" int m68k_instruction_end_boundary_hook(unsigned int pc) {
+  // Fast-path: built-in stop PC
+  if (_stop_pc_enabled && pc == _stop_pc) {
+    m68k_end_timeslice();
+    return 1;
+  }
+  if (_pc_hook_at_end_boundary) {
+    const int js_result = my_instruction_hook_function(pc);
+    if (js_result != 0) {
+      m68k_end_timeslice();
+      return js_result;
+    }
+  }
+  return 0;
 }
 
 /* ======================================================================== */
