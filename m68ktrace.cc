@@ -18,10 +18,6 @@
 #define UINT64_MAX ((uint64_t)-1)
 #endif
 
-/* Stop-PC accessors from myfunc.cc (C linkage) */
-extern "C" unsigned int get_stop_pc(void);
-extern "C" unsigned int is_stop_pc_enabled(void);
-
 /* ======================================================================== */
 /* ========================== INTERNAL STRUCTURES ======================== */
 /* ======================================================================== */
@@ -81,12 +77,6 @@ static std::vector<flow_evt> flow_ring;
 static bool mem_ring_enabled = false;
 static unsigned mem_ring_limit = 0;
 static std::vector<mem_evt> mem_ring;
-
-/* First RAM-flow snapshot: capture once when flow enters 0x100000..0x200000 */
-static bool first_ram_flow_valid = false;
-static flow_evt first_ram_flow_evt{};
-static std::array<uint32_t,8> first_ram_d{};
-static std::array<uint32_t,8> first_ram_a{};
 
 /* ======================================================================== */
 /* ========================== INTERNAL FUNCTIONS ========================= */
@@ -243,33 +233,6 @@ int m68k_trace_flow_hook(m68k_trace_flow_type type, uint32_t source_pc,
         flow_ring.push_back(flow_evt{ (uint32_t)type, source_pc, dest_pc, return_addr });
     }
 
-    /* Capture first flow into RAM region (0x100000..0x200000) with D/A regs */
-    if (!first_ram_flow_valid && dest_pc >= 0x100000u && dest_pc < 0x200000u) {
-        /* Ignore built-in stop-pc sentinel address to avoid false positives */
-        if (is_stop_pc_enabled() && dest_pc == get_stop_pc()) {
-            /* fall through without capturing */
-        } else {
-        first_ram_flow_valid = true;
-        first_ram_flow_evt = flow_evt{ (uint32_t)type, source_pc, dest_pc, return_addr };
-        for (int i = 0; i < 8; i++) {
-            first_ram_d[i] = m68k_get_reg(nullptr, static_cast<m68k_register_t>(M68K_REG_D0 + i));
-            first_ram_a[i] = m68k_get_reg(nullptr, static_cast<m68k_register_t>(M68K_REG_A0 + i));
-        }
-        /* Also print a concise JSON-ish line to stdout so tests/harnesses
-         * see the snapshot even if they don't poll the exports. */
-        printf("[first-ram-flow/native] type=%u src=%x dst=%x ret=%x D=%x,%x,%x,%x,%x,%x,%x,%x A=%x,%x,%x,%x,%x,%x,%x,%x\n",
-               (unsigned)first_ram_flow_evt.type,
-               (unsigned)first_ram_flow_evt.src,
-               (unsigned)first_ram_flow_evt.dst,
-               (unsigned)first_ram_flow_evt.ret,
-               (unsigned)first_ram_d[0], (unsigned)first_ram_d[1], (unsigned)first_ram_d[2], (unsigned)first_ram_d[3],
-               (unsigned)first_ram_d[4], (unsigned)first_ram_d[5], (unsigned)first_ram_d[6], (unsigned)first_ram_d[7],
-               (unsigned)first_ram_a[0], (unsigned)first_ram_a[1], (unsigned)first_ram_a[2], (unsigned)first_ram_a[3],
-               (unsigned)first_ram_a[4], (unsigned)first_ram_a[5], (unsigned)first_ram_a[6], (unsigned)first_ram_a[7]
-        );
-        }
-    }
-
     if (g_trace.enabled && g_trace.flow_enabled && g_trace.flow_callback) {
         /* Get current register state with bounds checking */
         std::array<uint32_t, 8> d_regs;
@@ -418,14 +381,4 @@ unsigned int mem_trace_size(unsigned int index) {
     if (index >= mem_ring.size()) return 0u;
     return (unsigned int)mem_ring[index].size;
 }
-
-/* First RAM-flow snapshot exports */
-unsigned int first_ram_flow_has(void) { return first_ram_flow_valid ? 1u : 0u; }
-void first_ram_flow_clear(void) { first_ram_flow_valid = false; }
-unsigned int first_ram_flow_type(void) { return first_ram_flow_valid ? first_ram_flow_evt.type : 0u; }
-unsigned int first_ram_flow_src(void) { return first_ram_flow_valid ? first_ram_flow_evt.src : 0u; }
-unsigned int first_ram_flow_dst(void) { return first_ram_flow_valid ? first_ram_flow_evt.dst : 0u; }
-unsigned int first_ram_flow_ret(void) { return first_ram_flow_valid ? first_ram_flow_evt.ret : 0u; }
-unsigned int first_ram_flow_d(unsigned int idx) { return (first_ram_flow_valid && idx < 8) ? first_ram_d[idx] : 0u; }
-unsigned int first_ram_flow_a(unsigned int idx) { return (first_ram_flow_valid && idx < 8) ? first_ram_a[idx] : 0u; }
 } // extern "C"
