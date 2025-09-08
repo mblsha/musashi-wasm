@@ -77,9 +77,15 @@ export class MusashiWrapper {
   private _readFunc: EmscriptenFunction = 0;
   private _writeFunc: EmscriptenFunction = 0;
   private _probeFunc: EmscriptenFunction = 0;
-  private readonly NOP_FUNC_ADDR = 0x1000; // Address with an RTS instruction (moved away from test program)
+  private _postInstrFunc: EmscriptenFunction = 0;
+  private readonly NOP_FUNC_ADDR = 0x400; // Address which returns immediately in ROM (mslug-specific)
   private _doneExec = false;
   private _doneOverride = false;
+  // Fusion/Debug: optional hooks for per-instruction and memory I/O
+  public onInstruction?: (pc: number) => void;
+  public onRead8?: (addr: number, value: number) => void;
+  public onWrite8?: (addr: number, value: number) => void;
+  private _singleStep = false;
 
   constructor(module: MusashiEmscriptenModule) {
     this._module = module;
@@ -90,17 +96,43 @@ export class MusashiWrapper {
 
     // Setup callbacks FIRST (critical for expert's fix)
     this._readFunc = this._module.addFunction((addr: number) => {
-      return this._memory[addr] || 0;
+      let value: number | undefined = undefined;
+      if (this._externalRead8) {
+        try {
+          value = this._externalRead8(addr >>> 0);
+        } catch (_e) {
+          // ignore external errors in debug mode
+        }
+      }
+      const v = (value !== undefined ? value : (this._memory[addr] || 0)) & 0xff;
+      if (this.onRead8) this.onRead8(addr >>> 0, v >>> 0);
+      return v;
     }, 'ii');
 
     this._writeFunc = this._module.addFunction((addr: number, val: number) => {
-      this._memory[addr] = val & 0xff;
+      const v = val & 0xff;
+      let handled = false;
+      if (this._externalWrite8) {
+        try {
+          handled = !!this._externalWrite8(addr >>> 0, v >>> 0);
+        } catch (_e) {
+          handled = false;
+        }
+      }
+      if (!handled) {
+        this._memory[addr] = v;
+      }
+      if (this.onWrite8) this.onWrite8(addr >>> 0, v >>> 0);
     }, 'vii');
 
     this._probeFunc = this._module.addFunction((addr: number) => {
-      return this._system._handlePCHook(addr) ? 1 : 0;
+      if (this.onInstruction) this.onInstruction(addr >>> 0);
+      // Allow SystemImpl to process probe/override hooks
+      const shouldStop = this._system._handlePCHook(addr) ? 1 : 0;
+      // Do not force stop here in single-step; defer to full-instruction hook
+      return shouldStop;
     }, 'ii');
-
+    
     // Register callbacks with C
     if (this._module._set_read8_callback) {
       this._module._set_read8_callback(this._readFunc);
@@ -111,18 +143,71 @@ export class MusashiWrapper {
     if (this._module._set_probe_callback) {
       this._module._set_probe_callback(this._probeFunc);
     }
+    // Also register legacy read/write memory callbacks for 16/32-bit accesses
+    if ((this._module as any)._set_read_mem_func) {
+      const readMem = this._module.addFunction((address: number, size: number) => {
+        let v = 0;
+        if (size === 1) {
+          v = this._memory[address] || 0;
+          if (this._externalRead8) {
+            const ev = this._externalRead8(address >>> 0);
+            if (ev !== undefined) v = ev & 0xff;
+          }
+          if (this.onRead8) this.onRead8(address >>> 0, v & 0xff);
+          return v & 0xff;
+        }
+        // big-endian compose via 8-bit path so external interceptors are honored
+        const b0 = (this._externalRead8?.(address >>> 0) ?? (this._memory[address] || 0)) & 0xff;
+        const b1 = (this._externalRead8?.((address + 1) >>> 0) ?? (this._memory[address + 1] || 0)) & 0xff;
+        if (size === 2) {
+          if (this.onRead8) { this.onRead8(address >>> 0, b0); this.onRead8((address + 1) >>> 0, b1); }
+          return (b0 << 8) | b1;
+        }
+        const b2 = (this._externalRead8?.((address + 2) >>> 0) ?? (this._memory[address + 2] || 0)) & 0xff;
+        const b3 = (this._externalRead8?.((address + 3) >>> 0) ?? (this._memory[address + 3] || 0)) & 0xff;
+        if (this.onRead8) {
+          this.onRead8(address >>> 0, b0); this.onRead8((address + 1) >>> 0, b1);
+          this.onRead8((address + 2) >>> 0, b2); this.onRead8((address + 3) >>> 0, b3);
+        }
+        v = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+        return v >>> 0;
+      }, 'iii');
+      (this._module as any)._set_read_mem_func(readMem);
+    }
+    if ((this._module as any)._set_write_mem_func) {
+      const writeMem = this._module.addFunction((address: number, size: number, value: number) => {
+        // Decompose big-endian to 8-bit path so external interceptors are honored
+        if (size === 1) {
+          this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address, value & 0xff);
+          return;
+        }
+        if (size === 2) {
+          const b0 = (value >> 8) & 0xff;
+          const b1 = value & 0xff;
+          this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address, b0);
+          this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address + 1, b1);
+          return;
+        }
+        const b0 = (value >> 24) & 0xff;
+        const b1 = (value >> 16) & 0xff;
+        const b2 = (value >> 8) & 0xff;
+        const b3 = value & 0xff;
+        this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address, b0);
+        this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address + 1, b1);
+        this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address + 2, b2);
+        this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address + 3, b3);
+      }, 'viii');
+      (this._module as any)._set_write_mem_func(writeMem);
+    }
+
+    // Full-instruction hook is disabled here to avoid ABI mismatches across builds.
 
     // Copy ROM and RAM into our memory
     this._memory.set(rom, 0x000000);
     this._memory.set(ram, 0x100000);
 
-    // CRITICAL: Write reset vectors BEFORE init/reset
-    this.write32BE(0x00000000, 0x00108000); // Initial SSP (in RAM)
-    this.write32BE(0x00000004, 0x00000400); // Initial PC (in ROM)
-
-    // Write NOP function at NOP_FUNC_ADDR for override handling
-    const nopCode = new Uint8Array([0x4e, 0x75]); // RTS instruction
-    this._memory.set(nopCode, this.NOP_FUNC_ADDR);
+    // Do not modify reset vectors; rely on ROM contents for SSP/PC like the
+    // local musashi wrapper, to ensure synchronized boot semantics.
 
     // Initialize CPU
     this._module._m68k_init();
@@ -131,14 +216,9 @@ export class MusashiWrapper {
     // Reset CPU (will read vectors we just wrote)
     this._module._m68k_pulse_reset();
 
-    // Verify initialization
-    const pc =
-      this._module._get_pc_reg?.() ?? this._module._m68k_get_reg(0, 16);
-    if (pc !== 0x400) {
-      throw new Error(
-        `CPU not properly initialized, PC=0x${pc.toString(16)} (expected 0x400)`
-      );
-    }
+    // Optionally verify initialization (ROM vectors may point to BIOS > 0xC00000
+    // or to 0x400 depending on build). We skip strict validation to stay
+    // compatible with multiple ROM layouts.
   }
 
   private write32BE(addr: number, value: number): void {
@@ -161,6 +241,10 @@ export class MusashiWrapper {
     if (this._probeFunc) {
       this._module.removeFunction?.(this._probeFunc);
       this._probeFunc = 0;
+    }
+    if (this._postInstrFunc) {
+      this._module.removeFunction?.(this._postInstrFunc);
+      this._postInstrFunc = 0;
     }
     this._module._clear_regions?.();
     this._module._clear_pc_hook_addrs?.();
@@ -190,12 +274,19 @@ export class MusashiWrapper {
       return 1; // Stop execution
     }
 
+    if (this.onInstruction) this.onInstruction(pc >>> 0);
+
     // Let the SystemImpl class handle the logic
     const shouldStop = this._system._handlePCHook(pc);
 
     if (shouldStop) {
       this._doneOverride = true;
       return 1; // Stop execution
+    }
+
+    if (this._singleStep) {
+      this._doneExec = true;
+      return 1;
     }
 
     return 0; // Continue execution
@@ -222,6 +313,23 @@ export class MusashiWrapper {
 
   pulse_reset() {
     this._module._m68k_pulse_reset();
+  }
+
+  // Enable or disable single-step mode: when enabled, the probe callback will
+  // stop execution after each instruction.
+  setSingleStepMode(enabled: boolean) {
+    this._singleStep = !!enabled;
+  }
+
+  // Allow external interception of 8-bit memory access to mirror complex
+  // hardware semantics (e.g., memory-mapped registers) from a host engine.
+  private _externalRead8?: (addr: number) => number | undefined;
+  private _externalWrite8?: (addr: number, value: number) => boolean | void;
+  setExternalRead8(fn?: (addr: number) => number | undefined) {
+    this._externalRead8 = fn;
+  }
+  setExternalWrite8(fn?: (addr: number, value: number) => boolean | void) {
+    this._externalWrite8 = fn;
   }
 
   get_reg(index: number): number {
