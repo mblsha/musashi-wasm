@@ -10,8 +10,8 @@ CC        = em++
 WARNINGS  = -Wall -Wextra -pedantic
 # CFLAGS    = $(WARNINGS) -fsanitize=address -g
 # LFLAGS    = $(WARNINGS) -fsanitize=address -g
-CFLAGS    = $(WARNINGS) -O3 -frtti -fno-exceptions -std=c++17
-LFLAGS    = $(WARNINGS) -O3 -frtti -fno-exceptions -std=c++17
+CFLAGS    = $(WARNINGS) -O3 -frtti -fexceptions -std=c++17
+LFLAGS    = $(WARNINGS) -O3 -frtti -fexceptions -std=c++17
 
 MUSASHIFILES     = m68kcpu.c myfunc.cc m68k_memory_bridge.cc m68kdasm.c m68ktrace.cc softfloat/softfloat.c
 
