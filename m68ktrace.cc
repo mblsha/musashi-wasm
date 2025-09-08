@@ -49,6 +49,36 @@ struct m68k_trace_state {
 static m68k_trace_state g_trace;
 
 /* ======================================================================== */
+/* ======================= LIGHTWEIGHT RING BUFFERS ====================== */
+/* ======================================================================== */
+
+/* Simple fixed-capacity rings to capture earliest flow/mem events without
+ * relying on JS callbacks. This helps debugging in WASM environments. */
+
+struct flow_evt {
+    uint32_t type;
+    uint32_t src;
+    uint32_t dst;
+    uint32_t ret;
+};
+
+struct mem_evt {
+    uint32_t is_read; /* 1 = read, 0 = write */
+    uint32_t pc;
+    uint32_t addr;
+    uint32_t value;
+    uint8_t size;
+};
+
+static bool flow_ring_enabled = false;
+static unsigned flow_ring_limit = 0;
+static std::vector<flow_evt> flow_ring;
+
+static bool mem_ring_enabled = false;
+static unsigned mem_ring_limit = 0;
+static std::vector<mem_evt> mem_ring;
+
+/* ======================================================================== */
 /* ========================== INTERNAL FUNCTIONS ========================= */
 /* ======================================================================== */
 
@@ -198,7 +228,11 @@ int m68k_trace_flow_hook(m68k_trace_flow_type type, uint32_t source_pc,
         return 0;
     }
     
-    
+    /* Append to lightweight flow ring for early debugging if enabled */
+    if (flow_ring_enabled && flow_ring.size() < flow_ring_limit) {
+        flow_ring.push_back(flow_evt{ (uint32_t)type, source_pc, dest_pc, return_addr });
+    }
+
     if (g_trace.enabled && g_trace.flow_enabled && g_trace.flow_callback) {
         /* Get current register state with bounds checking */
         std::array<uint32_t, 8> d_regs;
@@ -234,7 +268,17 @@ int m68k_trace_mem_hook(m68k_trace_mem_type type, uint32_t pc,
     if (size != 1 && size != 2 && size != 4) {
         return 0; /* Invalid size */
     }
-    
+    /* Append to lightweight mem ring for early debugging if enabled */
+    if (mem_ring_enabled && mem_ring.size() < mem_ring_limit) {
+        mem_evt ev;
+        ev.is_read = (type == M68K_TRACE_MEM_READ) ? 1u : 0u;
+        ev.pc = pc;
+        ev.addr = address;
+        ev.value = value;
+        ev.size = size;
+        mem_ring.push_back(ev);
+    }
+
     if (g_trace.enabled && g_trace.mem_enabled && g_trace.mem_callback) {
         if (is_address_traced(address)) {
             /* Call callback with protection */
@@ -265,4 +309,76 @@ void m68k_trace_update_cycles(int cycles_executed)
     }
 }
 
+} // extern "C"
+
+/* ======================================================================== */
+/* =================== WASM EXPORTS FOR RING ACCESS ====================== */
+/* ======================================================================== */
+
+extern "C" {
+/* Flow ring controls */
+void flow_trace_reset(void) {
+    flow_ring.clear();
+    flow_ring_enabled = false;
+    flow_ring_limit = 0;
+}
+void flow_trace_enable(unsigned int limit) {
+    flow_ring_enabled = true;
+    flow_ring_limit = limit;
+    flow_ring.clear();
+}
+unsigned int flow_trace_count(void) {
+    return (unsigned int)flow_ring.size();
+}
+unsigned int flow_trace_type(unsigned int index) {
+    if (index >= flow_ring.size()) return 0u;
+    return flow_ring[index].type;
+}
+unsigned int flow_trace_src(unsigned int index) {
+    if (index >= flow_ring.size()) return 0u;
+    return flow_ring[index].src;
+}
+unsigned int flow_trace_dst(unsigned int index) {
+    if (index >= flow_ring.size()) return 0u;
+    return flow_ring[index].dst;
+}
+unsigned int flow_trace_ret(unsigned int index) {
+    if (index >= flow_ring.size()) return 0u;
+    return flow_ring[index].ret;
+}
+
+/* Mem ring controls */
+void mem_trace_reset(void) {
+    mem_ring.clear();
+    mem_ring_enabled = false;
+    mem_ring_limit = 0;
+}
+void mem_trace_enable(unsigned int limit) {
+    mem_ring_enabled = true;
+    mem_ring_limit = limit;
+    mem_ring.clear();
+}
+unsigned int mem_trace_count(void) {
+    return (unsigned int)mem_ring.size();
+}
+unsigned int mem_trace_is_read(unsigned int index) {
+    if (index >= mem_ring.size()) return 0u;
+    return mem_ring[index].is_read;
+}
+unsigned int mem_trace_pc(unsigned int index) {
+    if (index >= mem_ring.size()) return 0u;
+    return mem_ring[index].pc;
+}
+unsigned int mem_trace_addr(unsigned int index) {
+    if (index >= mem_ring.size()) return 0u;
+    return mem_ring[index].addr;
+}
+unsigned int mem_trace_value(unsigned int index) {
+    if (index >= mem_ring.size()) return 0u;
+    return mem_ring[index].value;
+}
+unsigned int mem_trace_size(unsigned int index) {
+    if (index >= mem_ring.size()) return 0u;
+    return (unsigned int)mem_ring[index].size;
+}
 } // extern "C"

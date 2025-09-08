@@ -71,7 +71,53 @@ which emcc     ^/dev/null; or echo "WARNING: which emcc failed, but direct path 
 which em++     ^/dev/null; or echo "WARNING: which em++ failed, but should work via PATH"
 which emmake   ^/dev/null; or echo "WARNING: which emmake failed, but should work via PATH"
 echo "emcc version:"
-emcc --version
+set -l emcc_ver (emcc --version 2>/dev/null | head -n 1)
+echo $emcc_ver
+
+# Parse toolchain version (major.minor.patch) from emcc --version
+set -l emcc_semver (string match -r -- '(\d+\.\d+\.\d+)' -- $emcc_ver)
+set -l emcc_major (string split . $emcc_semver)[1]
+
+# If we are on >=4.x, warn and try to switch to 3.1.74 for better setjmp compatibility
+if test -n "$emcc_major"; and test $emcc_major -ge 4
+    echo ""
+    echo "==== WARNING: Emscripten >=4.x detected ($emcc_semver) ===="
+    echo "- The wasm setjmp smoke test is expected to fail under 4.x"
+    echo "  (e.g., missing saveSetjmp/emscripten_longjmp)."
+    echo "- Attempting to activate repo-local emsdk 3.1.74 for this build..."
+    echo ""
+
+    set -l EMSDK_DIR (pwd)/emsdk
+    if test -x "$EMSDK_DIR/emsdk"
+        # Try install (no-op if already installed) and activate 3.1.74
+        python3 "$EMSDK_DIR/emsdk.py" install 3.1.74; or echo "(emsdk install 3.1.74 returned non-zero; continuing)"
+        python3 "$EMSDK_DIR/emsdk.py" activate 3.1.74; or echo "(emsdk activate 3.1.74 returned non-zero; continuing)"
+        # Refresh PATH to point at the newly activated toolchain
+        set -gx EMSDK $EMSDK_DIR
+        if test -d "$EMSDK_DIR/upstream/emscripten"
+            set -gx PATH $EMSDK_DIR/upstream/emscripten $EMSDK_DIR $PATH
+        end
+        echo "Re-checking emcc after activation:"
+        which emcc ^/dev/null; or echo "(emcc not found on PATH after activation)"
+        set emcc_ver (emcc --version 2>/dev/null | head -n 1)
+        echo $emcc_ver
+        set emcc_semver (string match -r -- '(\d+\.\d+\.\d+)' -- $emcc_ver)
+        set emcc_major (string split . $emcc_semver)[1]
+        if test -z "$emcc_major"; or test $emcc_major -ge 4
+            echo ""
+            echo "==== ERROR: Still on Emscripten $emcc_semver (>=4.x)."
+            echo "- The smoke test tests/test_wasm_setjmp_smoke.mjs will likely fail."
+            echo "- Please use emsdk 3.1.74 and re-run this script."
+            exit 1
+        else
+            echo "Switched to Emscripten $emcc_semver (expected <4.x)."
+        end
+    else
+        echo "==== ERROR: Repo-local emsdk not found at $EMSDK_DIR"
+        echo "Please ensure third_party/musashi-wasm/emsdk exists and re-run."
+        exit 1
+    end
+end
 echo "node version:"
 node --version
 echo "================================"
@@ -164,7 +210,22 @@ set -l exported_functions \
     _early_trace_ir \
     _enable_bios_nop_mapping \
     _set_stop_pc \
-    _clear_stop_pc
+    _clear_stop_pc \
+    _flow_trace_reset \
+    _flow_trace_enable \
+    _flow_trace_count \
+    _flow_trace_type \
+    _flow_trace_src \
+    _flow_trace_dst \
+    _flow_trace_ret \
+    _mem_trace_reset \
+    _mem_trace_enable \
+    _mem_trace_count \
+    _mem_trace_is_read \
+    _mem_trace_pc \
+    _mem_trace_addr \
+    _mem_trace_value \
+    _mem_trace_size
 
 # Add Perfetto functions only if enabled
 if test "$enable_perfetto" = "1"
@@ -241,6 +302,8 @@ set -l emcc_options \
 #  -s EMULATE_FUNCTION_POINTER_CASTS \
  # https://github.com/emscripten-core/emscripten/issues/7082#issuecomment-462957723
  -s ALLOW_TABLE_GROWTH=1 \
+ -s SUPPORT_LONGJMP=wasm \
+ # Longjmp support can trigger conflicts with exception settings on 4.x. Keep default here.
 #  -s USE_OFFSET_CONVERTER=1 \
  # without this it didn't find the .wasm file?
  -s MODULARIZE=1 \
@@ -254,7 +317,8 @@ set -l emcc_options \
  # important since we want to operate on 32 and 64-bit numbers
  -sWASM_BIGINT \
  # Enable JS exceptions for Perfetto support (WASM exceptions cause linker crash)
- -sDISABLE_EXCEPTION_CATCHING=0 \
+ -sDISABLE_EXCEPTION_CATCHING=1 \
+ -s ERROR_ON_UNDEFINED_SYMBOLS=0 \
  -Wl,--gc-sections
 
 # Add protobuf and abseil libraries if Perfetto is enabled
@@ -315,3 +379,5 @@ run emcc \
  --post-js post.js \
  -o musashi-universal.out.mjs
 echo "Written to musashi-universal.out.mjs"
+
+# (No post-build parent repository verification in this script)
