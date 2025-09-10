@@ -197,9 +197,32 @@ class SystemImpl implements System {
     const regs: Partial<CpuRegisters> = {};
     for (const key in REGISTER_MAP) {
       const regKey = key as keyof CpuRegisters;
+      if (regKey === 'ppc') {
+        // Use shadow PPC captured at the end-of-instruction boundary so it
+        // reflects the start PC of the just-retired instruction.
+        const shadow = this._musashi.getPpcShadow?.();
+        regs.ppc = (shadow !== undefined ? shadow : this._musashi.get_reg(REGISTER_MAP.ppc)) >>> 0;
+        continue;
+      }
       regs[regKey] = this._musashi.get_reg(REGISTER_MAP[regKey]);
     }
     return regs as CpuRegisters;
+  }
+
+  disassemble(address: number): { text: string; size: number } | null {
+    return this._musashi.disassembleOne(address >>> 0);
+  }
+
+  disassembleSequence(address: number, count: number): Array<{ pc: number; text: string; size: number }> {
+    const out: Array<{ pc: number; text: string; size: number }> = [];
+    let pc = address >>> 0;
+    for (let i = 0; i < count; i++) {
+      const one = this.disassemble(pc);
+      if (!one) break;
+      out.push({ pc, text: one.text, size: one.size >>> 0 });
+      pc = (pc + (one.size >>> 0)) >>> 0;
+    }
+    return out;
   }
 
   setRegister<K extends keyof CpuRegisters>(register: K, value: number): void {

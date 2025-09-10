@@ -86,6 +86,18 @@ export class MusashiWrapper {
   public onRead8?: (addr: number, value: number) => void;
   public onWrite8?: (addr: number, value: number) => void;
   private _singleStep = false;
+  // Track instruction boundary PCs to provide a stable PPC value (start PC
+  // of the just-retired instruction) even after m68k_execute() returns.
+  private _ppcShadow = 0;
+  private _lastProbePc = 0;
+  // Ensure we surface exactly one onInstruction per retired instruction.
+  // The native core may call our JS probe at both the start-of-instruction
+  // and at an end-of-instruction boundary. We coalesce those into a single
+  // event by emitting only on alternating callbacks (the end boundary).
+  private _emitOnEndBoundaryOnly = true;
+  // Initialize to true so the first probe callback (start-of-instruction)
+  // flips to false, and the second (end-of-instruction) flips to true.
+  private _phaseFlip = true; // false=start, true=end (heuristic)
 
   constructor(module: MusashiEmscriptenModule) {
     this._module = module;
@@ -96,39 +108,84 @@ export class MusashiWrapper {
 
     // Setup callbacks FIRST (critical for expert's fix)
     this._readFunc = this._module.addFunction((addr: number) => {
+      const a = addr >>> 0;
       let value: number | undefined = undefined;
       if (this._externalRead8) {
         try {
-          value = this._externalRead8(addr >>> 0);
+          value = this._externalRead8(a);
         } catch (_e) {
           // ignore external errors in debug mode
         }
       }
-      const v = (value !== undefined ? value : (this._memory[addr] || 0)) & 0xff;
-      if (this.onRead8) this.onRead8(addr >>> 0, v >>> 0);
-      return v;
+      let v: number;
+      if (value !== undefined) {
+        v = value & 0xff;
+      } else {
+        // Memory map: ROM 0x000000..0x0FFFFF and bank at >= 0x200000; RAM at 0x100000..0x1FFFFF
+        if (a >= 0x100000 && a < 0x200000) {
+          v = this._memory[a] || 0;
+        } else {
+          const phys = a < 0x100000 ? a : (a - 0x100000);
+          v = this._memory[phys] || 0;
+        }
+      }
+      if (this.onRead8) this.onRead8(a, v >>> 0);
+      return v & 0xff;
     }, 'ii');
 
     this._writeFunc = this._module.addFunction((addr: number, val: number) => {
       const v = val & 0xff;
+      const a = addr >>> 0;
       let handled = false;
       if (this._externalWrite8) {
         try {
-          handled = !!this._externalWrite8(addr >>> 0, v >>> 0);
+          handled = !!this._externalWrite8(a, v >>> 0);
         } catch (_e) {
           handled = false;
         }
       }
-      if (!handled) {
-        this._memory[addr] = v;
+      // Respect ROM vs RAM semantics: only mutate RAM (0x100000..0x1FFFFF)
+      const ramStart = 0x100000;
+      const ramEnd = 0x200000; // exclusive
+      const inRam = a >= ramStart && a < ramEnd;
+      if (!handled && inRam) {
+        this._memory[a] = v;
+        // Keep JS-side RAM view in sync
+        const off = a - ramStart;
+        if (off >= 0 && off < this._system._ram.length) {
+          this._system._ram[off] = v;
+        }
       }
-      if (this.onWrite8) this.onWrite8(addr >>> 0, v >>> 0);
+      if (this.onWrite8) this.onWrite8(a, v >>> 0);
     }, 'vii');
 
     this._probeFunc = this._module.addFunction((addr: number) => {
-      if (this.onInstruction) this.onInstruction(addr >>> 0);
-      // Allow SystemImpl to process probe/override hooks
-      const shouldStop = this._system._handlePCHook(addr) ? 1 : 0;
+      const pcU = addr >>> 0;
+      // Emit once per retired instruction. The native layer may invoke this
+      // for both start- and end-of-instruction boundaries. We emit only for
+      // end-boundary by flipping a phase bit on each callback and calling
+      // the user handler only on the second (end) phase.
+      if (!this._emitOnEndBoundaryOnly) {
+        // Best-effort: maintain shadow PPC using previous probe PC.
+        this._ppcShadow = this._lastProbePc >>> 0;
+        if (this.onInstruction) this.onInstruction(pcU);
+      } else {
+        this._phaseFlip = !this._phaseFlip;
+        if (this._phaseFlip) {
+          // Treat this callback as the end-of-instruction boundary
+          // Shadow PPC is the previous probe PC (start of this instruction).
+          this._ppcShadow = this._lastProbePc >>> 0;
+          if (this.onInstruction) this.onInstruction(pcU);
+        }
+      }
+      // Allow SystemImpl to process probe/override hooks exactly once per
+      // instruction, at the start boundary (pre-execute).
+      let shouldStop = 0;
+      if (!this._phaseFlip) {
+        shouldStop = this._system._handlePCHook(pcU) ? 1 : 0;
+      }
+      // Update last seen probe PC for the next boundary.
+      this._lastProbePc = pcU;
       // Do not force stop here in single-step; defer to full-instruction hook
       return shouldStop;
     }, 'ii');
@@ -146,30 +203,33 @@ export class MusashiWrapper {
     // Also register legacy read/write memory callbacks for 16/32-bit accesses
     if ((this._module as any)._set_read_mem_func) {
       const readMem = this._module.addFunction((address: number, size: number) => {
-        let v = 0;
+        const a0 = address >>> 0;
+        const mapRead8 = (aa: number): number => {
+          const a = aa >>> 0;
+          const ext = this._externalRead8?.(a);
+          if (ext !== undefined) return ext & 0xff;
+          if (a >= 0x100000 && a < 0x200000) return this._memory[a] || 0;
+          const phys = a < 0x100000 ? a : (a - 0x100000);
+          return this._memory[phys] || 0;
+        };
         if (size === 1) {
-          v = this._memory[address] || 0;
-          if (this._externalRead8) {
-            const ev = this._externalRead8(address >>> 0);
-            if (ev !== undefined) v = ev & 0xff;
-          }
-          if (this.onRead8) this.onRead8(address >>> 0, v & 0xff);
-          return v & 0xff;
+          const v1 = mapRead8(a0) & 0xff;
+          if (this.onRead8) this.onRead8(a0, v1);
+          return v1;
         }
-        // big-endian compose via 8-bit path so external interceptors are honored
-        const b0 = (this._externalRead8?.(address >>> 0) ?? (this._memory[address] || 0)) & 0xff;
-        const b1 = (this._externalRead8?.((address + 1) >>> 0) ?? (this._memory[address + 1] || 0)) & 0xff;
+        const b0 = mapRead8(a0) & 0xff;
+        const b1 = mapRead8((a0 + 1) >>> 0) & 0xff;
         if (size === 2) {
-          if (this.onRead8) { this.onRead8(address >>> 0, b0); this.onRead8((address + 1) >>> 0, b1); }
+          if (this.onRead8) { this.onRead8(a0, b0); this.onRead8((a0 + 1) >>> 0, b1); }
           return (b0 << 8) | b1;
         }
-        const b2 = (this._externalRead8?.((address + 2) >>> 0) ?? (this._memory[address + 2] || 0)) & 0xff;
-        const b3 = (this._externalRead8?.((address + 3) >>> 0) ?? (this._memory[address + 3] || 0)) & 0xff;
+        const b2 = mapRead8((a0 + 2) >>> 0) & 0xff;
+        const b3 = mapRead8((a0 + 3) >>> 0) & 0xff;
         if (this.onRead8) {
-          this.onRead8(address >>> 0, b0); this.onRead8((address + 1) >>> 0, b1);
-          this.onRead8((address + 2) >>> 0, b2); this.onRead8((address + 3) >>> 0, b3);
+          this.onRead8(a0, b0); this.onRead8((a0 + 1) >>> 0, b1);
+          this.onRead8((a0 + 2) >>> 0, b2); this.onRead8((a0 + 3) >>> 0, b3);
         }
-        v = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+        const v = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
         return v >>> 0;
       }, 'iii');
       (this._module as any)._set_read_mem_func(readMem);
@@ -312,6 +372,10 @@ export class MusashiWrapper {
   }
 
   pulse_reset() {
+    // Reset boundary tracking too
+    this._phaseFlip = true;
+    this._ppcShadow = 0;
+    this._lastProbePc = 0;
     this._module._m68k_pulse_reset();
   }
 
@@ -380,6 +444,12 @@ export class MusashiWrapper {
     this._module._add_pc_hook_addr(addr);
   }
 
+  // Provide safe PPC value (start of just-retired instruction) based on JS
+  // boundary tracking. Falls back to native PPC register if unavailable.
+  getPpcShadow(): number {
+    return this._ppcShadow >>> 0;
+  }
+
   read_memory(address: number, size: 1 | 2 | 4): number {
     // Read from our unified memory (big-endian composition)
     if (address >= this._memory.length) return 0;
@@ -402,21 +472,28 @@ export class MusashiWrapper {
     // Write to our unified memory (big-endian decomposition)
     if (address >= this._memory.length) return;
 
-    if (size === 1) {
-      this._memory[address] = value & 0xff;
-    } else if (size === 2) {
-      this._memory[address] = (value >> 8) & 0xff;
-      this._memory[address + 1] = value & 0xff;
-    } else {
-      this._memory[address] = (value >> 24) & 0xff;
-      this._memory[address + 1] = (value >> 16) & 0xff;
-      this._memory[address + 2] = (value >> 8) & 0xff;
-      this._memory[address + 3] = value & 0xff;
+    // Respect ROM vs RAM mapping from the host (RAM: 0x100000..0x1FFFFF).
+    // Writes outside RAM are ignored to match local-musashi semantics.
+    const ramStart = 0x100000;
+    const ramEnd = 0x200000; // exclusive
+    const inRam = address >= ramStart && address < ramEnd;
+
+    if (inRam) {
+      if (size === 1) {
+        this._memory[address] = value & 0xff;
+      } else if (size === 2) {
+        this._memory[address] = (value >> 8) & 0xff;
+        this._memory[address + 1] = value & 0xff;
+      } else {
+        this._memory[address] = (value >> 24) & 0xff;
+        this._memory[address + 1] = (value >> 16) & 0xff;
+        this._memory[address + 2] = (value >> 8) & 0xff;
+        this._memory[address + 3] = value & 0xff;
+      }
     }
 
     // Update the JS-side RAM copy if this is in RAM space
-    const ramStart = 0x100000;
-    if (address >= ramStart && address < ramStart + this._system._ram.length) {
+    if (inRam && address >= ramStart && address < ramStart + this._system._ram.length) {
       const offset = address - ramStart;
       if (size === 1) {
         this._system._ram[offset] = value & 0xff;
@@ -550,6 +627,32 @@ export class MusashiWrapper {
     } finally {
       this._module._free(dataPtrPtr);
       this._module._free(sizePtr);
+    }
+  }
+
+  // --- Disassembler helper (exposes musashi m68k_disassemble) ---
+  disassembleOne(pc: number): { text: string; size: number } | null {
+    // Emscripten provides ccall for calling exported C functions by name
+    const ccall = (this._module as unknown as { ccall?: Function }).ccall;
+    if (typeof ccall !== 'function') return null;
+    const bufSize = 256;
+    const buf = this._module._malloc(bufSize);
+    try {
+      // CPU type: 1 == M68K_CPU_TYPE_68000
+      const size = ccall('m68k_disassemble', 'number', ['number', 'number', 'number'], [buf, pc >>> 0, 1]) >>> 0;
+      // Read null-terminated string from HEAPU8
+      let s = '';
+      const heap = this._module.HEAPU8;
+      for (let i = 0; i < bufSize; i++) {
+        const ch = heap[buf + i];
+        if (ch === 0) break;
+        s += String.fromCharCode(ch);
+      }
+      return { text: s, size };
+    } catch (_e) {
+      return null;
+    } finally {
+      this._module._free(buf);
     }
   }
 }
