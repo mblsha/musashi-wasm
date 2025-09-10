@@ -160,6 +160,26 @@ describe('@m68k/core', () => {
     removeHook();
   });
 
+  it('should override execution at a given address', async () => {
+    const calls: number[] = [];
+    const overrideAddress = 0x408; // ADD.L #1, D1 instruction
+
+    const removeOverride = system.override(overrideAddress, sys => {
+      calls.push(sys.getRegisters().pc);
+      // Custom behavior: set D1 and jump to RTS
+      sys.setRegister('d1', 0x42);
+      sys.setRegister('pc', 0x40e); // Address of RTS instruction
+    });
+
+    await system.run(100);
+
+    expect(calls.length).toBe(1);
+    expect(system.getRegisters().d1).toBe(0x42);
+    expect(system.getRegisters().pc).toBe(0x40e);
+
+    removeOverride();
+  });
+
   it('should check tracer availability', () => {
     const tracer = system.tracer;
     expect(tracer).toBeDefined();
