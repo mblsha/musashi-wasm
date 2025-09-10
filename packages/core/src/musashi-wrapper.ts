@@ -77,7 +77,6 @@ export class MusashiWrapper {
   private _readFunc: EmscriptenFunction = 0;
   private _writeFunc: EmscriptenFunction = 0;
   private _probeFunc: EmscriptenFunction = 0;
-  private readonly NOP_FUNC_ADDR = 0x1000; // Address with an RTS instruction (moved away from test program)
   private _doneExec = false;
   private _doneOverride = false;
 
@@ -184,12 +183,6 @@ export class MusashiWrapper {
     // const _sr = this.get_reg(17); // Status register
     // const _currentSP = this.get_reg(15); // Stack pointer
 
-    // Simple RTS detection (this is a simplified version)
-    if (pc === this.NOP_FUNC_ADDR) {
-      this._doneExec = true;
-      return 1; // Stop execution
-    }
-
     // Let the SystemImpl class handle the logic
     const shouldStop = this._system._handlePCHook(pc);
 
@@ -210,12 +203,10 @@ export class MusashiWrapper {
     this._doneOverride = false;
     this.set_reg(16, address); // Set PC
     let cycles = 0;
-    while (!this._doneExec) {
+    while (true) {
       cycles += this._module._m68k_execute(1_000_000);
-      if (this._doneOverride) {
-        this._doneOverride = false;
-        this.set_reg(16, this.NOP_FUNC_ADDR);
-      }
+      if (this._doneOverride) { this._doneOverride = false; break; }
+      if (this._doneExec) break;
     }
     return cycles;
   }
