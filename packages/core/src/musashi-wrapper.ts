@@ -275,6 +275,7 @@ export class MusashiWrapper {
   read_memory(address: number, size: 1 | 2 | 4): number {
     // Read from our unified memory (big-endian composition)
     if (address >= this._memory.length) return 0;
+    if (address + size > this._memory.length) return 0;
 
     if (size === 1) {
       return this._memory[address];
@@ -293,6 +294,7 @@ export class MusashiWrapper {
   write_memory(address: number, size: 1 | 2 | 4, value: number) {
     // Write to our unified memory (big-endian decomposition)
     if (address >= this._memory.length) return;
+    if (address + size > this._memory.length) return;
 
     if (size === 1) {
       this._memory[address] = value & 0xff;
