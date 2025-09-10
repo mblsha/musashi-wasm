@@ -77,7 +77,8 @@ struct Region {
   // Note: Region does not own the memory, caller is responsible for cleanup
 
   std::optional<unsigned int> read(unsigned int addr, int size) {
-    if (addr < start_ || addr + size > start_ + size_) {
+    // Ensure the entire access fits within the region
+    if (addr < start_ || addr + static_cast<unsigned int>(size) > start_ + size_) {
       return std::nullopt;
     }
     unsigned int offset = addr - start_;
@@ -89,7 +90,8 @@ struct Region {
   }
 
   bool write(unsigned int addr, int size, unsigned int value) {
-    if (addr < start_ || addr + size > start_ + size_) {
+    // Ensure the entire access fits within the region
+    if (addr < start_ || addr + static_cast<unsigned int>(size) > start_ + size_) {
       return false;
     }
     unsigned int offset = addr - start_;
