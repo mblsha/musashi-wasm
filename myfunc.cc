@@ -524,7 +524,11 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
             return result;
         }
     }
-
+    // Fast-path: built-in stop PC at start boundary
+    if (_stop_pc_enabled && pc == _stop_pc) {
+        m68k_end_timeslice();
+        return 1;
+    }
     const int js_result = my_instruction_hook_function(pc);
     if (js_result != 0) { 
         m68k_end_timeslice(); 
@@ -533,6 +537,17 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
     return 0;
 #endif
 }
+
+extern "C" void set_stop_pc(unsigned int pc) {
+  _stop_pc_enabled = true;
+  _stop_pc = pc;
+}
+extern "C" void clear_stop_pc(void) {
+  _stop_pc_enabled = false;
+  _stop_pc = 0;
+}
+extern "C" unsigned int get_stop_pc(void) { return _stop_pc; }
+extern "C" unsigned int is_stop_pc_enabled(void) { return _stop_pc_enabled ? 1u : 0u; }
 
 /* ======================================================================== */
 /* ======================= PERFETTO TRACE API WRAPPERS =================== */
