@@ -226,6 +226,22 @@ describe('@m68k/memory', () => {
       expect(DataParser.readInt16BE(data, 4)).toBe(32767);
     });
 
+    test('should read 32-bit signed integers', () => {
+      const data = new Uint8Array([
+        0xff,
+        0xff,
+        0xff,
+        0xfe, // -2
+        0x7f,
+        0xff,
+        0xff,
+        0xff, // 0x7fffffff
+      ]);
+
+      expect(DataParser.readInt32BE(data, 0)).toBe(-2);
+      expect(DataParser.readInt32BE(data, 4)).toBe(0x7fffffff);
+    });
+
     test('should write unsigned integers', () => {
       const data = new Uint8Array(6);
 
