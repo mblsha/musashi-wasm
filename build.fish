@@ -156,7 +156,34 @@ set -l exported_functions \
     _get_sr_reg \
     _set_isp_reg \
     _set_usp_reg \
-    _get_sp_reg
+    _get_sp_reg \
+    _flow_trace_reset \
+    _flow_trace_enable \
+    _flow_trace_count \
+    _flow_trace_type \
+    _flow_trace_src \
+    _flow_trace_dst \
+    _flow_trace_ret \
+    _mem_trace_reset \
+    _mem_trace_enable \
+    _mem_trace_count \
+    _mem_trace_is_read \
+    _mem_trace_pc \
+    _mem_trace_addr \
+    _mem_trace_value \
+    _mem_trace_size \
+    _first_ram_flow_has \
+    _first_ram_flow_clear \
+    _first_ram_flow_type \
+    _first_ram_flow_src \
+    _first_ram_flow_dst \
+    _first_ram_flow_ret \
+    _first_ram_flow_d \
+    _first_ram_flow_a \
+    _set_stop_pc \
+    _clear_stop_pc \
+    _get_stop_pc \
+    _is_stop_pc_enabled
 
 # Add Perfetto functions only if enabled
 if test "$enable_perfetto" = "1"
@@ -186,6 +213,14 @@ set -l runtime_funcs_to_include \
     '$stringToUTF8' \
     '$writeArrayToMemory'
 
+# Optionally include setjmp shims for 4.x runtimes
+set -l include_setjmp (set -q INCLUDE_SETJMP_SHIMS; and echo $INCLUDE_SETJMP_SHIMS; or echo "0")
+if test "$include_setjmp" = "1"
+    set runtime_funcs_to_include $runtime_funcs_to_include \
+        '$saveSetjmp' \
+        '$testSetjmp'
+end
+
 # Heap views and runtime methods exported via EXPORTED_RUNTIME_METHODS
 # Note: In Emscripten 4.x, some functions need to be in both places for compatibility
 set -l runtime_methods \
@@ -206,6 +241,11 @@ set -l runtime_methods \
     UTF8ToString \
     stringToUTF8 \
     writeArrayToMemory
+if test "$include_setjmp" = "1"
+    set runtime_methods $runtime_methods \
+        saveSetjmp \
+        testSetjmp
+end
 
 set -l object_files m68kcpu.o m68kops.o myfunc.o m68k_memory_bridge.o m68ktrace.o m68kdasm.o
 
@@ -247,6 +287,7 @@ set -l emcc_options \
  -sWASM_BIGINT \
  # Enable JS exceptions for Perfetto support (WASM exceptions cause linker crash)
  -sDISABLE_EXCEPTION_CATCHING=0 \
+ -s STACK_SIZE=262144 \
  -Wl,--gc-sections
 
 # Add protobuf and abseil libraries if Perfetto is enabled
@@ -278,10 +319,17 @@ if test "$enable_perfetto" = "1"
     echo "================================="
 end
 
+# Pre-js option (optional setjmp shims)
+set pre_js_opt
+if test "$include_setjmp" = "1"
+    set pre_js_opt --pre-js pre.js
+end
+
 # Build Node.js version
 echo "==== BUILDING NODE.JS VERSION (ESM) ===="
 run emcc \
  $emcc_options \
+ $pre_js_opt \
  -s ENVIRONMENT=node \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \
@@ -292,6 +340,7 @@ echo "Written to musashi-node.out.mjs"
 echo "==== BUILDING WEB VERSION (ESM) ===="
 run emcc \
  $emcc_options \
+ $pre_js_opt \
  -s ENVIRONMENT=web \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \
@@ -302,6 +351,7 @@ echo "Written to musashi.out.mjs"
 echo "==== BUILDING UNIVERSAL VERSION (ESM) ===="
 run emcc \
  $emcc_options \
+ $pre_js_opt \
  -s ENVIRONMENT=web,webview,worker,node \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \
