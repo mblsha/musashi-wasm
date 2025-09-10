@@ -204,8 +204,10 @@ if(BUILD_TESTS)
     get_target_property(GTEST_INCLUDES gtest INTERFACE_INCLUDE_DIRECTORIES)
     
     # Test executable for myfunc API
+    # Include additional test sources here to avoid adding new executables
     add_executable(test_myfunc
         tests/test_myfunc.cpp
+        tests/test_region_bounds.cpp
     )
     
     target_link_libraries(test_myfunc
@@ -350,7 +352,6 @@ if(BUILD_TESTS)
     include(GoogleTest)
     gtest_discover_tests(test_myfunc)
     gtest_discover_tests(test_m68k)
-    gtest_discover_tests(test_region_bounds)
     gtest_discover_tests(test_vasm_binary)
     gtest_discover_tests(test_fixture_example)
     gtest_discover_tests(test_exceptions)
@@ -412,18 +413,4 @@ message(STATUS "  BUILD_TESTS: ${BUILD_TESTS}")
 message(STATUS "  ENABLE_SANITIZERS: ${ENABLE_SANITIZERS}")
 message(STATUS "  C Compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "  C++ Compiler: ${CMAKE_CXX_COMPILER}")
-    # Test executable for region bounds safety
-    add_executable(test_region_bounds
-        tests/test_region_bounds.cpp
-    )
-
-    target_link_libraries(test_region_bounds
-        musashi_api
-        GTest::gtest_main
-    )
-
-    if(GTEST_INCLUDES)
-        target_include_directories(test_region_bounds PRIVATE BEFORE ${GTEST_INCLUDES})
-    endif()
-
 message(STATUS "")
