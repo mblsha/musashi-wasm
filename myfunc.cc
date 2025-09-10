@@ -19,10 +19,10 @@ typedef int (*instr_hook_t)(unsigned int pc, unsigned int ir, unsigned int cycle
 
 static bool _initialized = false;
 static bool _enable_printf_logging = false;
-static read_mem_t _read_mem = 0;
-static write_mem_t _write_mem = 0;
-static pc_hook_t _pc_hook = 0;
-static instr_hook_t _instr_hook = 0;  // Full instruction hook (3 params)
+static read_mem_t _read_mem = nullptr;
+static write_mem_t _write_mem = nullptr;
+static pc_hook_t _pc_hook = nullptr;
+static instr_hook_t _instr_hook = nullptr;  // Full instruction hook (3 params)
 static std::unordered_set<unsigned int> _pc_hook_addrs;
 
 /* ======================================================================== */
@@ -178,11 +178,11 @@ extern "C" {
   }
   
   void clear_pc_hook_func() {
-    _pc_hook = 0;
+    _pc_hook = nullptr;
   }
-  
+
   void clear_instr_hook_func() {
-    _instr_hook = 0;
+    _instr_hook = nullptr;
   }
 
   // Provide a clean entry helper that sets sane CPU state and jumps to pc
@@ -202,10 +202,10 @@ extern "C" {
   void reset_myfunc_state() {
     _initialized = false;
     _enable_printf_logging = false;
-    _read_mem = 0;
-    _write_mem = 0;
-    _pc_hook = 0;
-    _instr_hook = 0;
+    _read_mem = nullptr;
+    _write_mem = nullptr;
+    _pc_hook = nullptr;
+    _instr_hook = nullptr;
     _pc_hook_addrs.clear();
     _regions.clear();
     _function_names.clear();
