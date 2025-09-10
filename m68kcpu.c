@@ -52,6 +52,13 @@ extern void m68ki_build_opcode_table(void);
 #include "m68kfpu.c"
 #include "m68kmmu.h" // uses some functions from m68kfpu.c which are static !
 
+/* Provide prototype for end-of-instruction boundary hook implemented in C++ */
+#ifdef __cplusplus
+extern "C" int m68k_instruction_end_boundary_hook(unsigned int pc);
+#else
+extern int m68k_instruction_end_boundary_hook(unsigned int pc);
+#endif
+
 /* ======================================================================== */
 /* ================================= DATA ================================= */
 /* ======================================================================== */
@@ -1074,7 +1081,17 @@ int m68k_execute(int num_cycles)
 				}
 			}
 			
-			/* THIS IS THE KEY FIX: Update the global trace cycle counter */
+			/* Invoke end-of-instruction boundary hook with post-PC before
+			 * fetching the next instruction. This allows embedders to observe
+			 * a deterministic end boundary per retired instruction.
+			 */
+			{
+				if (m68k_instruction_end_boundary_hook(post_pc)) {
+					break;
+				}
+			}
+
+			/* Update the global trace cycle counter */
 			m68k_trace_update_cycles(executed_cycles);
 
 			/* Trace m68k_exception, if necessary */

@@ -534,6 +534,17 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
 #endif
 }
 
+// Called at end-of-instruction boundary (post-PC)
+extern "C" int m68k_instruction_end_boundary_hook(unsigned int pc) {
+  // Reuse the unified JS probe/pc_hook path
+  const int js_result = my_instruction_hook_function(pc);
+  if (js_result != 0) {
+    m68k_end_timeslice();
+    return js_result;
+  }
+  return 0;
+}
+
 /* ======================================================================== */
 /* ======================= PERFETTO TRACE API WRAPPERS =================== */
 /* ======================================================================== */
