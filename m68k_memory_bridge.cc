@@ -1,5 +1,8 @@
 // m68k_memory_bridge.cc - Bridge all M68k memory access through region-aware system
 #include <cstdint>
+#include <cstddef>
+#include "m68k.h"
+#include "m68ktrace.h"
 
 // Your existing API (already implemented in myfunc.cc)
 extern "C" {
@@ -24,27 +27,44 @@ extern "C" {
 
 // ---- Data read/write callbacks ----
 unsigned int m68k_read_memory_8(unsigned int address) { 
-    return my_read_memory(addr24(address), 1); 
+    unsigned int a = addr24(address);
+    unsigned int v = my_read_memory(a, 1);
+    m68k_trace_mem_hook(M68K_TRACE_MEM_READ, m68k_get_reg(nullptr, M68K_REG_PC), a, v, 1);
+    return v; 
 }
 
 unsigned int m68k_read_memory_16(unsigned int address) { 
-    return my_read_memory(addr24(address), 2); 
+    unsigned int a = addr24(address);
+    unsigned int v = my_read_memory(a, 2);
+    m68k_trace_mem_hook(M68K_TRACE_MEM_READ, m68k_get_reg(nullptr, M68K_REG_PC), a, v, 2);
+    return v; 
 }
 
 unsigned int m68k_read_memory_32(unsigned int address) { 
-    return my_read_memory(addr24(address), 4); 
+    unsigned int a = addr24(address);
+    unsigned int v = my_read_memory(a, 4);
+    m68k_trace_mem_hook(M68K_TRACE_MEM_READ, m68k_get_reg(nullptr, M68K_REG_PC), a, v, 4);
+    return v; 
 }
 
 void m68k_write_memory_8(unsigned int address, unsigned int value) { 
-    my_write_memory(addr24(address), 1, value & 0xFFu); 
+    unsigned int a = addr24(address);
+    unsigned int v = value & 0xFFu;
+    my_write_memory(a, 1, v);
+    m68k_trace_mem_hook(M68K_TRACE_MEM_WRITE, m68k_get_reg(nullptr, M68K_REG_PC), a, v, 1);
 }
 
 void m68k_write_memory_16(unsigned int address, unsigned int value) { 
-    my_write_memory(addr24(address), 2, value & 0xFFFFu); 
+    unsigned int a = addr24(address);
+    unsigned int v = value & 0xFFFFu;
+    my_write_memory(a, 2, v);
+    m68k_trace_mem_hook(M68K_TRACE_MEM_WRITE, m68k_get_reg(nullptr, M68K_REG_PC), a, v, 2);
 }
 
 void m68k_write_memory_32(unsigned int address, unsigned int value) { 
-    my_write_memory(addr24(address), 4, value); 
+    unsigned int a = addr24(address);
+    my_write_memory(a, 4, value);
+    m68k_trace_mem_hook(M68K_TRACE_MEM_WRITE, m68k_get_reg(nullptr, M68K_REG_PC), a, value, 4);
 }
 
 // Predecrement write for move.l with -(An) destination
