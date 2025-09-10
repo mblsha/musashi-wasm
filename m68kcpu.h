@@ -44,6 +44,11 @@ extern "C" {
 
 #include <setjmp.h>
 
+/* Host-side diagnostics hooks (defined in myfunc.cc). These are C symbols
+ * and must be visible to both C and C++ translation units. */
+void musashi_notify_vector_jump(unsigned int vector, unsigned int new_pc, unsigned int pre_pc);
+void musashi_notify_illegal(unsigned int ir, unsigned int pc, unsigned int ppc, unsigned int sr);
+
 /* ======================================================================== */
 /* ==================== ARCHITECTURE-DEPENDANT DEFINES ==================== */
 /* ======================================================================== */
@@ -1491,13 +1496,15 @@ static inline void m68ki_jump(uint new_pc)
 
 static inline void m68ki_jump_vector(uint vector)
 {
-	/* Read the vector address from the vector table.
-	 * On 68000, VBR is always 0.
-	 * CRITICAL: Don't overwrite PC before reading! */
-	uint32_t vector_addr = (vector<<2) + REG_VBR;
-	uint32_t new_pc = m68ki_read_data_32(vector_addr);
-	/* Now jump to the vector handler */
-	m68ki_jump(new_pc);
+    /* Read the vector address from the vector table.
+     * On 68000, VBR is always 0.
+     * CRITICAL: Don't overwrite PC before reading! */
+    uint32_t vector_addr = (vector<<2) + REG_VBR;
+    uint32_t new_pc = m68ki_read_data_32(vector_addr);
+    /* Diagnostic: notify host about vector jump (vector id, new_pc, pre-PC) */
+    musashi_notify_vector_jump(vector, new_pc, REG_PC);
+    /* Now jump to the vector handler */
+    m68ki_jump(new_pc);
 }
 
 
@@ -2005,45 +2012,58 @@ static inline void m68ki_exception_privilege_violation(void)
 	USE_CYCLES(CYC_EXCEPTION[EXCEPTION_PRIVILEGE_VIOLATION] - CYC_INSTRUCTION[REG_IR]);
 }
 
+#ifndef MUSASHI_NO_SETJMP
 extern jmp_buf m68ki_bus_error_jmp_buf;
-
 #define m68ki_check_bus_error_trap() setjmp(m68ki_bus_error_jmp_buf)
 
 /* Exception for bus error */
 static inline void m68ki_exception_bus_error(void)
 {
-	int i;
+    int i;
 
-	/* If we were processing a bus error, address error, or reset,
-	 * while writing the stack frame, this is a catastrophic failure.
-	 * Halt the CPU
-	 */
-	if(CPU_RUN_MODE == RUN_MODE_BERR_AERR_RESET_WSF)
-	{
-		m68k_read_memory_8(0x00ffff01);
-		CPU_STOPPED = STOP_LEVEL_HALT;
-		return;
-	}
-	CPU_RUN_MODE = RUN_MODE_BERR_AERR_RESET_WSF;
+    if(CPU_RUN_MODE == RUN_MODE_BERR_AERR_RESET_WSF)
+    {
+        m68k_read_memory_8(0x00ffff01);
+        CPU_STOPPED = STOP_LEVEL_HALT;
+        return;
+    }
+    CPU_RUN_MODE = RUN_MODE_BERR_AERR_RESET_WSF;
 
-	/* Use up some clock cycles and undo the instruction's cycles */
-	USE_CYCLES(CYC_EXCEPTION[EXCEPTION_BUS_ERROR] - CYC_INSTRUCTION[REG_IR]);
+    USE_CYCLES(CYC_EXCEPTION[EXCEPTION_BUS_ERROR] - CYC_INSTRUCTION[REG_IR]);
 
-	for (i = 15; i >= 0; i--){
-		REG_DA[i] = REG_DA_SAVE[i];
-	}
+    for (i = 15; i >= 0; i--){
+        REG_DA[i] = REG_DA_SAVE[i];
+    }
 
-	uint sr = m68ki_init_exception();
-
-	/* Note: This is implemented for 68010 only! */
-	m68ki_stack_frame_1000(REG_PPC, sr, EXCEPTION_BUS_ERROR);
-
-	m68ki_jump_vector(EXCEPTION_BUS_ERROR);
-
-	CPU_RUN_MODE = RUN_MODE_BERR_AERR_RESET;
-
-	longjmp(m68ki_bus_error_jmp_buf, 1);
+    uint sr = m68ki_init_exception();
+    m68ki_stack_frame_1000(REG_PPC, sr, EXCEPTION_BUS_ERROR);
+    m68ki_jump_vector(EXCEPTION_BUS_ERROR);
+    CPU_RUN_MODE = RUN_MODE_BERR_AERR_RESET;
+    longjmp(m68ki_bus_error_jmp_buf, 1);
 }
+#else
+#define m68ki_check_bus_error_trap() 0
+static inline void m68ki_exception_bus_error(void)
+{
+    int i;
+    if(CPU_RUN_MODE == RUN_MODE_BERR_AERR_RESET_WSF)
+    {
+        m68k_read_memory_8(0x00ffff01);
+        CPU_STOPPED = STOP_LEVEL_HALT;
+        return;
+    }
+    CPU_RUN_MODE = RUN_MODE_BERR_AERR_RESET_WSF;
+    USE_CYCLES(CYC_EXCEPTION[EXCEPTION_BUS_ERROR] - CYC_INSTRUCTION[REG_IR]);
+    for (i = 15; i >= 0; i--){
+        REG_DA[i] = REG_DA_SAVE[i];
+    }
+    uint sr = m68ki_init_exception();
+    m68ki_stack_frame_1000(REG_PPC, sr, EXCEPTION_BUS_ERROR);
+    m68ki_jump_vector(EXCEPTION_BUS_ERROR);
+    CPU_RUN_MODE = RUN_MODE_BERR_AERR_RESET;
+    return;
+}
+#endif
 
 extern int cpu_log_enabled;
 
@@ -2091,7 +2111,10 @@ extern int m68ki_illg_callback(int);
 /* Exception for illegal instructions */
 static inline void m68ki_exception_illegal(void)
 {
-	uint sr;
+    uint sr;
+
+    /* Diagnostic: notify host before handling illegal instruction */
+    musashi_notify_illegal(REG_IR, REG_PC, REG_PPC, m68ki_get_sr());
 
 	M68K_DO_LOG((M68K_LOG_FILEHANDLE "%s at %08x: illegal instruction %04x (%s)\n",
 				 m68ki_cpu_names[CPU_TYPE], ADDRESS_68K(REG_PPC), REG_IR,

@@ -24,6 +24,19 @@ static write_mem_t _write_mem = nullptr;
 static pc_hook_t _pc_hook = nullptr;
 static instr_hook_t _instr_hook = nullptr;  // Full instruction hook (3 params)
 static std::unordered_set<unsigned int> _pc_hook_addrs;
+static bool _bios_nop_map = false; // Diagnostic: map BIOS fetches to NOPs
+static bool _stop_pc_enabled = false;
+static unsigned int _stop_pc = 0;
+// Prefer invoking pc_hook at end-of-instruction boundary (post-PC) rather
+// than at start-of-instruction (pre-PC). This matches local backend behavior
+// and makes per-instruction read/write streams deterministic.
+static bool _pc_hook_at_end_boundary = true;
+
+// Early instruction trace (wrapper-level): captures first N (pc, ir)
+static bool _early_trace_enabled = false;
+static unsigned int _early_trace_limit = 0;
+struct EarlyInstr { unsigned int pc; unsigned int ir; };
+static std::vector<EarlyInstr> _early_trace;
 
 /* ======================================================================== */
 /* JavaScript Callback System                                             */
@@ -113,6 +126,30 @@ extern "C" {
     printf("enable_printf_logging\n");
     _enable_printf_logging = true;
   }
+  void enable_bios_nop_mapping(int enable) {
+    _bios_nop_map = enable != 0;
+    if (_enable_printf_logging) printf("enable_bios_nop_mapping: %d\n", _bios_nop_map ? 1 : 0);
+  }
+  // Diagnostic hook target from core: log vector jumps when logging enabled
+  void musashi_notify_vector_jump(unsigned int vector, unsigned int new_pc, unsigned int pre_pc) {
+    if (_enable_printf_logging) {
+      printf("VECTOR: vec=%u pre_pc=0x%x new_pc=0x%x\n", vector, pre_pc, new_pc);
+      if (vector == 4) {
+        unsigned int sr = m68k_get_reg(NULL, M68K_REG_SR);
+        printf("ILLEGAL(vec4): pre_pc=0x%x sr=0x%x new_pc=0x%x\n", pre_pc, sr, new_pc);
+      }
+    }
+  }
+  // Diagnostic: illegal instruction exception
+  void musashi_notify_illegal(unsigned int ir, unsigned int pc, unsigned int ppc, unsigned int sr) {
+    if (_enable_printf_logging) {
+      printf("ILLEGAL: ir=0x%x pc=0x%x ppc=0x%x sr=0x%x\n", ir, pc, ppc, sr);
+    }
+    // Also feed this into the flow tracer so the RAM-flow snapshot can latch
+    // in environments where we reached RAM via an illegal fetch.
+    // Treat this as an EXCEPTION flow from ppc -> pc (destination).
+    m68k_trace_flow_hook(M68K_TRACE_FLOW_EXCEPTION, ppc, pc, 0);
+  }
   void set_read_mem_func(read_mem_t func) {
     if (_enable_printf_logging)
       printf("set_read_mem_func: %p\n", (void*)func);
@@ -184,6 +221,55 @@ extern "C" {
   void clear_instr_hook_func() {
     _instr_hook = nullptr;
   }
+
+  // Early trace controls
+  void early_trace_reset() {
+    _early_trace.clear();
+    _early_trace_enabled = false;
+    _early_trace_limit = 0;
+  }
+  void early_trace_enable(unsigned int limit) {
+    _early_trace_enabled = true;
+    _early_trace_limit = limit;
+    _early_trace.clear();
+  }
+  unsigned int early_trace_count() {
+    return (unsigned int)_early_trace.size();
+  }
+  unsigned int early_trace_pc(unsigned int index) {
+    if (index >= _early_trace.size()) return 0;
+    return _early_trace[index].pc;
+  }
+  unsigned int early_trace_ir(unsigned int index) {
+    if (index >= _early_trace.size()) return 0;
+    return _early_trace[index].ir & 0xFFFFu;
+  }
+
+  // Built-in stop-at-PC (timeslice end) without requiring JS hooks
+  void set_stop_pc(unsigned int pc) {
+    _stop_pc_enabled = true;
+    _stop_pc = pc;
+    if (_enable_printf_logging)
+      printf("set_stop_pc: 0x%x\n", _stop_pc);
+  }
+  void clear_stop_pc(void) {
+    _stop_pc_enabled = false;
+    _stop_pc = 0;
+    if (_enable_printf_logging)
+      printf("clear_stop_pc\n");
+  }
+
+  // Control whether pc_hook runs at end-of-instruction (1) or start (0)
+  void set_pc_hook_boundary_mode(int end_boundary) {
+    _pc_hook_at_end_boundary = (end_boundary != 0);
+    if (_enable_printf_logging)
+      printf("set_pc_hook_boundary_mode: %s\n", _pc_hook_at_end_boundary ? "end" : "start");
+  }
+
+  /* Accessors for stop-pc so other subsystems (e.g., tracer) can avoid
+   * treating a return-to-sentinel as a meaningful RAM-flow edge. */
+  unsigned int get_stop_pc(void) { return _stop_pc; }
+  unsigned int is_stop_pc_enabled(void) { return _stop_pc_enabled ? 1u : 0u; }
 
   // Provide a clean entry helper that sets sane CPU state and jumps to pc
   // without re-priming reset vectors. This avoids spurious early vectoring
@@ -321,6 +407,15 @@ extern "C" {
 } // extern "C"
 
 extern "C" unsigned int my_read_memory(unsigned int address, int size) {
+  // Temporary diagnostic: mask BIOS 0xC0xxxx region with NOPs to avoid OOB
+  if (_bios_nop_map && address >= 0xC00000u && address < 0xC20000u) {
+    if (_enable_printf_logging) {
+      printf("DEBUG: BIOS-NOP addr=0x%x size=%d\n", address, size);
+    }
+    if (size == 1) return 0x4Eu;              // High byte of 0x4E71
+    if (size == 2) return 0x4E71u;            // NOP
+    if (size == 4) return 0x4E714E71u;        // Two NOPs
+  }
   // Check regions first
   for (auto& region : _regions) {
     const auto val = region.read(address, size);
@@ -485,6 +580,15 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
             wrapper_count++;
         }
     }
+    // Fast-path: built-in stop PC
+    if (_stop_pc_enabled && pc == _stop_pc) {
+        m68k_end_timeslice();
+        return 1;
+    }
+    // Capture earliest instructions before any other side effects
+    if (_early_trace_enabled && _early_trace.size() < _early_trace_limit) {
+        _early_trace.push_back({ pc, ir & 0xFFFFu });
+    }
     
 #ifdef BUILD_TESTS
     // Trace first (non-breaking)
@@ -515,14 +619,35 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
             return result;
         }
     }
-
-    const int js_result = my_instruction_hook_function(pc);
-    if (js_result != 0) { 
-        m68k_end_timeslice(); 
-        return js_result; 
+    // Always invoke JS pc_hook at start-of-instruction as a deterministic
+    // boundary. End-of-instruction hook (below in m68kcpu.c) provides an
+    // additional boundary before the next opcode fetch.
+    {
+        const int js_result = my_instruction_hook_function(pc);
+        if (js_result != 0) {
+            m68k_end_timeslice();
+            return js_result;
+        }
     }
     return 0;
 #endif
+}
+
+// Called at end-of-instruction boundary (post-PC)
+extern "C" int m68k_instruction_end_boundary_hook(unsigned int pc) {
+  // Fast-path: built-in stop PC
+  if (_stop_pc_enabled && pc == _stop_pc) {
+    m68k_end_timeslice();
+    return 1;
+  }
+  if (_pc_hook_at_end_boundary) {
+    const int js_result = my_instruction_hook_function(pc);
+    if (js_result != 0) {
+      m68k_end_timeslice();
+      return js_result;
+    }
+  }
+  return 0;
 }
 
 /* ======================================================================== */

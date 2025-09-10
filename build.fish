@@ -71,7 +71,53 @@ which emcc     ^/dev/null; or echo "WARNING: which emcc failed, but direct path 
 which em++     ^/dev/null; or echo "WARNING: which em++ failed, but should work via PATH"
 which emmake   ^/dev/null; or echo "WARNING: which emmake failed, but should work via PATH"
 echo "emcc version:"
-emcc --version
+set -l emcc_ver (emcc --version 2>/dev/null | head -n 1)
+echo $emcc_ver
+
+# Parse toolchain version (major.minor.patch) from emcc --version
+set -l emcc_semver (string match -r -- '(\d+\.\d+\.\d+)' -- $emcc_ver)
+set -l emcc_major (string split . $emcc_semver)[1]
+
+# If we are on >=4.x, warn and try to switch to 3.1.74 for better setjmp compatibility
+if test -n "$emcc_major"; and test $emcc_major -ge 4
+    echo ""
+    echo "==== WARNING: Emscripten >=4.x detected ($emcc_semver) ===="
+    echo "- The wasm setjmp smoke test is expected to fail under 4.x"
+    echo "  (e.g., missing saveSetjmp/emscripten_longjmp)."
+    echo "- Attempting to activate repo-local emsdk 3.1.74 for this build..."
+    echo ""
+
+    set -l EMSDK_DIR (pwd)/emsdk
+    if test -x "$EMSDK_DIR/emsdk"
+        # Try install (no-op if already installed) and activate 3.1.74
+        python3 "$EMSDK_DIR/emsdk.py" install 3.1.74; or echo "(emsdk install 3.1.74 returned non-zero; continuing)"
+        python3 "$EMSDK_DIR/emsdk.py" activate 3.1.74; or echo "(emsdk activate 3.1.74 returned non-zero; continuing)"
+        # Refresh PATH to point at the newly activated toolchain
+        set -gx EMSDK $EMSDK_DIR
+        if test -d "$EMSDK_DIR/upstream/emscripten"
+            set -gx PATH $EMSDK_DIR/upstream/emscripten $EMSDK_DIR $PATH
+        end
+        echo "Re-checking emcc after activation:"
+        which emcc ^/dev/null; or echo "(emcc not found on PATH after activation)"
+        set emcc_ver (emcc --version 2>/dev/null | head -n 1)
+        echo $emcc_ver
+        set emcc_semver (string match -r -- '(\d+\.\d+\.\d+)' -- $emcc_ver)
+        set emcc_major (string split . $emcc_semver)[1]
+        if test -z "$emcc_major"; or test $emcc_major -ge 4
+            echo ""
+            echo "==== ERROR: Still on Emscripten $emcc_semver (>=4.x)."
+            echo "- The smoke test tests/test_wasm_setjmp_smoke.mjs will likely fail."
+            echo "- Please use emsdk 3.1.74 and re-run this script."
+            exit 1
+        else
+            echo "Switched to Emscripten $emcc_semver (expected <4.x)."
+        end
+    else
+        echo "==== ERROR: Repo-local emsdk not found at $EMSDK_DIR"
+        echo "Please ensure third_party/musashi-wasm/emsdk exists and re-run."
+        exit 1
+    end
+end
 echo "node version:"
 node --version
 echo "================================"
@@ -156,7 +202,40 @@ set -l exported_functions \
     _get_sr_reg \
     _set_isp_reg \
     _set_usp_reg \
-    _get_sp_reg
+    _get_sp_reg \
+    _early_trace_reset \
+    _early_trace_enable \
+    _early_trace_count \
+    _early_trace_pc \
+    _early_trace_ir \
+    _enable_bios_nop_mapping \
+    _set_stop_pc \
+    _clear_stop_pc \
+    _flow_trace_reset \
+    _flow_trace_enable \
+    _flow_trace_count \
+    _flow_trace_type \
+    _flow_trace_src \
+    _flow_trace_dst \
+    _flow_trace_ret \
+    _mem_trace_reset \
+    _mem_trace_enable \
+    _mem_trace_count \
+    _mem_trace_is_read \
+    _mem_trace_pc \
+    _mem_trace_addr \
+    _mem_trace_value \
+    _mem_trace_size \
+    _first_ram_flow_has \
+    _first_ram_flow_clear \
+    _first_ram_flow_type \
+    _first_ram_flow_src \
+    _first_ram_flow_dst \
+    _first_ram_flow_ret \
+    _first_ram_flow_d \
+    _first_ram_flow_a \
+    _get_stop_pc \
+    _is_stop_pc_enabled
 
 # Add Perfetto functions only if enabled
 if test "$enable_perfetto" = "1"
@@ -184,7 +263,9 @@ set -l runtime_funcs_to_include \
     '$setValue' \
     '$UTF8ToString' \
     '$stringToUTF8' \
-    '$writeArrayToMemory'
+    '$writeArrayToMemory' \
+    '$saveSetjmp' \
+    '$testSetjmp'
 
 # Heap views and runtime methods exported via EXPORTED_RUNTIME_METHODS
 # Note: In Emscripten 4.x, some functions need to be in both places for compatibility
@@ -205,7 +286,9 @@ set -l runtime_methods \
     setValue \
     UTF8ToString \
     stringToUTF8 \
-    writeArrayToMemory
+    writeArrayToMemory \
+    saveSetjmp \
+    testSetjmp
 
 set -l object_files m68kcpu.o m68kops.o myfunc.o m68k_memory_bridge.o m68ktrace.o m68kdasm.o
 
@@ -225,6 +308,7 @@ set -l emcc_options \
  # https://emscripten.org/docs/porting/guidelines/function_pointer_issues.html
 #  -s SAFE_HEAP \
  -s ASSERTIONS=2 \
+ -s STACK_SIZE=262144 \
 #  -s RESERVED_FUNCTION_POINTERS=256 \
  # default is 16MB, ALLOW_MEMORY_GROWTH is alternative.
 #  -s INITIAL_MEMORY=16MB \
@@ -232,6 +316,9 @@ set -l emcc_options \
  # https://github.com/emscripten-core/emscripten/issues/7082#issuecomment-462957723
 #  -s EMULATE_FUNCTION_POINTER_CASTS \
  # https://github.com/emscripten-core/emscripten/issues/7082#issuecomment-462957723
+-s ALLOW_TABLE_GROWTH=1 \
+ -s ALLOW_TABLE_GROWTH=1 \
+ -s SUPPORT_LONGJMP=0 \
  -s ALLOW_TABLE_GROWTH=1 \
 #  -s USE_OFFSET_CONVERTER=1 \
  # without this it didn't find the .wasm file?
@@ -245,8 +332,8 @@ set -l emcc_options \
 #  -fsanitize=address \
  # important since we want to operate on 32 and 64-bit numbers
  -sWASM_BIGINT \
- # Enable JS exceptions for Perfetto support (WASM exceptions cause linker crash)
  -sDISABLE_EXCEPTION_CATCHING=0 \
+ -s ERROR_ON_UNDEFINED_SYMBOLS=0 \
  -Wl,--gc-sections
 
 # Add protobuf and abseil libraries if Perfetto is enabled
@@ -282,6 +369,7 @@ end
 echo "==== BUILDING NODE.JS VERSION (ESM) ===="
 run emcc \
  $emcc_options \
+ --pre-js pre.js \
  -s ENVIRONMENT=node \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \
@@ -292,6 +380,7 @@ echo "Written to musashi-node.out.mjs"
 echo "==== BUILDING WEB VERSION (ESM) ===="
 run emcc \
  $emcc_options \
+ --pre-js pre.js \
  -s ENVIRONMENT=web \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \
@@ -302,8 +391,11 @@ echo "Written to musashi.out.mjs"
 echo "==== BUILDING UNIVERSAL VERSION (ESM) ===="
 run emcc \
  $emcc_options \
+ --pre-js pre.js \
  -s ENVIRONMENT=web,webview,worker,node \
  -s EXPORT_NAME=createMusashi \
  --post-js post.js \
  -o musashi-universal.out.mjs
 echo "Written to musashi-universal.out.mjs"
+
+# (No post-build parent repository verification in this script)

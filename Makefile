@@ -8,10 +8,33 @@ ENABLE_PERFETTO ?= 0
 CC        = em++
 # CC        = emcc
 WARNINGS  = -Wall -Wextra -pedantic
+
+# Configurable build flags
+EXCEPTIONS ?= 1
+MUSASHI_NO_SETJMP ?= 0
+M68K_TRACE_RAM_FLOW_LOG ?= 0
+
+# Base flags
+CXXSTD    = -std=c++17
+OPTFLAGS  = -O3 -frtti
+ifeq ($(EXCEPTIONS),1)
+  EXCFLAGS = -fexceptions
+else
+  EXCFLAGS = -fno-exceptions
+endif
+
+CDEFS    :=
+ifeq ($(MUSASHI_NO_SETJMP),1)
+  CDEFS += -DMUSASHI_NO_SETJMP=1
+endif
+ifeq ($(M68K_TRACE_RAM_FLOW_LOG),1)
+  CDEFS += -DM68K_TRACE_RAM_FLOW_LOG=1
+endif
+
 # CFLAGS    = $(WARNINGS) -fsanitize=address -g
 # LFLAGS    = $(WARNINGS) -fsanitize=address -g
-CFLAGS    = $(WARNINGS) -O3 -frtti -fexceptions -std=c++17
-LFLAGS    = $(WARNINGS) -O3 -frtti -fexceptions -std=c++17
+CFLAGS    = $(WARNINGS) $(OPTFLAGS) $(EXCFLAGS) $(CXXSTD) $(CDEFS)
+LFLAGS    = $(WARNINGS) $(OPTFLAGS) $(EXCFLAGS) $(CXXSTD) $(CDEFS)
 
 MUSASHIFILES     = m68kcpu.c myfunc.cc m68k_memory_bridge.cc m68kdasm.c m68ktrace.cc softfloat/softfloat.c
 
