@@ -49,6 +49,42 @@ struct m68k_trace_state {
 static m68k_trace_state g_trace;
 
 /* ======================================================================== */
+/* ======================= LIGHTWEIGHT RING BUFFERS ====================== */
+/* ======================================================================== */
+
+/* Simple fixed-capacity rings to capture earliest flow/mem events without
+ * relying on JS callbacks. This helps debugging in WASM environments. */
+
+struct flow_evt {
+    uint32_t type;
+    uint32_t src;
+    uint32_t dst;
+    uint32_t ret;
+};
+
+struct mem_evt {
+    uint32_t is_read; /* 1 = read, 0 = write */
+    uint32_t pc;
+    uint32_t addr;
+    uint32_t value;
+    uint8_t size;
+};
+
+static bool flow_ring_enabled = false;
+static unsigned flow_ring_limit = 0;
+static std::vector<flow_evt> flow_ring;
+
+static bool mem_ring_enabled = false;
+static unsigned mem_ring_limit = 0;
+static std::vector<mem_evt> mem_ring;
+
+/* First RAM-flow snapshot: capture once when flow enters 0x100000..0x200000 */
+static bool first_ram_flow_valid = false;
+static flow_evt first_ram_flow_evt{};
+static std::array<uint32_t,8> first_ram_d{};
+static std::array<uint32_t,8> first_ram_a{};
+
+/* ======================================================================== */
 /* ========================== INTERNAL FUNCTIONS ========================= */
 /* ======================================================================== */
 
@@ -192,7 +228,21 @@ int m68k_trace_flow_hook(m68k_trace_flow_type type, uint32_t source_pc,
                          uint32_t dest_pc, uint32_t return_addr)
 {
     int result = 0;
-    
+    /* Append to lightweight flow ring for early debugging if enabled */
+    if (flow_ring_enabled && flow_ring.size() < flow_ring_limit) {
+        flow_ring.push_back(flow_evt{ (uint32_t)type, source_pc, dest_pc, return_addr });
+    }
+
+    /* Capture first flow into RAM region (0x100000..0x200000) with D/A regs */
+    if (!first_ram_flow_valid && dest_pc >= 0x100000u && dest_pc < 0x200000u) {
+        first_ram_flow_valid = true;
+        first_ram_flow_evt = flow_evt{ (uint32_t)type, source_pc, dest_pc, return_addr };
+        for (int i = 0; i < 8; i++) {
+            first_ram_d[i] = m68k_get_reg(nullptr, static_cast<m68k_register_t>(M68K_REG_D0 + i));
+            first_ram_a[i] = m68k_get_reg(nullptr, static_cast<m68k_register_t>(M68K_REG_A0 + i));
+        }
+    }
+
     /* Validate parameters */
     if (type < M68K_TRACE_FLOW_CALL || type > M68K_TRACE_FLOW_EXCEPTION) {
         return 0;
@@ -225,7 +275,17 @@ int m68k_trace_mem_hook(m68k_trace_mem_type type, uint32_t pc,
                        uint32_t address, uint32_t value, uint8_t size)
 {
     int result = 0;
-    
+    /* Append to lightweight mem ring for early debugging if enabled */
+    if (mem_ring_enabled && mem_ring.size() < mem_ring_limit) {
+        mem_evt ev;
+        ev.is_read = (type == M68K_TRACE_MEM_READ) ? 1u : 0u;
+        ev.pc = pc;
+        ev.addr = address;
+        ev.value = value;
+        ev.size = size;
+        mem_ring.push_back(ev);
+    }
+
     /* Validate parameters */
     if (type != M68K_TRACE_MEM_READ && type != M68K_TRACE_MEM_WRITE) {
         return 0;
@@ -265,4 +325,86 @@ void m68k_trace_update_cycles(int cycles_executed)
     }
 }
 
+} // extern "C"
+
+/* ======================================================================== */
+/* =================== WASM EXPORTS FOR RING ACCESS ====================== */
+/* ======================================================================== */
+
+extern "C" {
+/* Flow ring controls */
+void flow_trace_reset(void) {
+    flow_ring.clear();
+    flow_ring_enabled = false;
+    flow_ring_limit = 0;
+}
+void flow_trace_enable(unsigned int limit) {
+    flow_ring_enabled = true;
+    flow_ring_limit = limit;
+    flow_ring.clear();
+}
+unsigned int flow_trace_count(void) {
+    return (unsigned int)flow_ring.size();
+}
+unsigned int flow_trace_type(unsigned int index) {
+    if (index >= flow_ring.size()) return 0u;
+    return flow_ring[index].type;
+}
+unsigned int flow_trace_src(unsigned int index) {
+    if (index >= flow_ring.size()) return 0u;
+    return flow_ring[index].src;
+}
+unsigned int flow_trace_dst(unsigned int index) {
+    if (index >= flow_ring.size()) return 0u;
+    return flow_ring[index].dst;
+}
+unsigned int flow_trace_ret(unsigned int index) {
+    if (index >= flow_ring.size()) return 0u;
+    return flow_ring[index].ret;
+}
+
+/* Mem ring controls */
+void mem_trace_reset(void) {
+    mem_ring.clear();
+    mem_ring_enabled = false;
+    mem_ring_limit = 0;
+}
+void mem_trace_enable(unsigned int limit) {
+    mem_ring_enabled = true;
+    mem_ring_limit = limit;
+    mem_ring.clear();
+}
+unsigned int mem_trace_count(void) {
+    return (unsigned int)mem_ring.size();
+}
+unsigned int mem_trace_is_read(unsigned int index) {
+    if (index >= mem_ring.size()) return 0u;
+    return mem_ring[index].is_read;
+}
+unsigned int mem_trace_pc(unsigned int index) {
+    if (index >= mem_ring.size()) return 0u;
+    return mem_ring[index].pc;
+}
+unsigned int mem_trace_addr(unsigned int index) {
+    if (index >= mem_ring.size()) return 0u;
+    return mem_ring[index].addr;
+}
+unsigned int mem_trace_value(unsigned int index) {
+    if (index >= mem_ring.size()) return 0u;
+    return mem_ring[index].value;
+}
+unsigned int mem_trace_size(unsigned int index) {
+    if (index >= mem_ring.size()) return 0u;
+    return (unsigned int)mem_ring[index].size;
+}
+
+/* First RAM-flow snapshot exports */
+unsigned int first_ram_flow_has(void) { return first_ram_flow_valid ? 1u : 0u; }
+void first_ram_flow_clear(void) { first_ram_flow_valid = false; }
+unsigned int first_ram_flow_type(void) { return first_ram_flow_valid ? first_ram_flow_evt.type : 0u; }
+unsigned int first_ram_flow_src(void) { return first_ram_flow_valid ? first_ram_flow_evt.src : 0u; }
+unsigned int first_ram_flow_dst(void) { return first_ram_flow_valid ? first_ram_flow_evt.dst : 0u; }
+unsigned int first_ram_flow_ret(void) { return first_ram_flow_valid ? first_ram_flow_evt.ret : 0u; }
+unsigned int first_ram_flow_d(unsigned int idx) { return (first_ram_flow_valid && idx < 8) ? first_ram_d[idx] : 0u; }
+unsigned int first_ram_flow_a(unsigned int idx) { return (first_ram_flow_valid && idx < 8) ? first_ram_a[idx] : 0u; }
 } // extern "C"
