@@ -90,6 +90,22 @@ describe('@m68k/core', () => {
     expect(system.read(ramBase + 6, 2)).toBe(0xcdef);
   });
 
+  it('respects memory bounds for multi-byte access', () => {
+    const ramBase = 0x100000;
+    const ramSize = 0x1000;
+
+    // Single byte at last address should work
+    system.write(ramBase + ramSize - 1, 1, 0xAB);
+    expect(system.read(ramBase + ramSize - 1, 1)).toBe(0xAB);
+
+    // Multi-byte read/write crossing end should be safely ignored / return 0
+    system.write(ramBase + ramSize - 1, 2, 0xCDEF);
+    expect(system.read(ramBase + ramSize - 1, 2)).toBe(0);
+
+    system.write(ramBase + ramSize - 2, 4, 0x11223344);
+    expect(system.read(ramBase + ramSize - 2, 4)).toBe(0);
+  });
+
   it('should read and write byte arrays', () => {
     const ramBase = 0x100000;
     const data = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05]);
