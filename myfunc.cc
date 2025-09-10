@@ -77,39 +77,26 @@ struct Region {
   // Note: Region does not own the memory, caller is responsible for cleanup
 
   std::optional<unsigned int> read(unsigned int addr, int size) {
-    if (addr >= start_ && addr < start_ + size_) {
-      if (size == 1) {
-        return data_[addr - start_];
-      } else if (size == 2) {
-        return (data_[addr - start_ + 0] << 8) | data_[addr - start_ + 1];
-      } else if (size == 4) {
-        return (
-          (data_[addr - start_ + 0] << 24) |
-          (data_[addr - start_ + 1] << 16) |
-          (data_[addr - start_ + 2] << 8) |
-          data_[addr - start_ + 3]
-        );
-      }
+    if (addr < start_ || addr + size > start_ + size_) {
+      return std::nullopt;
     }
-    return std::nullopt;
+    unsigned int offset = addr - start_;
+    unsigned int value = 0;
+    for (int i = 0; i < size; ++i) {
+      value = (value << 8) | data_[offset + i];
+    }
+    return value;
   }
-  
+
   bool write(unsigned int addr, int size, unsigned int value) {
-    if (addr >= start_ && addr < start_ + size_) {
-      if (size == 1) {
-        data_[addr - start_] = value & 0xFF;
-      } else if (size == 2) {
-        data_[addr - start_ + 0] = (value >> 8) & 0xFF;
-        data_[addr - start_ + 1] = value & 0xFF;
-      } else if (size == 4) {
-        data_[addr - start_ + 0] = (value >> 24) & 0xFF;
-        data_[addr - start_ + 1] = (value >> 16) & 0xFF;
-        data_[addr - start_ + 2] = (value >> 8) & 0xFF;
-        data_[addr - start_ + 3] = value & 0xFF;
-      }
-      return true;
+    if (addr < start_ || addr + size > start_ + size_) {
+      return false;
     }
-    return false;
+    unsigned int offset = addr - start_;
+    for (int i = 0; i < size; ++i) {
+      data_[offset + i] = (value >> ((size - 1 - i) * 8)) & 0xFF;
+    }
+    return true;
   }
 };
 static std::vector<Region> _regions;
