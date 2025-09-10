@@ -146,6 +146,31 @@ class SystemImpl implements System {
     this._musashi.init(this, config.rom, this._ram);
   }
 
+  // --- Instrumentation helpers for advanced users ---
+  enableSingleStep(enabled: boolean): void {
+    this._musashi.setSingleStepMode(enabled);
+  }
+
+  onInstruction(cb: ((pc: number) => void) | undefined): void {
+    this._musashi.onInstruction = cb;
+  }
+
+  onRead8(cb: ((addr: number, value: number) => void) | undefined): void {
+    this._musashi.onRead8 = cb;
+  }
+
+  onWrite8(cb: ((addr: number, value: number) => void) | undefined): void {
+    this._musashi.onWrite8 = cb;
+  }
+
+  // External memory interceptors (optional)
+  setExternalRead8(fn?: (addr: number) => number | undefined): void {
+    this._musashi.setExternalRead8(fn);
+  }
+  setExternalWrite8(fn?: (addr: number, value: number) => boolean | void): void {
+    this._musashi.setExternalWrite8(fn);
+  }
+
   read(address: number, size: 1 | 2 | 4): number {
     return this._musashi.read_memory(address, size);
   }
@@ -172,9 +197,32 @@ class SystemImpl implements System {
     const regs: Partial<CpuRegisters> = {};
     for (const key in REGISTER_MAP) {
       const regKey = key as keyof CpuRegisters;
+      if (regKey === 'ppc') {
+        // Prefer stable PPC captured at the end-of-instruction boundary so it
+        // reflects the start PC of the just-retired instruction.
+        const shadow = (this._musashi as any).getPpcShadow?.();
+        regs.ppc = (shadow !== undefined ? shadow : this._musashi.get_reg(REGISTER_MAP.ppc)) >>> 0;
+        continue;
+      }
       regs[regKey] = this._musashi.get_reg(REGISTER_MAP[regKey]);
     }
     return regs as CpuRegisters;
+  }
+
+  disassemble(address: number): { text: string; size: number } | null {
+    return (this._musashi as any).disassembleOne?.(address >>> 0) ?? null;
+  }
+
+  disassembleSequence(address: number, count: number): Array<{ pc: number; text: string; size: number }> {
+    const out: Array<{ pc: number; text: string; size: number }> = [];
+    let pc = address >>> 0;
+    for (let i = 0; i < count; i++) {
+      const one = this.disassemble(pc);
+      if (!one) break;
+      out.push({ pc, text: one.text, size: one.size >>> 0 });
+      pc = (pc + (one.size >>> 0)) >>> 0;
+    }
+    return out;
   }
 
   setRegister<K extends keyof CpuRegisters>(register: K, value: number): void {
@@ -190,6 +238,11 @@ class SystemImpl implements System {
 
   async run(cycles: number): Promise<number> {
     return Promise.resolve(this._musashi.execute(cycles));
+  }
+
+  // Synchronous variant for embedding in synchronous hooks.
+  runSync(cycles: number): number {
+    return this._musashi.execute(cycles);
   }
 
   reset(): void {
