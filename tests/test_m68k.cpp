@@ -271,3 +271,48 @@ TEST_F(M68kTest, InterruptHandling) {
     EXPECT_EQ(final_sp, initial_sp) << "SP should return to original after RTE";
 }
 
+// Verify execution can stop at specified PC
+TEST_F(M68kTest, StopAfterPc) {
+    // Prepare three NOP instructions
+    write_word(0x1000, 0x4E71);
+    write_word(0x1002, 0x4E71);
+    write_word(0x1004, 0x4E71);
+
+    // Stop when execution reaches an address beyond 0x1002
+    stop_after_pc = 0x1002;
+    pc_hooks.clear();
+
+    m68k_execute(100);
+
+    // Hooks should record each fetched instruction up to the stop point
+    ASSERT_EQ(pc_hooks.size(), 3u);
+    EXPECT_EQ(pc_hooks[0], 0x1000);
+    EXPECT_EQ(pc_hooks[1], 0x1002);
+    EXPECT_EQ(pc_hooks[2], 0x1004);
+
+    // Execution stops after completing instruction at 0x1004
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x1006u);
+}
+
+// Verify stop-on-next-hook functionality
+TEST_F(M68kTest, StopOnNextHook) {
+    // Prepare a short sequence of NOPs
+    write_word(0x1000, 0x4E71);
+    write_word(0x1002, 0x4E71);
+    write_word(0x1004, 0x4E71);
+
+    // Request stop after the next PC hook
+    stop_on_next_hook = true;
+    pc_hooks.clear();
+
+    m68k_execute(100);
+
+    // Only the first two PCs should be recorded
+    ASSERT_EQ(pc_hooks.size(), 2u);
+    EXPECT_EQ(pc_hooks[0], 0x1000);
+    EXPECT_EQ(pc_hooks[1], 0x1002);
+
+    // Execution stops after completing instruction at 0x1002
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x1004u);
+}
+
