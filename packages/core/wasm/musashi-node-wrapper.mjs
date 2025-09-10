@@ -1,6 +1,13 @@
-// ESM wrapper for the Musashi WASM module
-// This file loads the actual ESM module that should be copied here by the CI
+// ESM wrapper for the Musashi WASM module with a safe fallback.
+// Primary path: local CI drops musashi-node.out.mjs alongside this file.
+// Fallback: use repository-level musashi-node.mjs if present.
 
-import createMusashi from './musashi-node.out.mjs';
-
-export default createMusashi;
+export default async function createMusashiModule() {
+  try {
+    const mod = await import('./musashi-node.out.mjs');
+    return mod.default();
+  } catch (_e) {
+    const fallback = await import('../../../musashi-node.mjs');
+    return fallback.default();
+  }
+}
