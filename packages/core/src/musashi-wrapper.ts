@@ -92,6 +92,8 @@ export class MusashiWrapper {
   // Coalesce start/end callbacks from native into a single per-instruction event
   private _emitOnEndBoundaryOnly = true;
   private _phaseFlip = true; // false=start, true=end
+  // Optional memory mapper: maps CPU address to physical index + write policy
+  private _memoryMapper?: (addr: number, isWrite: boolean) => { phys: number; allowWrite: boolean };
 
   constructor(module: MusashiEmscriptenModule) {
     this._module = module;
@@ -115,13 +117,10 @@ export class MusashiWrapper {
       if (value !== undefined) {
         v = value & 0xff;
       } else {
-        // Default mapping: RAM 0x100000..0x1FFFFF, ROM elsewhere (with simple mirror)
-        if (a >= 0x100000 && a < 0x200000) {
-          v = this._memory[a] || 0;
-        } else {
-          const phys = a < 0x100000 ? a : (a - 0x100000);
-          v = this._memory[phys] || 0;
-        }
+        const map = this._memoryMapper
+          ? this._memoryMapper(a, /*isWrite*/ false)
+          : { phys: (a >= 0x100000 && a < 0x200000) ? a : (a < 0x100000 ? a : (a - 0x100000)), allowWrite: false };
+        v = this._memory[map.phys] || 0;
       }
       if (this.onRead8) this.onRead8(a, v >>> 0);
       return v & 0xff;
@@ -138,14 +137,13 @@ export class MusashiWrapper {
           handled = false;
         }
       }
-      // Respect ROM vs RAM semantics: only mutate RAM (0x100000..0x1FFFFF)
-      const ramStart = 0x100000;
-      const ramEnd = 0x200000; // exclusive
-      const inRam = a >= ramStart && a < ramEnd;
-      if (!handled && inRam) {
-        this._memory[a] = v;
+      const map = this._memoryMapper
+        ? this._memoryMapper(a, /*isWrite*/ true)
+        : { phys: a, allowWrite: (a >= 0x100000 && a < 0x200000) };
+      if (!handled && map.allowWrite) {
+        this._memory[map.phys] = v;
         // Keep JS-side RAM view in sync
-        const off = a - ramStart;
+        const off = map.phys - 0x100000;
         if (off >= 0 && off < this._system._ram.length) {
           this._system._ram[off] = v;
         }
@@ -193,9 +191,10 @@ export class MusashiWrapper {
           const a = aa >>> 0;
           const ext = this._externalRead8?.(a);
           if (ext !== undefined) return ext & 0xff;
-          if (a >= 0x100000 && a < 0x200000) return this._memory[a] || 0;
-          const phys = a < 0x100000 ? a : (a - 0x100000);
-          return this._memory[phys] || 0;
+          const map = this._memoryMapper
+            ? this._memoryMapper(a, /*isWrite*/ false)
+            : { phys: (a >= 0x100000 && a < 0x200000) ? a : (a < 0x100000 ? a : (a - 0x100000)), allowWrite: false };
+          return this._memory[map.phys] || 0;
         };
         if (size === 1) {
           const v1 = mapRead8(a0) & 0xff;
@@ -222,24 +221,31 @@ export class MusashiWrapper {
     if ((this._module as any)._set_write_mem_func) {
       const writeMem = this._module.addFunction((address: number, size: number, value: number) => {
         if (size === 1) {
-          this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address, value & 0xff);
+          const map = this._memoryMapper ? this._memoryMapper(address >>> 0, /*isWrite*/ true) : { phys: address >>> 0, allowWrite: true };
+          if (map.allowWrite) this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, map.phys, value & 0xff);
           return;
         }
         if (size === 2) {
           const b0 = (value >> 8) & 0xff;
           const b1 = value & 0xff;
-          this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address, b0);
-          this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address + 1, b1);
+          const m0 = this._memoryMapper ? this._memoryMapper(address >>> 0, true) : { phys: address >>> 0, allowWrite: true };
+          const m1 = this._memoryMapper ? this._memoryMapper((address + 1) >>> 0, true) : { phys: (address + 1) >>> 0, allowWrite: true };
+          if (m0.allowWrite) this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, m0.phys, b0);
+          if (m1.allowWrite) this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, m1.phys, b1);
           return;
         }
         const b0 = (value >> 24) & 0xff;
         const b1 = (value >> 16) & 0xff;
         const b2 = (value >> 8) & 0xff;
         const b3 = value & 0xff;
-        this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address, b0);
-        this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address + 1, b1);
-        this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address + 2, b2);
-        this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, address + 3, b3);
+        const m0 = this._memoryMapper ? this._memoryMapper(address >>> 0, true) : { phys: address >>> 0, allowWrite: true };
+        const m1 = this._memoryMapper ? this._memoryMapper((address + 1) >>> 0, true) : { phys: (address + 1) >>> 0, allowWrite: true };
+        const m2 = this._memoryMapper ? this._memoryMapper((address + 2) >>> 0, true) : { phys: (address + 2) >>> 0, allowWrite: true };
+        const m3 = this._memoryMapper ? this._memoryMapper((address + 3) >>> 0, true) : { phys: (address + 3) >>> 0, allowWrite: true };
+        if (m0.allowWrite) this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, m0.phys, b0);
+        if (m1.allowWrite) this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, m1.phys, b1);
+        if (m2.allowWrite) this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, m2.phys, b2);
+        if (m3.allowWrite) this._writeFunc && (this._module as any).dynCall_vii?.(this._writeFunc, m3.phys, b3);
       }, 'viii');
       (this._module as any)._set_write_mem_func(writeMem);
     }
@@ -452,29 +458,28 @@ export class MusashiWrapper {
     // Write to our unified memory (big-endian decomposition)
     if (address >= this._memory.length) return;
 
-    // Respect ROM vs RAM mapping from the host (RAM: 0x100000..0x1FFFFF).
-    // Writes outside RAM are ignored.
-    const ramStart = 0x100000;
-    const ramEnd = 0x200000; // exclusive
-    const inRam = address >= ramStart && address < ramEnd;
+    const map = this._memoryMapper
+      ? this._memoryMapper(address >>> 0, /*isWrite*/ true)
+      : { phys: address >>> 0, allowWrite: (address >= 0x100000 && address < 0x200000) };
 
-    if (inRam) {
+    if (map.allowWrite) {
       if (size === 1) {
-        this._memory[address] = value & 0xff;
+        this._memory[map.phys] = value & 0xff;
       } else if (size === 2) {
-        this._memory[address] = (value >> 8) & 0xff;
-        this._memory[address + 1] = value & 0xff;
+        this._memory[map.phys] = (value >> 8) & 0xff;
+        this._memory[map.phys + 1] = value & 0xff;
       } else {
-        this._memory[address] = (value >> 24) & 0xff;
-        this._memory[address + 1] = (value >> 16) & 0xff;
-        this._memory[address + 2] = (value >> 8) & 0xff;
-        this._memory[address + 3] = value & 0xff;
+        this._memory[map.phys] = (value >> 24) & 0xff;
+        this._memory[map.phys + 1] = (value >> 16) & 0xff;
+        this._memory[map.phys + 2] = (value >> 8) & 0xff;
+        this._memory[map.phys + 3] = value & 0xff;
       }
     }
 
     // Update the JS-side RAM copy if this is in RAM space
-    if (inRam && address >= ramStart && address < ramStart + this._system._ram.length) {
-      const offset = address - ramStart;
+    const ramStart = 0x100000;
+    if (map.allowWrite && map.phys >= ramStart && map.phys < ramStart + this._system._ram.length) {
+      const offset = map.phys - ramStart;
       if (size === 1) {
         this._system._ram[offset] = value & 0xff;
       } else if (size === 2) {
@@ -487,6 +492,11 @@ export class MusashiWrapper {
         this._system._ram[offset + 3] = value & 0xff;
       }
     }
+  }
+
+  // Allow host to override memory mapping
+  setMemoryMapper(mapper?: (addr: number, isWrite: boolean) => { phys: number; allowWrite: boolean }) {
+    this._memoryMapper = mapper;
   }
 
   // --- Perfetto Tracing Wrappers ---

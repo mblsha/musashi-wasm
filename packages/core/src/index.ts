@@ -171,6 +171,11 @@ class SystemImpl implements System {
     this._musashi.setExternalWrite8(fn);
   }
 
+  // Configurable memory mapper (optional)
+  setMemoryMapper(mapper?: (addr: number, isWrite: boolean) => { phys: number; allowWrite: boolean }): void {
+    (this._musashi as any).setMemoryMapper?.(mapper);
+  }
+
   read(address: number, size: 1 | 2 | 4): number {
     return this._musashi.read_memory(address, size);
   }
