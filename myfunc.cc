@@ -19,10 +19,10 @@ typedef int (*instr_hook_t)(unsigned int pc, unsigned int ir, unsigned int cycle
 
 static bool _initialized = false;
 static bool _enable_printf_logging = false;
-static read_mem_t _read_mem = 0;
-static write_mem_t _write_mem = 0;
-static pc_hook_t _pc_hook = 0;
-static instr_hook_t _instr_hook = 0;  // Full instruction hook (3 params)
+static read_mem_t _read_mem = nullptr;
+static write_mem_t _write_mem = nullptr;
+static pc_hook_t _pc_hook = nullptr;
+static instr_hook_t _instr_hook = nullptr;  // Full instruction hook (3 params)
 static std::unordered_set<unsigned int> _pc_hook_addrs;
 
 /* ======================================================================== */
@@ -77,39 +77,26 @@ struct Region {
   // Note: Region does not own the memory, caller is responsible for cleanup
 
   std::optional<unsigned int> read(unsigned int addr, int size) {
-    if (addr >= start_ && addr < start_ + size_) {
-      if (size == 1) {
-        return data_[addr - start_];
-      } else if (size == 2) {
-        return (data_[addr - start_ + 0] << 8) | data_[addr - start_ + 1];
-      } else if (size == 4) {
-        return (
-          (data_[addr - start_ + 0] << 24) |
-          (data_[addr - start_ + 1] << 16) |
-          (data_[addr - start_ + 2] << 8) |
-          data_[addr - start_ + 3]
-        );
-      }
+    if (addr < start_ || addr + size > start_ + size_) {
+      return std::nullopt;
     }
-    return std::nullopt;
+    unsigned int offset = addr - start_;
+    unsigned int value = 0;
+    for (int i = 0; i < size; ++i) {
+      value = (value << 8) | data_[offset + i];
+    }
+    return value;
   }
-  
+
   bool write(unsigned int addr, int size, unsigned int value) {
-    if (addr >= start_ && addr < start_ + size_) {
-      if (size == 1) {
-        data_[addr - start_] = value & 0xFF;
-      } else if (size == 2) {
-        data_[addr - start_ + 0] = (value >> 8) & 0xFF;
-        data_[addr - start_ + 1] = value & 0xFF;
-      } else if (size == 4) {
-        data_[addr - start_ + 0] = (value >> 24) & 0xFF;
-        data_[addr - start_ + 1] = (value >> 16) & 0xFF;
-        data_[addr - start_ + 2] = (value >> 8) & 0xFF;
-        data_[addr - start_ + 3] = value & 0xFF;
-      }
-      return true;
+    if (addr < start_ || addr + size > start_ + size_) {
+      return false;
     }
-    return false;
+    unsigned int offset = addr - start_;
+    for (int i = 0; i < size; ++i) {
+      data_[offset + i] = (value >> ((size - 1 - i) * 8)) & 0xFF;
+    }
+    return true;
   }
 };
 static std::vector<Region> _regions;
@@ -191,11 +178,11 @@ extern "C" {
   }
   
   void clear_pc_hook_func() {
-    _pc_hook = 0;
+    _pc_hook = nullptr;
   }
-  
+
   void clear_instr_hook_func() {
-    _instr_hook = 0;
+    _instr_hook = nullptr;
   }
 
   // Provide a clean entry helper that sets sane CPU state and jumps to pc
@@ -215,10 +202,10 @@ extern "C" {
   void reset_myfunc_state() {
     _initialized = false;
     _enable_printf_logging = false;
-    _read_mem = 0;
-    _write_mem = 0;
-    _pc_hook = 0;
-    _instr_hook = 0;
+    _read_mem = nullptr;
+    _write_mem = nullptr;
+    _pc_hook = nullptr;
+    _instr_hook = nullptr;
     _pc_hook_addrs.clear();
     _regions.clear();
     _function_names.clear();

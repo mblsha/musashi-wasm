@@ -98,13 +98,9 @@ export class DataParser {
 
   /** Reads a big-endian 32-bit signed integer. */
   static readInt32BE(data: Uint8Array, offset: number = 0): number {
-    return (
-      (data[offset] << 24) |
-      (data[offset + 1] << 16) |
-      (data[offset + 2] << 8) |
-      data[offset + 3] |
-      0
-    ); // Ensure signed
+    // Reuse the unsigned version and convert to a signed 32-bit integer.
+    // Bitwise OR with 0 forces the number into the Int32 range.
+    return DataParser.readUint32BE(data, offset) | 0;
   }
 
   /** Writes a big-endian 16-bit unsigned integer. */
