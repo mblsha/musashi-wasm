@@ -416,10 +416,14 @@ int my_instruction_hook_function(unsigned int pc_raw) {
     }
   }
   
-  // Call JS probe callback if registered
+  // Call JS probe callback if registered, honoring address filter semantics
   if (js_probe_callback) {
-    int js_result = js_probe_callback(pc);
-    if (js_result != 0) return js_result;  // JS wants to break
+    // When no filter is configured, probe all PCs; otherwise, only probe listed PCs
+    bool should_probe = _pc_hook_addrs.empty() || (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end());
+    if (should_probe) {
+      int js_result = js_probe_callback(pc);
+      if (js_result != 0) return js_result;  // JS wants to break
+    }
   }
   
   // Call existing PC hook system
