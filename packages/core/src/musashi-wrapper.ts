@@ -80,6 +80,10 @@ export class MusashiWrapper {
   private readonly NOP_FUNC_ADDR = 0x1000; // Address with an RTS instruction (moved away from test program)
   private _doneExec = false;
   private _doneOverride = false;
+  // Optional debug hooks used by fusion harness
+  public onInstruction?: (pc: number) => void;
+  public onRead8?: (addr: number, value: number) => void;
+  public onWrite8?: (addr: number, value: number) => void;
 
   constructor(module: MusashiEmscriptenModule) {
     this._module = module;
@@ -90,15 +94,23 @@ export class MusashiWrapper {
 
     // Setup callbacks FIRST (critical for expert's fix)
     this._readFunc = this._module.addFunction((addr: number) => {
-      return this._memory[addr] || 0;
+      const a = addr >>> 0;
+      const v = (this._memory[a] || 0) & 0xff;
+      if (this.onRead8) this.onRead8(a, v);
+      return v;
     }, 'ii');
 
     this._writeFunc = this._module.addFunction((addr: number, val: number) => {
-      this._memory[addr] = val & 0xff;
+      const a = addr >>> 0;
+      const v = val & 0xff;
+      this._memory[a] = v;
+      if (this.onWrite8) this.onWrite8(a, v);
     }, 'vii');
 
     this._probeFunc = this._module.addFunction((addr: number) => {
-      return this._system._handlePCHook(addr) ? 1 : 0;
+      const pc = addr >>> 0;
+      if (this.onInstruction) this.onInstruction(pc);
+      return this._system._handlePCHook(pc) ? 1 : 0;
     }, 'ii');
 
     // Register callbacks with C

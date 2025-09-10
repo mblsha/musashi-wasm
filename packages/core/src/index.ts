@@ -146,6 +146,17 @@ class SystemImpl implements System {
     this._musashi.init(this, config.rom, this._ram);
   }
 
+  // --- Instrumentation helpers expected by fusion harness ---
+  onInstruction(cb: ((pc: number) => void) | undefined): void {
+    this._musashi.onInstruction = cb;
+  }
+  onRead8(cb: ((addr: number, value: number) => void) | undefined): void {
+    this._musashi.onRead8 = cb;
+  }
+  onWrite8(cb: ((addr: number, value: number) => void) | undefined): void {
+    this._musashi.onWrite8 = cb;
+  }
+
   read(address: number, size: 1 | 2 | 4): number {
     return this._musashi.read_memory(address, size);
   }
@@ -190,6 +201,11 @@ class SystemImpl implements System {
 
   async run(cycles: number): Promise<number> {
     return Promise.resolve(this._musashi.execute(cycles));
+  }
+
+  // Synchronous stepping used by fusion harness for small time slices
+  runSync(cycles: number): number {
+    return this._musashi.execute(cycles >>> 0) >>> 0;
   }
 
   reset(): void {
