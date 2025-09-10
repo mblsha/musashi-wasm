@@ -217,6 +217,24 @@ TEST_F(MyFuncTest, ClearRegions) {
     delete[] region;
 }
 
+// Test clearing PC hook function disables callback
+TEST_F(MyFuncTest, ClearPcHookDisablesCallback) {
+    // Write two NOPs at the default PC location (0x400)
+    write_word(0x400, 0x4E71);
+    write_word(0x402, 0x4E71);
+
+    // Verify hooks are received normally
+    pc_hooks.clear();
+    m68k_execute(100);
+    ASSERT_GE(pc_hooks.size(), 2u);
+
+    // Clear the PC hook function and ensure no hooks fire
+    clear_pc_hook_func();
+    pc_hooks.clear();
+    m68k_execute(100);
+    EXPECT_TRUE(pc_hooks.empty());
+}
+
 // Test execution with regions
 TEST_F(MyFuncTest, ExecutionWithRegions) {
     // Create a code region
