@@ -70,9 +70,16 @@ interface MusashiEmscriptenModule {
   getValue?(ptr: number, type: string): number;
 }
 
+interface SystemBridge {
+  read(address: number, size: 1 | 2 | 4): number;
+  write(address: number, size: 1 | 2 | 4, value: number): void;
+  _handlePCHook(pc: number): boolean;
+  ram: Uint8Array;
+}
+
 export class MusashiWrapper {
   private _module: MusashiEmscriptenModule;
-  private _system: any; // Reference to SystemImpl
+  private _system!: SystemBridge; // Reference to SystemImpl
   private _memory: Uint8Array = new Uint8Array(2 * 1024 * 1024); // 2MB memory
   private _readFunc: EmscriptenFunction = 0;
   private _writeFunc: EmscriptenFunction = 0;
@@ -85,7 +92,7 @@ export class MusashiWrapper {
     this._module = module;
   }
 
-  init(system: any, rom: Uint8Array, ram: Uint8Array) {
+  init(system: SystemBridge, rom: Uint8Array, ram: Uint8Array) {
     this._system = system;
 
     // Setup callbacks FIRST (critical for expert's fix)
@@ -310,18 +317,18 @@ export class MusashiWrapper {
 
     // Update the JS-side RAM copy if this is in RAM space
     const ramStart = 0x100000;
-    if (address >= ramStart && address < ramStart + this._system._ram.length) {
+    if (address >= ramStart && address < ramStart + this._system.ram.length) {
       const offset = address - ramStart;
       if (size === 1) {
-        this._system._ram[offset] = value & 0xff;
+        this._system.ram[offset] = value & 0xff;
       } else if (size === 2) {
-        this._system._ram[offset] = (value >> 8) & 0xff;
-        this._system._ram[offset + 1] = value & 0xff;
+        this._system.ram[offset] = (value >> 8) & 0xff;
+        this._system.ram[offset + 1] = value & 0xff;
       } else {
-        this._system._ram[offset] = (value >> 24) & 0xff;
-        this._system._ram[offset + 1] = (value >> 16) & 0xff;
-        this._system._ram[offset + 2] = (value >> 8) & 0xff;
-        this._system._ram[offset + 3] = value & 0xff;
+        this._system.ram[offset] = (value >> 24) & 0xff;
+        this._system.ram[offset + 1] = (value >> 16) & 0xff;
+        this._system.ram[offset + 2] = (value >> 8) & 0xff;
+        this._system.ram[offset + 3] = value & 0xff;
       }
     }
   }

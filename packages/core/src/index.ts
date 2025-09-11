@@ -128,7 +128,7 @@ class TracerImpl implements Tracer {
 
 class SystemImpl implements System {
   private _musashi: MusashiWrapper;
-  private _ram: Uint8Array;
+  readonly ram: Uint8Array;
   private _rom: Uint8Array;
   private _hooks = {
     probes: new Map<number, HookCallback>(),
@@ -139,11 +139,11 @@ class SystemImpl implements System {
   constructor(musashi: MusashiWrapper, config: SystemConfig) {
     this._musashi = musashi;
     this._rom = config.rom;
-    this._ram = new Uint8Array(config.ramSize);
+    this.ram = new Uint8Array(config.ramSize);
     this.tracer = new TracerImpl(musashi);
 
     // Initialize Musashi with memory regions and hooks
-    this._musashi.init(this, config.rom, this._ram);
+    this._musashi.init(this, config.rom, this.ram);
   }
 
   read(address: number, size: 1 | 2 | 4): number {
