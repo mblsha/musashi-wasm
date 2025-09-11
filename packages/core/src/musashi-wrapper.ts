@@ -51,6 +51,12 @@ interface MusashiEmscriptenModule {
   _set_read8_callback?(f: EmscriptenFunction): void;
   _set_write8_callback?(f: EmscriptenFunction): void;
   _set_probe_callback?(f: EmscriptenFunction): void;
+  // Disassembler entry point (optional export)
+  _m68k_disassemble?(
+    outBuf: EmscriptenBuffer,
+    pc: number,
+    cpu_type: number
+  ): number;
 
   // New register helpers
   _set_d_reg?(n: number, value: number): void;
@@ -87,6 +93,9 @@ export class MusashiWrapper {
   private readonly NOP_FUNC_ADDR = 0x1000; // Address with an RTS instruction (moved away from test program)
   private _doneExec = false;
   private _doneOverride = false;
+  // (no fusion-specific hooks)
+  // CPU type for disassembler (68000)
+  private readonly CPU_68000 = 0;
 
   constructor(module: MusashiEmscriptenModule) {
     this._module = module;
@@ -97,15 +106,17 @@ export class MusashiWrapper {
 
     // Setup callbacks FIRST (critical for expert's fix)
     this._readFunc = this._module.addFunction((addr: number) => {
-      return this._memory[addr] || 0;
+      const a = addr >>> 0;
+      return (this._memory[a] || 0) & 0xff;
     }, 'ii');
 
     this._writeFunc = this._module.addFunction((addr: number, val: number) => {
-      this._memory[addr] = val & 0xff;
+      const a = addr >>> 0;
+      this._memory[a] = val & 0xff;
     }, 'vii');
 
     this._probeFunc = this._module.addFunction((addr: number) => {
-      return this._system._handlePCHook(addr) ? 1 : 0;
+      return this._system._handlePCHook(addr >>> 0) ? 1 : 0;
     }, 'ii');
 
     // Register callbacks with C
@@ -331,6 +342,61 @@ export class MusashiWrapper {
         this._system.ram[offset + 3] = value & 0xff;
       }
     }
+  }
+
+  
+
+  /**
+   * Disassembles a single instruction at the given address.
+   * Returns null if the underlying module does not expose the disassembler.
+   */
+  disassemble(address: number): { text: string; size: number } | null {
+    const mod = this._module;
+    if (typeof mod._m68k_disassemble !== 'function' || !mod._malloc || !mod._free) {
+      return null;
+    }
+    // Allocate a small buffer for the disassembly string
+    const CAP = 256;
+    const buf = mod._malloc(CAP);
+    try {
+      const size = mod._m68k_disassemble!(buf, address >>> 0, this.CPU_68000) >>> 0;
+      // Read C-string from HEAPU8 until NUL or CAP
+      const heap = mod.HEAPU8 as Uint8Array;
+      let s = '';
+      for (let i = buf; i < buf + CAP; i++) {
+        const c = heap[i];
+        if (c === 0) break;
+        s += String.fromCharCode(c);
+      }
+      return { text: s, size };
+    } catch {
+      return null;
+    } finally {
+      try {
+        mod._free(buf);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  /**
+   * Convenience helper to disassemble a short sequence starting at address.
+   */
+  disassembleSequence(
+    address: number,
+    count: number
+  ): Array<{ pc: number; text: string; size: number }> {
+    const out: Array<{ pc: number; text: string; size: number }> = [];
+    let pc = address >>> 0;
+    for (let i = 0; i < count; i++) {
+      const one = this.disassemble(pc);
+      if (!one) break;
+      out.push({ pc, text: one.text, size: one.size >>> 0 });
+      pc = (pc + (one.size >>> 0)) >>> 0;
+      if (one.size === 0) break; // avoid infinite loop on malformed decode
+    }
+    return out;
   }
 
   // --- Perfetto Tracing Wrappers ---

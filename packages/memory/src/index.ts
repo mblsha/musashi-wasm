@@ -1,4 +1,8 @@
-import type { System } from '@m68k/core';
+// Minimal system surface needed for memory helpers. Avoids coupling to @m68k/core
+export interface SystemMemoryIO {
+  readBytes(address: number, length: number): Uint8Array;
+  writeBytes(address: number, data: Uint8Array): void;
+}
 
 /** A user-defined function that parses a byte buffer into a structured object. */
 export type Parser<T> = (data: Uint8Array) => T;
@@ -9,7 +13,7 @@ export type Parser<T> = (data: Uint8Array) => T;
  */
 export class MemoryRegion<T> {
   constructor(
-    private readonly system: System,
+    private readonly system: SystemMemoryIO,
     private readonly address: number,
     private readonly size: number,
     private readonly parser: Parser<T>
@@ -38,7 +42,7 @@ export class MemoryRegion<T> {
  */
 export class MemoryArray<T> {
   constructor(
-    private readonly system: System,
+    private readonly system: SystemMemoryIO,
     private readonly baseAddress: number,
     private readonly stride: number, // The size of each element in bytes.
     private readonly parser: Parser<T>

@@ -140,4 +140,7 @@ export interface System {
 
   /** Accesses the optional Perfetto tracing functionality. */
   readonly tracer: Tracer;
+
+  /** Disassembles a single instruction at the given address and returns a formatted string (or null if unavailable). */
+  disassemble(address: number): string | null;
 }
