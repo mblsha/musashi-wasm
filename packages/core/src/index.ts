@@ -155,7 +155,7 @@ class SystemImpl implements System {
   // Single-string disassembly (no address prefix)
   disassemble(address: number): string | null {
     const pc = address >>> 0;
-    const one = (this._musashi as any).disassemble?.(pc) as { text: string; size: number } | null;
+    const one = this._musashi.disassemble(pc);
     if (!one) return null;
     return one.text;
     }

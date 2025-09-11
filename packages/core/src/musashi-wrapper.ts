@@ -4,7 +4,7 @@
 type EmscriptenBuffer = number;
 type EmscriptenFunction = number;
 
-interface MusashiEmscriptenModule {
+export interface MusashiEmscriptenModule {
   _my_initialize(): boolean;
   _add_pc_hook_addr(addr: number): void;
   _add_region(start: number, len: number, buf: EmscriptenBuffer): void;
@@ -525,11 +525,10 @@ export class MusashiWrapper {
 export async function getModule(): Promise<MusashiWrapper> {
   // Environment detection without DOM types
   const isNode =
-    typeof globalThis !== 'undefined' &&
-    !!(globalThis as any).process?.versions?.node;
+    typeof process !== 'undefined' && !!process.versions?.node;
 
   // Dynamic import based on environment
-  let module: any;
+  let module: unknown;
   if (isNode) {
     // For Node.js, use the ESM wrapper
     // @ts-ignore - Dynamic import of .mjs file
@@ -539,8 +538,9 @@ export async function getModule(): Promise<MusashiWrapper> {
     module = await createMusashiModule();
 
     // Runtime validation to catch shape mismatches early
-    if (!module || typeof module._m68k_init !== 'function') {
-      const keys = module ? Object.keys(module).slice(0, 20) : [];
+    const modMaybe = module as Partial<MusashiEmscriptenModule> | null | undefined;
+    if (!modMaybe || typeof modMaybe._m68k_init !== 'function') {
+      const keys = module && typeof module === 'object' ? Object.keys(module as Record<string, unknown>).slice(0, 20) : [];
       throw new Error(
         'Musashi Module shape unexpected: _m68k_init not found. ' +
           `Type=${typeof module}, keys=${JSON.stringify(keys)}`
