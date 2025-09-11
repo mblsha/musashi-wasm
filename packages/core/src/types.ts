@@ -140,4 +140,13 @@ export interface System {
 
   /** Accesses the optional Perfetto tracing functionality. */
   readonly tracer: Tracer;
+
+  /** Disassembles a single instruction at the given address, if available. */
+  disassemble(address: number): { text: string; size: number } | null;
+
+  /** Disassembles a short sequence starting at address. */
+  disassembleSequence(
+    address: number,
+    count: number
+  ): Array<{ pc: number; text: string; size: number }>;
 }
