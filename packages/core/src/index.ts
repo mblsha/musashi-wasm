@@ -101,7 +101,7 @@ class TracerImpl implements Tracer {
       throw new Error('Failed to export Perfetto trace data.');
     }
 
-    return Promise.resolve(traceData);
+    return traceData;
   }
 
   private _registerSymbols(
@@ -189,11 +189,11 @@ class SystemImpl implements System {
   }
 
   async call(address: number): Promise<number> {
-    return Promise.resolve(this._musashi.call(address));
+    return this._musashi.call(address);
   }
 
   async run(cycles: number): Promise<number> {
-    return Promise.resolve(this._musashi.execute(cycles));
+    return this._musashi.execute(cycles);
   }
 
   reset(): void {
