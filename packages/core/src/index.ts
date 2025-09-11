@@ -104,25 +104,29 @@ class TracerImpl implements Tracer {
     return Promise.resolve(traceData);
   }
 
-  registerFunctionNames(symbols: SymbolMap): void {
+  private _registerSymbols(
+    symbols: SymbolMap,
+    register: (addr: number, name: string) => void
+  ): void {
     if (!this.isAvailable()) return;
-    for (const address in symbols) {
-      // Ensure address is a number, as keys can be strings
+    for (const [address, name] of Object.entries(symbols)) {
       const addrNum = Number(address);
-      if (!isNaN(addrNum)) {
-        this._musashi.registerFunctionName(addrNum, symbols[address]);
+      if (!Number.isNaN(addrNum)) {
+        register(addrNum, name);
       }
     }
   }
 
+  registerFunctionNames(symbols: SymbolMap): void {
+    this._registerSymbols(symbols, (addr, name) =>
+      this._musashi.registerFunctionName(addr, name)
+    );
+  }
+
   registerMemoryNames(symbols: SymbolMap): void {
-    if (!this.isAvailable()) return;
-    for (const address in symbols) {
-      const addrNum = Number(address);
-      if (!isNaN(addrNum)) {
-        this._musashi.registerMemoryName(addrNum, symbols[address]);
-      }
-    }
+    this._registerSymbols(symbols, (addr, name) =>
+      this._musashi.registerMemoryName(addr, name)
+    );
   }
 }
 
