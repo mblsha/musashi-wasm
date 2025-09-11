@@ -13,6 +13,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@m68k/core": ["../core/src/index.ts"]
+    },
     "resolveJsonModule": true,
     "types": ["node", "jest"]
   },

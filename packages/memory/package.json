@@ -48,6 +48,9 @@
         { "useESM": true, "tsconfig": "./tsconfig.json" }
       ]
     },
+    "moduleNameMapper": {
+      "^@m68k/core$": "<rootDir>/../core/src/index.ts"
+    },
     "roots": ["<rootDir>/src"],
     "testMatch": ["**/*.test.ts"]
   }

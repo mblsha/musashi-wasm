@@ -1,8 +1,7 @@
 import { MemoryRegion, MemoryArray, DataParser } from './index';
-import type { System } from '@m68k/core';
 
 // Mock System for testing
-class MockSystem implements System {
+class MockSystem {
   private memory = new Map<number, number>();
 
   read(address: number, size: 1 | 2 | 4): number {
@@ -89,7 +88,7 @@ describe('@m68k/memory', () => {
       system.write(address + 4, 2, 0x0102);
       system.write(address + 6, 2, 0x0304);
 
-      const region = new MemoryRegion(system, address, size, parser);
+      const region = new MemoryRegion(system as unknown as any, address, size, parser);
       const data = region.get();
 
       expect(data.magic).toBe(0xdeadbeef);
@@ -100,7 +99,7 @@ describe('@m68k/memory', () => {
     test('should write bytes to a memory region', () => {
       const address = 0x2000;
       const size = 8;
-      const region = new MemoryRegion(system, address, size, parser);
+      const region = new MemoryRegion(system as unknown as any, address, size, parser);
 
       const testData = new Uint8Array([
         0x12,
@@ -121,7 +120,7 @@ describe('@m68k/memory', () => {
     });
 
     test('should throw on size mismatch', () => {
-      const region = new MemoryRegion(system, 0x3000, 8, parser);
+      const region = new MemoryRegion(system as unknown as any, 0x3000, 8, parser);
       const wrongSizeData = new Uint8Array(10);
 
       expect(() => region.setBytes(wrongSizeData)).toThrow(
@@ -146,7 +145,7 @@ describe('@m68k/memory', () => {
     test('should read array elements', () => {
       const baseAddress = 0x4000;
       const stride = 6; // 3 x 16-bit values
-      const array = new MemoryArray(system, baseAddress, stride, entityParser);
+      const array = new MemoryArray(system as unknown as any, baseAddress, stride, entityParser);
 
       // Write test entities
       system.write(baseAddress, 2, 100); // entity[0].x
@@ -171,7 +170,7 @@ describe('@m68k/memory', () => {
     test('should write array elements', () => {
       const baseAddress = 0x5000;
       const stride = 6;
-      const array = new MemoryArray(system, baseAddress, stride, entityParser);
+      const array = new MemoryArray(system as unknown as any, baseAddress, stride, entityParser);
 
       const entityData = new Uint8Array(6);
       DataParser.writeUint16BE(entityData, 42, 0); // x
@@ -189,7 +188,7 @@ describe('@m68k/memory', () => {
     test('should iterate over array elements', () => {
       const baseAddress = 0x6000;
       const stride = 4;
-      const array = new MemoryArray(system, baseAddress, stride, data =>
+      const array = new MemoryArray(system as unknown as any, baseAddress, stride, data =>
         DataParser.readUint32BE(data, 0)
       );
 

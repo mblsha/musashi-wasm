@@ -150,6 +150,15 @@ class SystemImpl implements System {
     this._musashi.init(this, config.rom, this.ram);
   }
 
+  // (no fusion-specific instrumentation helpers)
+
+  // Single-string disassembly (no address prefix)
+  disassemble(address: number): string | null {
+    const pc = address >>> 0;
+    const one = (this._musashi as any).disassemble?.(pc) as { text: string; size: number } | null;
+    if (!one) return null;
+    return one.text;
+    }
   read(address: number, size: 1 | 2 | 4): number {
     return this._musashi.read_memory(address, size);
   }

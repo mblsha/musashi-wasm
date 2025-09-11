@@ -4,3 +4,6 @@
 [submodule "third_party/vasm"]
 	path = third_party/vasm
 	url = https://github.com/dbuchwald/vasm.git
+[submodule "emsdk"]
+	path = emsdk
+	url = https://github.com/emscripten-core/emsdk.git
