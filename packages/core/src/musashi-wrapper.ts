@@ -90,7 +90,6 @@ export class MusashiWrapper {
   private _readFunc: EmscriptenFunction = 0;
   private _writeFunc: EmscriptenFunction = 0;
   private _probeFunc: EmscriptenFunction = 0;
-  private _instrHookFunc: EmscriptenFunction = 0;
   private readonly NOP_FUNC_ADDR = 0x1000; // Address with an RTS instruction (moved away from test program)
   private _doneExec = false;
   private _doneOverride = false;
@@ -181,11 +180,6 @@ export class MusashiWrapper {
       this._module.removeFunction?.(this._probeFunc);
       this._probeFunc = 0;
     }
-    if (this._instrHookFunc) {
-      this._module._clear_instr_hook_func?.();
-      this._module.removeFunction?.(this._instrHookFunc);
-      this._instrHookFunc = 0;
-    }
     this._module._clear_regions?.();
     this._module._clear_pc_hook_addrs?.();
     this._module._clear_pc_hook_func?.();
@@ -230,33 +224,16 @@ export class MusashiWrapper {
   }
 
   call(address: number): number {
-    // Prefer full-instruction hook to stop cleanly on RTS
     this._doneExec = false;
     this._doneOverride = false;
-
-    // Install instruction hook if available
-    const hasInstrHook = typeof this._module._set_full_instr_hook_func === 'function';
-    if (hasInstrHook && !this._instrHookFunc) {
-      this._instrHookFunc = this._module.addFunction((pc: number, ir: number, cycles: number) => {
-        // Stop on RTS opcode (0x4E75) or synthetic NOP return address
-        const isRts = (ir & 0xFFFF) === 0x4E75;
-        if (isRts || pc === this.NOP_FUNC_ADDR) {
-          this._doneExec = true;
-          return 1; // request break
-        }
-        return 0;
-      }, 'iiii');
-    }
-    if (hasInstrHook && this._instrHookFunc) {
-      this._module._set_full_instr_hook_func(this._instrHookFunc);
-    }
-
     this.set_reg(16, address); // Set PC
-    const cycles = this._module._m68k_execute(10_000_000);
-
-    // Clear instruction hook (restore default behavior)
-    if (hasInstrHook && this._instrHookFunc) {
-      this._module._clear_instr_hook_func?.();
+    let cycles = 0;
+    while (!this._doneExec) {
+      cycles += this._module._m68k_execute(1_000_000);
+      if (this._doneOverride) {
+        this._doneOverride = false;
+        this.set_reg(16, this.NOP_FUNC_ADDR);
+      }
     }
     return cycles;
   }
