@@ -73,8 +73,12 @@ class SessionGuard {
 };
 
 enum class HookResult : int { Continue = 0, Break = 1 };
-enum class BreakReason : int { None = 0, Trace = 1, InstrHook = 2, JsHook = 3, Sentinel = 4 };
+enum class BreakReason : int { None = 0, Trace = 1, InstrHook = 2, JsHook = 3, Sentinel = 4, Step = 5 };
 static BreakReason _last_break_reason = BreakReason::None;
+
+// Single-step control state
+enum class StepState : int { Idle = 0, Arm = 1, BreakNext = 2 };
+static StepState _step_state = StepState::Idle;
 
 struct HookContext {
   unsigned int pc;
@@ -83,6 +87,23 @@ struct HookContext {
 };
 
 static inline HookResult processHooks(const HookContext& ctx, bool allow_break) {
+  // Step handling comes first: allow exactly one instruction, then break
+  if (_step_state == StepState::BreakNext) {
+    // We are at the start of the next instruction; stop now
+    _step_state = StepState::Idle;
+    _last_break_reason = BreakReason::Step;
+    if (allow_break) {
+      m68k_end_timeslice();
+    }
+    return HookResult::Break;
+  }
+  if (_step_state == StepState::Arm) {
+    // Arm break for the next instruction and continue without allowing
+    // any other hook to break this instruction.
+    _step_state = StepState::BreakNext;
+    return HookResult::Continue;
+  }
+
   // Trace first
   int trace_result = m68k_trace_instruction_hook(ctx.pc, (uint16_t)ctx.ir, (int)ctx.cycles);
   if (trace_result != 0) {
@@ -395,6 +416,17 @@ extern "C" {
       total_cycles += m68k_execute(timeslice);
     }
     return total_cycles;
+  }
+
+  // Execute exactly one instruction and return the cycles consumed.
+  unsigned long long m68k_step_one(void) {
+    _step_state = StepState::Arm;
+    unsigned long long cycles = m68k_execute(kDefaultTimeslice);
+    // If CPU became stopped before next hook (e.g., STOP), ensure clean state
+    if (_step_state != StepState::Idle) {
+      _step_state = StepState::Idle;
+    }
+    return cycles;
   }
   
   /* ======================================================================== */

@@ -205,6 +205,10 @@ class SystemImpl implements System {
     return this._musashi.execute(cycles);
   }
 
+  async step(): Promise<number> {
+    return this._musashi.step();
+  }
+
   reset(): void {
     this._musashi.pulse_reset();
   }

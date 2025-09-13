@@ -9,6 +9,7 @@ export interface MusashiEmscriptenModule {
   _add_pc_hook_addr(addr: number): void;
   _add_region(start: number, len: number, buf: EmscriptenBuffer): void;
   _m68k_execute(cycles: number): number;
+  _m68k_step_one(): number;
   _m68k_get_reg(context: number, index: number): number;
   _m68k_init(): void;
   _m68k_pulse_reset(): void;
@@ -202,6 +203,10 @@ export class MusashiWrapper {
 
   execute(cycles: number): number {
     return this._module._m68k_execute(cycles);
+  }
+
+  step(): number {
+    return this._module._m68k_step_one();
   }
 
   private requireExport<K extends keyof MusashiEmscriptenModule>(name: K): void {

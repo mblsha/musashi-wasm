@@ -161,6 +161,8 @@ set -l exported_functions \
     \
     _m68k_get_last_break_reason \
     _m68k_reset_last_break_reason
+    \
+    _m68k_step_one
 
 # Add Perfetto functions only if enabled
 if test "$enable_perfetto" = "1"
