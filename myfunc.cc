@@ -25,7 +25,16 @@ static pc_hook_t _pc_hook = nullptr;
 static instr_hook_t _instr_hook = nullptr;  // Full instruction hook (3 params)
 static std::unordered_set<unsigned int> _pc_hook_addrs;
 
+// Global constants used throughout
+static constexpr unsigned int kAddressSpaceMax = 0xFFFFFFFFu;
+static constexpr unsigned int kAddr24Mask      = 0x00FFFFFFu;
+static constexpr unsigned int kEvenMask        = ~1u;
+static constexpr unsigned int kDefaultTimeslice = 1'000'000u;
+static_assert(((kAddressSpaceMax - 1) & 1u) == 0u, "Sentinel must be even-aligned");
+
 // Address policy encapsulating sentinel matching rules (32-bit with 24-bit accept)
+// Forward declare hook used later
+int my_instruction_hook_function(unsigned int pc);
 struct AddrPolicy32 {
   static inline bool matches(unsigned int pc, unsigned int sentinel) {
     const unsigned int mask = (kAddr24Mask & kEvenMask);
@@ -52,14 +61,6 @@ class SentinelSession {
   unsigned int sentinel_pc = kAddressSpaceMax - 1;
 };
 static SentinelSession _exec_session;
-
-// Address space maximum as a static constant. Prefer full 32-bit for sentinel,
-// while still accepting 24-bit-masked PCs from a 68000 core.
-static constexpr unsigned int kAddressSpaceMax = 0xFFFFFFFFu;
-static constexpr unsigned int kAddr24Mask      = 0x00FFFFFFu;
-static constexpr unsigned int kEvenMask        = ~1u;
-static constexpr unsigned int kDefaultTimeslice = 1'000'000u;
-static_assert(((kAddressSpaceMax - 1) & 1u) == 0u, "Sentinel must be even-aligned");
 
 // Helper to detect if current PC equals the active session's sentinel.
 // (removed free is_sentinel_pc; use _exec_session.isSentinelPc)
@@ -324,7 +325,7 @@ extern "C" {
     _regions.clear();
     _function_names.clear();
     _memory_names.clear();
-    _exec_session = ExecSession{};
+    _exec_session = SentinelSession{};
   }
   
   /* ======================================================================== */
