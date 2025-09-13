@@ -1,4 +1,5 @@
 // Shared test utilities for @m68k/core
+import type { System } from './types.js';
 
 export enum BreakReason {
   None = 0,
@@ -8,11 +9,21 @@ export enum BreakReason {
   Sentinel = 4,
 }
 
-export function getLastBreakReasonFrom(system: any): number {
-  return system?._musashi?.getLastBreakReason?.() ?? 0;
+// Narrow access to internal Musashi debug hooks without leaking `any`.
+interface MusashiDebug {
+  getLastBreakReason(): number;
+  resetLastBreakReason(): void;
+}
+interface HasMusashi {
+  _musashi?: MusashiDebug;
 }
 
-export function resetLastBreakReasonOn(system: any): void {
-  system?._musashi?.resetLastBreakReason?.();
+export function getLastBreakReasonFrom(system: System): number {
+  const s = system as unknown as HasMusashi;
+  return s._musashi?.getLastBreakReason?.() ?? 0;
 }
 
+export function resetLastBreakReasonOn(system: System): void {
+  const s = system as unknown as HasMusashi;
+  s._musashi?.resetLastBreakReason?.();
+}
