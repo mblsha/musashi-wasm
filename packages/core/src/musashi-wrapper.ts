@@ -90,7 +90,16 @@ export class MusashiWrapper {
   private _readFunc: EmscriptenFunction = 0;
   private _writeFunc: EmscriptenFunction = 0;
   private _probeFunc: EmscriptenFunction = 0;
-  private readonly NOP_FUNC_ADDR = 0x1000; // Address with an RTS instruction (moved away from test program)
+  // Sentinel address used to exit long-running execute() bursts deterministically.
+  // We place an RTS at this address and jump to it only when our JS-side
+  // pcHook asks to stop (see pcHookHandler/call()). This avoids depending on
+  // opcode-level heuristics (e.g., breaking on any RTS), which fail for
+  // nested calls: an inner RTS would prematurely terminate call(). Using a
+  // sentinel jump lets us:
+  //  - request a stop from JS at an arbitrary PC (e.g., known return site),
+  //  - then force a quick, safe break by vectoring to this RTS once per loop.
+  // This design keeps call() semantics stable without tracking call depth.
+  private readonly NOP_FUNC_ADDR = 0x1000; // Holds an RTS; outside test program
   private _doneExec = false;
   private _doneOverride = false;
   // (no fusion-specific hooks)
@@ -197,21 +206,23 @@ export class MusashiWrapper {
   }
 
   pcHookHandler(pc: number): number {
-    // Check for RTS detection for call() method
-    // Note: sr and currentSP could be used for more sophisticated RTS detection
-    // const _sr = this.get_reg(17); // Status register
-    // const _currentSP = this.get_reg(15); // Stack pointer
-
-    // Simple RTS detection (this is a simplified version)
+    // Sentinel trip: if PC is our NOP_FUNC_ADDR, this is the synthetic return
+    // we force when JS has requested a stop (see call() loop below).
     if (pc === this.NOP_FUNC_ADDR) {
       this._doneExec = true;
       return 1; // Stop execution
     }
 
-    // Let the SystemImpl class handle the logic
+    // Delegate primary stop/continue decision to SystemImpl. Typical usage is
+    // to register concrete PCs (e.g., a known return site) via add_pc_hook_addr
+    // and have _handlePCHook(pc) return true exactly when we want call() to
+    // wind down. This avoids breaking on arbitrary RTS opcodes and therefore
+    // works correctly even when the callee performs nested JSR/BSR calls.
     const shouldStop = this._system._handlePCHook(pc);
 
     if (shouldStop) {
+      // Ask the execute-loop to vector PC to our sentinel RTS so we can exit
+      // promptly without relying on the current opcode stream.
       this._doneOverride = true;
       return 1; // Stop execution
     }
@@ -224,6 +235,16 @@ export class MusashiWrapper {
   }
 
   call(address: number): number {
+    // Design note:
+    // We intentionally DO NOT install a full-instruction hook that breaks on
+    // RTS. Breaking on any RTS would stop at the first nested return, before
+    // the top-level routine completes. Tracking a dynamic call depth across
+    // all JSR/BSR/RTS variants adds observable complexity to this wrapper.
+    //
+    // Instead, we rely on a JS-driven PC hook to decide when the outer call
+    // is "done" (e.g., when the PC reaches a known return site). Once JS asks
+    // to stop, we jump to a sentinel RTS (NOP_FUNC_ADDR) to exit promptly at a
+    // safe boundary. This keeps semantics clear and robust in nested scenarios.
     this._doneExec = false;
     this._doneOverride = false;
     this.set_reg(16, address); // Set PC
