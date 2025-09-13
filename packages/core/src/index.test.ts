@@ -314,4 +314,57 @@ describe('@m68k/core', () => {
       });
     }).not.toThrow();
   });
+
+  it('should invoke onMemoryRead/Write with PC context', async () => {
+    // Small subroutine at 0x600:
+    // MOVE.L #$CAFEBABE, D0
+    // MOVE.L D0, -(SP)
+    // MOVE.L (SP)+, D1
+    // RTS
+    const subAddr = 0x600;
+    const code = new Uint8Array([
+      0x20, 0x3c, 0xca, 0xfe, 0xba, 0xbe,
+      0x2f, 0x00,
+      0x22, 0x1f,
+      0x4e, 0x75,
+    ]);
+    system.writeBytes(subAddr, code);
+
+    // Place SP so that pre-decrement lands at 0x100000
+    system.setRegister('sp', 0x100004);
+
+    const writes: Array<{ addr: number; size: number; value: number; pc: number }>
+      = [];
+    const reads: Array<{ addr: number; size: number; value: number; pc: number }>
+      = [];
+
+    const offW = system.onMemoryWrite(({ addr, size, value, pc }) => {
+      writes.push({ addr, size, value, pc });
+    });
+    const offR = system.onMemoryRead(({ addr, size, value, pc }) => {
+      reads.push({ addr, size, value, pc });
+    });
+
+    const cycles = await system.call(subAddr);
+    expect(cycles).toBeGreaterThan(0);
+
+    // Validate write event from MOVE.L D0, -(SP)
+    expect(writes.length).toBeGreaterThan(0);
+    const w = writes[0];
+    expect(w.addr >>> 0).toBe(0x100000);
+    expect(w.size).toBe(4);
+    expect(w.value >>> 0).toBe(0xcafebabe);
+    expect(w.pc >>> 0).toBe(subAddr + 6); // PC at instruction start
+
+    // Validate read event from MOVE.L (SP)+, D1
+    expect(reads.length).toBeGreaterThan(0);
+    const r = reads[0];
+    expect(r.addr >>> 0).toBe(0x100000);
+    expect(r.size).toBe(4);
+    expect(r.value >>> 0).toBe(0xcafebabe);
+    expect(r.pc >>> 0).toBe(subAddr + 8);
+
+    offW();
+    offR();
+  });
 });

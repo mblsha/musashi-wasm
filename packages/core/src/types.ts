@@ -27,6 +27,17 @@ export interface CpuRegisters {
 /** A function to be executed when a specific address is hit during execution. */
 export type HookCallback = (system: System) => void;
 
+/** Memory access event payload for JS callbacks. */
+export interface MemoryAccessEvent {
+  addr: number;
+  size: 1 | 2 | 4;
+  value: number;
+  pc: number;
+}
+
+/** Callback invoked on traced memory access. */
+export type MemoryAccessCallback = (event: MemoryAccessEvent) => void;
+
 /** Configuration for creating a new System instance. */
 export interface SystemConfig {
   /** The ROM data for the system. */
@@ -149,4 +160,18 @@ export interface System {
 
   /** Disassembles a single instruction at the given address and returns a formatted string (or null if unavailable). */
   disassemble(address: number): string | null;
+
+  /**
+   * Register a callback for memory reads performed by the CPU. The callback receives
+   * the accessed address, size (1/2/4), value read, and the PC of the instruction.
+   * Returns a function to unsubscribe.
+   */
+  onMemoryRead(cb: MemoryAccessCallback): () => void;
+
+  /**
+   * Register a callback for memory writes performed by the CPU. The callback receives
+   * the accessed address, size (1/2/4), value written, and the PC of the instruction.
+   * Returns a function to unsubscribe.
+   */
+  onMemoryWrite(cb: MemoryAccessCallback): () => void;
 }
