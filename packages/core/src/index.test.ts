@@ -217,6 +217,11 @@ describe('@m68k/core', () => {
     expect(cycles).toBeGreaterThan(0);
     expect(system.getRegisters().d2 >>> 0).toBe(0xcafebabe);
 
+    // Assert break reason came from JS hook (override)
+    const br = (system as any)._musashi?.getLastBreakReason?.() ?? 0;
+    expect(br).toBe(3); // BreakReason::JsHook
+    (system as any)._musashi?.resetLastBreakReason?.();
+
     // Verify PC parked at sentinel (accept 24-bit or full 32-bit even)
     const pc = system.getRegisters().pc >>> 0;
     const sentinel24 = 0x00fffffe >>> 0;
@@ -254,6 +259,11 @@ describe('@m68k/core', () => {
     expect(cycles).toBeGreaterThan(0);
     // D2 should be DEADBEEF + 1 from ADD.L
     expect(system.getRegisters().d2 >>> 0).toBe(0xdeadbeef + 1 >>> 0);
+
+    // Assert break reason came from JS hook (override)
+    const br2 = (system as any)._musashi?.getLastBreakReason?.() ?? 0;
+    expect(br2).toBe(3); // BreakReason::JsHook
+    (system as any)._musashi?.resetLastBreakReason?.();
 
     // Sentinel check (accept 24-bit or full 32-bit even)
     const pc = system.getRegisters().pc >>> 0;
