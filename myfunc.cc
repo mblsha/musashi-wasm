@@ -37,6 +37,28 @@ static ExecSession _exec_session;
 // while still accepting 24-bit-masked PCs from a 68000 core.
 static constexpr unsigned int kAddressSpaceMax = 0xFFFFFFFFu;
 
+// Helper to detect if current PC equals the active session's sentinel.
+static inline bool is_sentinel_pc(unsigned int pc) {
+  if (!_exec_session.active) return false;
+  const unsigned int sentinel = _exec_session.sentinel_pc;
+  return (pc == sentinel) || (norm_pc(pc) == (sentinel & 0x00FFFFFEu));
+}
+
+// RAII guard to manage ExecSession lifetime cleanly.
+class SessionGuard {
+ public:
+  explicit SessionGuard(unsigned int entry_pc) {
+    _exec_session.active = true;
+    _exec_session.done = false;
+    _exec_session.sentinel_pc = kAddressSpaceMax - 1; // even-aligned by const
+    // Set PC to entry (higher level owns SR/stack)
+    m68k_set_reg(M68K_REG_PC, entry_pc);
+  }
+  ~SessionGuard() {
+    _exec_session.active = false;
+  }
+};
+
 /* ======================================================================== */
 /* JavaScript Callback System                                             */
 /* ======================================================================== */
@@ -173,14 +195,18 @@ extern "C" {
     _pc_hook_addrs.insert(norm_pc(addr));
   }
   void add_region(unsigned int start, unsigned int size, void* data) {
-    printf("DEBUG: add_region called: start=0x%x size=0x%x data=%p (regions before: %zu)\n", 
-           start, size, data, _regions.size());
+    if (_enable_printf_logging) {
+      printf("DEBUG: add_region called: start=0x%x size=0x%x data=%p (regions before: %zu)\n", 
+             start, size, data, _regions.size());
+    }
     _regions.emplace_back(start, size, data);
     
     // Debug: verify the region was added properly
-    const auto& r = _regions.back();
-    printf("DEBUG: Region added successfully: start_=0x%x size_=0x%x data_=%p (total regions: %zu)\n", 
-           r.start_, r.size_, (void*)r.data_, _regions.size());
+    if (_enable_printf_logging) {
+      const auto& r = _regions.back();
+      printf("DEBUG: Region added successfully: start_=0x%x size_=0x%x data_=%p (total regions: %zu)\n", 
+             r.start_, r.size_, (void*)r.data_, _regions.size());
+    }
   }
   void clear_regions() {
     _regions.clear();
@@ -278,22 +304,11 @@ extern "C" {
   // timeslice is the cycle budget per m68k_execute() burst.
   unsigned long long m68k_call_until_js_stop(unsigned int entry_pc, unsigned int timeslice) {
     if (timeslice == 0) timeslice = 1'000'000u;
-    // Start a new session
-    _exec_session.active = true;
-    _exec_session.done = false;
-    _exec_session.sentinel_pc = kAddressSpaceMax - 1;
-
-    // Set PC to entry (no full reset; higher-level code owns SR/stack)
-    m68k_set_reg(M68K_REG_PC, entry_pc);
-
+    SessionGuard guard(entry_pc);
     unsigned long long total_cycles = 0;
     while (!_exec_session.done) {
-      unsigned int c = m68k_execute(timeslice);
-      total_cycles += c;
-      // loop until wrapper marks done
+      total_cycles += m68k_execute(timeslice);
     }
-
-    _exec_session.active = false;
     return total_cycles;
   }
   
@@ -537,7 +552,7 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
     // This ensures JS probe callbacks work in tests
     (void)my_instruction_hook_function(pc);  // ignore result in tests
     // Also honor sentinel in tests to let C++ sessions terminate deterministically
-    if (_exec_session.active && (pc == _exec_session.sentinel_pc || norm_pc(pc) == (_exec_session.sentinel_pc & 0x00FFFFFEu))) {
+    if (is_sentinel_pc(pc)) {
         _exec_session.done = true;
         return 1;
     }
@@ -569,7 +584,7 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
         return js_result; 
     }
     // If session is active and we have reached sentinel (accept 24-bit masked), finish
-    if (_exec_session.active && (pc == _exec_session.sentinel_pc || norm_pc(pc) == (_exec_session.sentinel_pc & 0x00FFFFFEu))) {
+    if (is_sentinel_pc(pc)) {
         _exec_session.done = true;
         m68k_end_timeslice();
         return 1;
