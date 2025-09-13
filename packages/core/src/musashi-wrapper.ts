@@ -72,6 +72,9 @@ export interface MusashiEmscriptenModule {
   _get_sp_reg?(): number;
   // New C++-side session helper
   _m68k_call_until_js_stop?(entry_pc: number, timeslice: number): number;
+  // Test/debug helpers
+  _m68k_get_last_break_reason?(): number;
+  _m68k_reset_last_break_reason?(): void;
 
   // Heap access for memory setup
   setValue?(ptr: number, value: number, type: string): void;
@@ -92,21 +95,7 @@ export class MusashiWrapper {
   private _readFunc: EmscriptenFunction = 0;
   private _writeFunc: EmscriptenFunction = 0;
   private _probeFunc: EmscriptenFunction = 0;
-  // Sentinel address used to exit long-running execute() bursts deterministically.
-  // We place an RTS at this address and jump to it only when our JS-side
-  // pcHook asks to stop (see pcHookHandler/call()). This avoids depending on
-  // opcode-level heuristics (e.g., breaking on any RTS), which fail for
-  // nested calls: an inner RTS would prematurely terminate call(). Using a
-  // sentinel jump lets us:
-  //  - request a stop from JS at an arbitrary PC (e.g., known return site),
-  //  - then force a quick, safe break by vectoring to this RTS once per loop.
-  // This design keeps call() semantics stable without tracking call depth.
-  private readonly NOP_FUNC_ADDR = 0x1000; // Holds an RTS; outside test program
-  private _doneExec = false;
-  private _doneOverride = false;
-  // (no fusion-specific hooks)
-  // CPU type for disassembler (68000)
-  private readonly CPU_68000 = 0;
+  // No JS sentinel state; C++ session owns sentinel behavior.
 
   constructor(module: MusashiEmscriptenModule) {
     this._module = module;
@@ -148,10 +137,6 @@ export class MusashiWrapper {
     // CRITICAL: Write reset vectors BEFORE init/reset
     this.write32BE(0x00000000, 0x00108000); // Initial SSP (in RAM)
     this.write32BE(0x00000004, 0x00000400); // Initial PC (in ROM)
-
-    // Write NOP function at NOP_FUNC_ADDR for override handling
-    const nopCode = new Uint8Array([0x4e, 0x75]); // RTS instruction
-    this._memory.set(nopCode, this.NOP_FUNC_ADDR);
 
     // Initialize CPU
     this._module._m68k_init();
@@ -208,56 +193,39 @@ export class MusashiWrapper {
   }
 
   pcHookHandler(pc: number): number {
-    // Sentinel trip: if PC is our NOP_FUNC_ADDR, this is the synthetic return
-    // we force when JS has requested a stop (see call() loop below).
-    if (pc === this.NOP_FUNC_ADDR) {
-      this._doneExec = true;
-      return 1; // Stop execution
-    }
-
-    // Delegate primary stop/continue decision to SystemImpl. Typical usage is
-    // to register concrete PCs (e.g., a known return site) via add_pc_hook_addr
-    // and have _handlePCHook(pc) return true exactly when we want call() to
-    // wind down. This avoids breaking on arbitrary RTS opcodes and therefore
-    // works correctly even when the callee performs nested JSR/BSR calls.
-    const shouldStop = this._system._handlePCHook(pc);
-
-    if (shouldStop) {
-      // Ask the execute-loop to vector PC to our sentinel RTS so we can exit
-      // promptly without relying on the current opcode stream.
-      this._doneOverride = true;
-      return 1; // Stop execution
-    }
-
-    return 0; // Continue execution
+    // Delegate stop/continue decision to SystemImpl. The C++ session will
+    // handle vectoring to the sentinel when we return non-zero here.
+    return this._system._handlePCHook(pc) ? 1 : 0;
   }
 
   execute(cycles: number): number {
     return this._module._m68k_execute(cycles);
   }
 
+  private requireExport<K extends keyof MusashiEmscriptenModule>(name: K): asserts name is K {
+    if (typeof (this._module as any)[name] !== 'function') {
+      throw new Error(`${String(name)} is not available; rebuild WASM exports`);
+    }
+  }
+
   call(address: number): number {
-    // Prefer C++-side session that honors JS PC hooks and vectors to a
+    // Rely on C++-side session that honors JS PC hooks and vectors to a
     // sentinel (max address) when JS requests a stop. This keeps nested
     // calls safe without opcode heuristics.
-    if (typeof this._module._m68k_call_until_js_stop === 'function') {
-      // Use a generous timeslice; C++ wrapper will break promptly via hook
-      return this._module._m68k_call_until_js_stop(address >>> 0, 10_000_000) >>> 0;
-    }
+    this.requireExport('_m68k_call_until_js_stop');
+    // Defer timeslice to C++ default by passing 0
+    return this._module._m68k_call_until_js_stop(address >>> 0, 0) >>> 0;
+  }
 
-    // Fallback: legacy JS loop
-    this._doneExec = false;
-    this._doneOverride = false;
-    this.set_reg(16, address); // Set PC
-    let cycles = 0;
-    while (!this._doneExec) {
-      cycles += this._module._m68k_execute(1_000_000);
-      if (this._doneOverride) {
-        this._doneOverride = false;
-        this.set_reg(16, this.NOP_FUNC_ADDR);
-      }
-    }
-    return cycles;
+  // Expose break reason helpers for tests
+  getLastBreakReason(): number {
+    return typeof this._module._m68k_get_last_break_reason === 'function'
+      ? this._module._m68k_get_last_break_reason() >>> 0
+      : 0;
+  }
+
+  resetLastBreakReason(): void {
+    this._module._m68k_reset_last_break_reason?.();
   }
 
   pulse_reset() {
