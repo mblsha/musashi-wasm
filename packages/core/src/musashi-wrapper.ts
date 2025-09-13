@@ -204,8 +204,9 @@ export class MusashiWrapper {
     return this._module._m68k_execute(cycles);
   }
 
-  private requireExport<K extends keyof MusashiEmscriptenModule>(name: K): asserts name is K {
-    if (typeof (this._module as any)[name] !== 'function') {
+  private requireExport<K extends keyof MusashiEmscriptenModule>(name: K): void {
+    const val = this._module[name];
+    if (typeof val !== 'function') {
       throw new Error(`${String(name)} is not available; rebuild WASM exports`);
     }
   }
@@ -215,10 +216,8 @@ export class MusashiWrapper {
     // sentinel (max address) when JS requests a stop. This keeps nested
     // calls safe without opcode heuristics.
     // Ensure export exists for type safety, then cast and call
-    if (typeof this._module._m68k_call_until_js_stop !== 'function') {
-      throw new Error('m68k_call_until_js_stop is not available; rebuild WASM exports');
-    }
-    const callUntil = this._module._m68k_call_until_js_stop as (entry_pc: number, timeslice: number) => number;
+    this.requireExport('_m68k_call_until_js_stop');
+    const callUntil = this._module._m68k_call_until_js_stop!;
     // Defer timeslice to C++ default by passing 0
     return callUntil(address >>> 0, 0) >>> 0;
   }
