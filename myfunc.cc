@@ -28,7 +28,7 @@ static std::unordered_set<unsigned int> _pc_hook_addrs;
 // Address policy encapsulating sentinel matching rules (32-bit with 24-bit accept)
 struct AddrPolicy32 {
   static inline bool matches(unsigned int pc, unsigned int sentinel) {
-    return (pc == sentinel) || (norm_pc(pc) == (sentinel & 0x00FFFFFEu));
+    return (pc == sentinel) || (norm_pc(pc) == (sentinel & (kAddr24Mask & kEvenMask)));
   }
 };
 
@@ -55,6 +55,10 @@ static SentinelSession _exec_session;
 // Address space maximum as a static constant. Prefer full 32-bit for sentinel,
 // while still accepting 24-bit-masked PCs from a 68000 core.
 static constexpr unsigned int kAddressSpaceMax = 0xFFFFFFFFu;
+static constexpr unsigned int kAddr24Mask      = 0x00FFFFFFu;
+static constexpr unsigned int kEvenMask        = ~1u;
+static constexpr unsigned int kDefaultTimeslice = 1'000'000u;
+static_assert(((kAddressSpaceMax - 1) & 1u) == 0u, "Sentinel must be even-aligned");
 
 // Helper to detect if current PC equals the active session's sentinel.
 // (removed free is_sentinel_pc; use _exec_session.isSentinelPc)
@@ -67,6 +71,8 @@ class SessionGuard {
 };
 
 enum class HookResult : int { Continue = 0, Break = 1 };
+enum class BreakReason : int { None = 0, Trace = 1, InstrHook = 2, JsHook = 3, Sentinel = 4 };
+static BreakReason _last_break_reason = BreakReason::None;
 
 struct HookContext {
   unsigned int pc;
@@ -78,6 +84,7 @@ static inline HookResult processHooks(const HookContext& ctx, bool allow_break) 
   // Trace first
   int trace_result = m68k_trace_instruction_hook(ctx.pc, (uint16_t)ctx.ir, (int)ctx.cycles);
   if (trace_result != 0) {
+    _last_break_reason = BreakReason::Trace;
     if (allow_break) {
       m68k_end_timeslice();
       return HookResult::Break;
@@ -89,6 +96,7 @@ static inline HookResult processHooks(const HookContext& ctx, bool allow_break) 
   if (_instr_hook) {
     int result = _instr_hook(ctx.pc, ctx.ir, ctx.cycles);
     if (result != 0) {
+      _last_break_reason = BreakReason::InstrHook;
       if (allow_break) {
         m68k_end_timeslice();
         return HookResult::Break;
@@ -105,6 +113,7 @@ static inline HookResult processHooks(const HookContext& ctx, bool allow_break) 
       m68k_set_reg(M68K_REG_PC, _exec_session.sentinel_pc);
       _exec_session.done = true;
     }
+    _last_break_reason = BreakReason::JsHook;
     if (allow_break) {
       m68k_end_timeslice();
       return HookResult::Break;
@@ -115,6 +124,7 @@ static inline HookResult processHooks(const HookContext& ctx, bool allow_break) 
   // End if we hit the sentinel
   if (_exec_session.isSentinelPc(ctx.pc)) {
     _exec_session.done = true;
+    _last_break_reason = BreakReason::Sentinel;
     if (allow_break) {
       m68k_end_timeslice();
     }
@@ -364,11 +374,19 @@ extern "C" {
     return (it != _memory_names.end()) ? it->second.c_str() : nullptr;
   }
 
+  // Break reason helpers (for tests / debugging)
+  int m68k_get_last_break_reason() {
+    return static_cast<int>(_last_break_reason);
+  }
+  void m68k_reset_last_break_reason() {
+    _last_break_reason = BreakReason::None;
+  }
+
   // Run until JS-side PC hook requests a stop; when that happens,
   // vector PC to sentinel (max address, even-aligned) and return cycles.
   // timeslice is the cycle budget per m68k_execute() burst.
   unsigned long long m68k_call_until_js_stop(unsigned int entry_pc, unsigned int timeslice) {
-    if (timeslice == 0) timeslice = 1'000'000u;
+    if (timeslice == 0) timeslice = kDefaultTimeslice;
     SessionGuard guard(entry_pc);
     unsigned long long total_cycles = 0;
     while (!_exec_session.done) {
