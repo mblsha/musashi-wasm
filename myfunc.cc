@@ -25,6 +25,14 @@ static pc_hook_t _pc_hook = nullptr;
 static instr_hook_t _instr_hook = nullptr;  // Full instruction hook (3 params)
 static std::unordered_set<unsigned int> _pc_hook_addrs;
 
+// Sentinel return session for JS-driven call() implemented in C++
+struct ExecSession {
+  bool active = false;
+  bool done = false;
+  unsigned int sentinel_pc = 0x00FFFFFEu; // Max 24-bit address, even-aligned
+};
+static ExecSession _exec_session;
+
 /* ======================================================================== */
 /* JavaScript Callback System                                             */
 /* ======================================================================== */
@@ -210,6 +218,7 @@ extern "C" {
     _regions.clear();
     _function_names.clear();
     _memory_names.clear();
+    _exec_session = ExecSession{};
   }
   
   /* ======================================================================== */
@@ -258,6 +267,36 @@ extern "C" {
   const char* get_memory_name(unsigned int address) {
     auto it = _memory_names.find(address);
     return (it != _memory_names.end()) ? it->second.c_str() : nullptr;
+  }
+
+  // Address space helpers
+  unsigned int m68k_get_address_space_max() {
+    // 68000 has 24-bit address space
+    return 0x00FFFFFFu;
+  }
+
+  // Run until JS-side PC hook requests a stop; when that happens,
+  // vector PC to sentinel (max address, even-aligned) and return cycles.
+  // timeslice is the cycle budget per m68k_execute() burst.
+  unsigned long long m68k_call_until_js_stop(unsigned int entry_pc, unsigned int timeslice) {
+    if (timeslice == 0) timeslice = 1'000'000u;
+    // Start a new session
+    _exec_session.active = true;
+    _exec_session.done = false;
+    _exec_session.sentinel_pc = m68k_get_address_space_max() & 0x00FFFFFEu;
+
+    // Set PC to entry (no full reset; higher-level code owns SR/stack)
+    m68k_set_reg(M68K_REG_PC, entry_pc);
+
+    unsigned long long total_cycles = 0;
+    while (!_exec_session.done) {
+      unsigned int c = m68k_execute(timeslice);
+      total_cycles += c;
+      // loop until wrapper marks done
+    }
+
+    _exec_session.active = false;
+    return total_cycles;
   }
   
   /* ======================================================================== */
@@ -499,7 +538,12 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
     // Always call the unified hook (JS probe + optional legacy filter)
     // This ensures JS probe callbacks work in tests
     (void)my_instruction_hook_function(pc);  // ignore result in tests
-    return 0; // never break in tests
+    // Also honor sentinel in tests to let C++ sessions terminate deterministically
+    if (_exec_session.active && pc == _exec_session.sentinel_pc) {
+        _exec_session.done = true;
+        return 1;
+    }
+    return 0; // never break in tests unless sentinel
 #else
     int trace_result = m68k_trace_instruction_hook(pc, (uint16_t)ir, (int)cycles);
     if (trace_result != 0) { 
@@ -518,8 +562,19 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
 
     const int js_result = my_instruction_hook_function(pc);
     if (js_result != 0) { 
+        // JS requested a stop; vector to sentinel for deterministic exit
+        if (_exec_session.active) {
+            m68k_set_reg(M68K_REG_PC, _exec_session.sentinel_pc);
+            _exec_session.done = true;
+        }
         m68k_end_timeslice(); 
         return js_result; 
+    }
+    // If session is active and we have reached sentinel, finish
+    if (_exec_session.active && pc == _exec_session.sentinel_pc) {
+        _exec_session.done = true;
+        m68k_end_timeslice();
+        return 1;
     }
     return 0;
 #endif
