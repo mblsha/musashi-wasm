@@ -9367,7 +9367,12 @@ M68KMAKE_OP(rtr, 32, ., .)
 {
 	m68ki_trace_t0();				   /* auto-disable (see m68kcpu.h) */
 	m68ki_set_ccr(m68ki_pull_16());
-	m68ki_jump(m68ki_pull_32());
+	{
+		uint new_pc = m68ki_pull_32();
+		if (CPU_TYPE_IS_000(CPU_TYPE))
+			new_pc &= 0x00ffffff;
+		m68ki_jump(new_pc);
+	}
 }
 
 
@@ -9377,6 +9382,8 @@ M68KMAKE_OP(rts, 32, ., .)
 	uint dest_pc;
 	m68ki_trace_t0();				   /* auto-disable (see m68kcpu.h) */
 	dest_pc = m68ki_pull_32();
+	if (CPU_TYPE_IS_000(CPU_TYPE))
+		dest_pc &= 0x00ffffff;
 	m68ki_jump(dest_pc);
 	m68ki_trace_rts(source_pc, dest_pc);
 }
