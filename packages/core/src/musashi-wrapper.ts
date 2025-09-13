@@ -96,6 +96,8 @@ export class MusashiWrapper {
   private _writeFunc: EmscriptenFunction = 0;
   private _probeFunc: EmscriptenFunction = 0;
   // No JS sentinel state; C++ session owns sentinel behavior.
+  // CPU type for disassembler (68000)
+  private readonly CPU_68000 = 0;
 
   constructor(module: MusashiEmscriptenModule) {
     this._module = module;
@@ -212,9 +214,13 @@ export class MusashiWrapper {
     // Rely on C++-side session that honors JS PC hooks and vectors to a
     // sentinel (max address) when JS requests a stop. This keeps nested
     // calls safe without opcode heuristics.
-    this.requireExport('_m68k_call_until_js_stop');
+    // Ensure export exists for type safety, then cast and call
+    if (typeof this._module._m68k_call_until_js_stop !== 'function') {
+      throw new Error('m68k_call_until_js_stop is not available; rebuild WASM exports');
+    }
+    const callUntil = this._module._m68k_call_until_js_stop as (entry_pc: number, timeslice: number) => number;
     // Defer timeslice to C++ default by passing 0
-    return this._module._m68k_call_until_js_stop(address >>> 0, 0) >>> 0;
+    return callUntil(address >>> 0, 0) >>> 0;
   }
 
   // Expose break reason helpers for tests
