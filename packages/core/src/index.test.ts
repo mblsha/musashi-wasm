@@ -196,6 +196,76 @@ describe('@m68k/core', () => {
     removeOverride();
   });
 
+  it('call() via C++ session stops when override PC is hit', async () => {
+    const subAddr = 0x410;
+    // Build a tiny subroutine at 0x410: MOVE.L #$CAFEBABE,D2 ; RTS
+    const sub = new Uint8Array([
+      0x24, 0x3c, // MOVE.L #imm, D2
+      0xca, 0xfe, 0xba, 0xbe, // imm32
+      0x4e, 0x75, // RTS
+    ]);
+    system.writeBytes(subAddr, sub);
+
+    // Register override at RTS PC so the C++ session will stop
+    const rtsPc = subAddr + 6;
+    const removeOverride = system.override(rtsPc, _ => {
+      // Do not modify PC; just request stop
+      // Returning true triggers C++ sentinel redirection
+    });
+
+    const cycles = await system.call(subAddr);
+    expect(cycles).toBeGreaterThan(0);
+    expect(system.getRegisters().d2 >>> 0).toBe(0xcafebabe);
+
+    // Optional: If internals are accessible, verify PC parked at max sentinel
+    const mod = (system as any)._musashi?._module;
+    if (mod && typeof mod._m68k_get_address_space_max === 'function') {
+      const max = mod._m68k_get_address_space_max();
+      expect(system.getRegisters().pc >>> 0).toBe((max & 0x00fffffe) >>> 0);
+    }
+
+    removeOverride();
+  });
+
+  it('call() handles nested subcalls and stops only at outer RTS', async () => {
+    // Sub B at 0x520: MOVE.L #$DEADBEEF,D2 ; RTS
+    const subB = new Uint8Array([
+      0x24, 0x3c,
+      0xde, 0xad, 0xbe, 0xef,
+      0x4e, 0x75,
+    ]);
+    system.writeBytes(0x520, subB);
+
+    // Sub A at 0x500: JSR 0x520 ; ADD.L #1,D2 ; RTS
+    // 0x4E B9 addr32 = JSR absolute long
+    const subA = new Uint8Array([
+      0x4e, 0xb9, 0x00, 0x00, 0x05, 0x20, // JSR $00000520
+      0x06, 0x82, 0x00, 0x00, 0x00, 0x01, // ADD.L #1, D2
+      0x4e, 0x75, // RTS
+    ]);
+    system.writeBytes(0x500, subA);
+
+    // Stop only at A's RTS
+    const outerRts = 0x500 + 6 + 6; // after JSR(6) + ADD.L(6)
+    const removeOverride = system.override(outerRts, _ => {
+      // no-op, just trigger stop
+    });
+
+    const cycles = await system.call(0x500);
+    expect(cycles).toBeGreaterThan(0);
+    // D2 should be DEADBEEF + 1 from ADD.L
+    expect(system.getRegisters().d2 >>> 0).toBe(0xdeadbeef + 1 >>> 0);
+
+    // Optional sentinel check
+    const mod = (system as any)._musashi?._module;
+    if (mod && typeof mod._m68k_get_address_space_max === 'function') {
+      const max = mod._m68k_get_address_space_max();
+      expect(system.getRegisters().pc >>> 0).toBe((max & 0x00fffffe) >>> 0);
+    }
+
+    removeOverride();
+  });
+
   it('should check tracer availability', () => {
     const tracer = system.tracer;
     expect(tracer).toBeDefined();

@@ -70,6 +70,9 @@ export interface MusashiEmscriptenModule {
   _set_isp_reg?(value: number): void;
   _set_usp_reg?(value: number): void;
   _get_sp_reg?(): number;
+  // New C++-side session helpers
+  _m68k_get_address_space_max?(): number;
+  _m68k_call_until_js_stop?(entry_pc: number, timeslice: number): number;
 
   // Heap access for memory setup
   setValue?(ptr: number, value: number, type: string): void;
@@ -235,16 +238,15 @@ export class MusashiWrapper {
   }
 
   call(address: number): number {
-    // Design note:
-    // We intentionally DO NOT install a full-instruction hook that breaks on
-    // RTS. Breaking on any RTS would stop at the first nested return, before
-    // the top-level routine completes. Tracking a dynamic call depth across
-    // all JSR/BSR/RTS variants adds observable complexity to this wrapper.
-    //
-    // Instead, we rely on a JS-driven PC hook to decide when the outer call
-    // is "done" (e.g., when the PC reaches a known return site). Once JS asks
-    // to stop, we jump to a sentinel RTS (NOP_FUNC_ADDR) to exit promptly at a
-    // safe boundary. This keeps semantics clear and robust in nested scenarios.
+    // Prefer C++-side session that honors JS PC hooks and vectors to a
+    // sentinel (max address) when JS requests a stop. This keeps nested
+    // calls safe without opcode heuristics.
+    if (typeof this._module._m68k_call_until_js_stop === 'function') {
+      // Use a generous timeslice; C++ wrapper will break promptly via hook
+      return this._module._m68k_call_until_js_stop(address >>> 0, 10_000_000) >>> 0;
+    }
+
+    // Fallback: legacy JS loop
     this._doneExec = false;
     this._doneOverride = false;
     this.set_reg(16, address); // Set PC
