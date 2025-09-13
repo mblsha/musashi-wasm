@@ -1,13 +1,7 @@
 // ESM-compatible test file using real WASM
 import { createSystem } from './index.js';
-// For testing break reasons from the C++ session
-enum BreakReason {
-  None = 0,
-  Trace = 1,
-  InstrHook = 2,
-  JsHook = 3,
-  Sentinel = 4,
-}
+// Shared test utilities
+import { BreakReason, getLastBreakReasonFrom, resetLastBreakReasonOn } from './test-utils.js';
 import type { System } from './types.js';
 
 describe('@m68k/core', () => {
@@ -226,9 +220,9 @@ describe('@m68k/core', () => {
     expect(system.getRegisters().d2 >>> 0).toBe(0xcafebabe);
 
     // Assert break reason came from JS hook (override)
-    const br = (system as any)._musashi?.getLastBreakReason?.() ?? 0;
+    const br = getLastBreakReasonFrom(system as any);
     expect(br).toBe(BreakReason.JsHook);
-    (system as any)._musashi?.resetLastBreakReason?.();
+    resetLastBreakReasonOn(system as any);
 
     // Verify PC parked at sentinel (accept 24-bit or full 32-bit even)
     const pc = system.getRegisters().pc >>> 0;
@@ -269,9 +263,9 @@ describe('@m68k/core', () => {
     expect(system.getRegisters().d2 >>> 0).toBe(0xdeadbeef + 1 >>> 0);
 
     // Assert break reason came from JS hook (override)
-    const br2 = (system as any)._musashi?.getLastBreakReason?.() ?? 0;
+    const br2 = getLastBreakReasonFrom(system as any);
     expect(br2).toBe(BreakReason.JsHook);
-    (system as any)._musashi?.resetLastBreakReason?.();
+    resetLastBreakReasonOn(system as any);
 
     // Sentinel check (accept 24-bit or full 32-bit even)
     const pc = system.getRegisters().pc >>> 0;
