@@ -25,39 +25,104 @@ static pc_hook_t _pc_hook = nullptr;
 static instr_hook_t _instr_hook = nullptr;  // Full instruction hook (3 params)
 static std::unordered_set<unsigned int> _pc_hook_addrs;
 
+// Address policy encapsulating sentinel matching rules (32-bit with 24-bit accept)
+struct AddrPolicy32 {
+  static inline bool matches(unsigned int pc, unsigned int sentinel) {
+    return (pc == sentinel) || (norm_pc(pc) == (sentinel & 0x00FFFFFEu));
+  }
+};
+
 // Sentinel return session for JS-driven call() implemented in C++
-struct ExecSession {
+class SentinelSession {
+ public:
+  void start(unsigned int entry_pc) {
+    active = true;
+    done = false;
+    sentinel_pc = kAddressSpaceMax - 1; // Full 32-bit even-aligned
+    m68k_set_reg(M68K_REG_PC, entry_pc);
+  }
+  void finish() { active = false; }
+  bool isSentinelPc(unsigned int pc) const {
+    return active && AddrPolicy32::matches(pc, sentinel_pc);
+  }
+
   bool active = false;
   bool done = false;
-  unsigned int sentinel_pc = kAddressSpaceMax - 1; // Full 32-bit even-aligned
+  unsigned int sentinel_pc = kAddressSpaceMax - 1;
 };
-static ExecSession _exec_session;
+static SentinelSession _exec_session;
 
 // Address space maximum as a static constant. Prefer full 32-bit for sentinel,
 // while still accepting 24-bit-masked PCs from a 68000 core.
 static constexpr unsigned int kAddressSpaceMax = 0xFFFFFFFFu;
 
 // Helper to detect if current PC equals the active session's sentinel.
-static inline bool is_sentinel_pc(unsigned int pc) {
-  if (!_exec_session.active) return false;
-  const unsigned int sentinel = _exec_session.sentinel_pc;
-  return (pc == sentinel) || (norm_pc(pc) == (sentinel & 0x00FFFFFEu));
-}
+// (removed free is_sentinel_pc; use _exec_session.isSentinelPc)
 
 // RAII guard to manage ExecSession lifetime cleanly.
 class SessionGuard {
  public:
-  explicit SessionGuard(unsigned int entry_pc) {
-    _exec_session.active = true;
-    _exec_session.done = false;
-    _exec_session.sentinel_pc = kAddressSpaceMax - 1; // even-aligned by const
-    // Set PC to entry (higher level owns SR/stack)
-    m68k_set_reg(M68K_REG_PC, entry_pc);
-  }
-  ~SessionGuard() {
-    _exec_session.active = false;
-  }
+  explicit SessionGuard(unsigned int entry_pc) { _exec_session.start(entry_pc); }
+  ~SessionGuard() { _exec_session.finish(); }
 };
+
+enum class HookResult : int { Continue = 0, Break = 1 };
+
+struct HookContext {
+  unsigned int pc;
+  unsigned int ir;
+  unsigned int cycles;
+};
+
+static inline HookResult processHooks(const HookContext& ctx, bool allow_break) {
+  // Trace first
+  int trace_result = m68k_trace_instruction_hook(ctx.pc, (uint16_t)ctx.ir, (int)ctx.cycles);
+  if (trace_result != 0) {
+    if (allow_break) {
+      m68k_end_timeslice();
+      return HookResult::Break;
+    }
+    return HookResult::Continue;
+  }
+
+  // Full instruction hook
+  if (_instr_hook) {
+    int result = _instr_hook(ctx.pc, ctx.ir, ctx.cycles);
+    if (result != 0) {
+      if (allow_break) {
+        m68k_end_timeslice();
+        return HookResult::Break;
+      }
+      return HookResult::Continue;
+    }
+  }
+
+  // JS probe + legacy hook (filtered) via unified function
+  const int js_result = my_instruction_hook_function(ctx.pc);
+  if (js_result != 0) {
+    // JS requested a stop; vector to sentinel for deterministic exit
+    if (_exec_session.active) {
+      m68k_set_reg(M68K_REG_PC, _exec_session.sentinel_pc);
+      _exec_session.done = true;
+    }
+    if (allow_break) {
+      m68k_end_timeslice();
+      return HookResult::Break;
+    }
+    return HookResult::Continue;
+  }
+
+  // End if we hit the sentinel
+  if (_exec_session.isSentinelPc(ctx.pc)) {
+    _exec_session.done = true;
+    if (allow_break) {
+      m68k_end_timeslice();
+    }
+    return HookResult::Break;
+  }
+
+  return HookResult::Continue;
+}
 
 /* ======================================================================== */
 /* JavaScript Callback System                                             */
@@ -504,57 +569,11 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
     }
     
 #ifdef BUILD_TESTS
-    // Trace first (non-breaking)
-    (void)m68k_trace_instruction_hook(pc, (uint16_t)ir, (int)cycles);
-
-    // Call full instruction hook if set (gets all 3 params)
-    if (_instr_hook) {
-        int result = _instr_hook(pc, ir, cycles);
-        if (result != 0) return result;
-    }
-
-    // Always call the unified hook (JS probe + optional legacy filter)
-    // This ensures JS probe callbacks work in tests
-    (void)my_instruction_hook_function(pc);  // ignore result in tests
-    // Also honor sentinel in tests to let C++ sessions terminate deterministically
-    if (is_sentinel_pc(pc)) {
-        _exec_session.done = true;
-        return 1;
-    }
-    return 0; // never break in tests unless sentinel
+    HookContext ctx{pc, ir, cycles};
+    return static_cast<int>(processHooks(ctx, /*allow_break=*/false));
 #else
-    int trace_result = m68k_trace_instruction_hook(pc, (uint16_t)ir, (int)cycles);
-    if (trace_result != 0) { 
-        m68k_end_timeslice(); 
-        return trace_result; 
-    }
-
-    // Call full instruction hook if set (gets all 3 params)
-    if (_instr_hook) {
-        int result = _instr_hook(pc, ir, cycles);
-        if (result != 0) {
-            m68k_end_timeslice();
-            return result;
-        }
-    }
-
-    const int js_result = my_instruction_hook_function(pc);
-    if (js_result != 0) { 
-        // JS requested a stop; vector to sentinel for deterministic exit
-        if (_exec_session.active) {
-            m68k_set_reg(M68K_REG_PC, _exec_session.sentinel_pc);
-            _exec_session.done = true;
-        }
-        m68k_end_timeslice(); 
-        return js_result; 
-    }
-    // If session is active and we have reached sentinel (accept 24-bit masked), finish
-    if (is_sentinel_pc(pc)) {
-        _exec_session.done = true;
-        m68k_end_timeslice();
-        return 1;
-    }
-    return 0;
+    HookContext ctx{pc, ir, cycles};
+    return static_cast<int>(processHooks(ctx, /*allow_break=*/true));
 #endif
 }
 
