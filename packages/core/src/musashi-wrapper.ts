@@ -70,8 +70,7 @@ export interface MusashiEmscriptenModule {
   _set_isp_reg?(value: number): void;
   _set_usp_reg?(value: number): void;
   _get_sp_reg?(): number;
-  // New C++-side session helpers
-  _m68k_get_address_space_max?(): number;
+  // New C++-side session helper
   _m68k_call_until_js_stop?(entry_pc: number, timeslice: number): number;
 
   // Heap access for memory setup

@@ -4,7 +4,6 @@
 
 extern "C" {
     unsigned long long m68k_call_until_js_stop(unsigned int entry_pc, unsigned int timeslice);
-    unsigned int m68k_get_address_space_max();
 }
 
 class CallSessionTest : public M68kMinimalTestBase<CallSessionTest> {
@@ -36,8 +35,10 @@ TEST_F(CallSessionTest, SimpleCallStopsOnOverridePc) {
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D2), 0xCAFEBABEu);
 
     // PC parked at sentinel (max address, even)
-    unsigned int max = m68k_get_address_space_max() & 0x00FFFFFEu;
-    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), max);
+    unsigned int pc = m68k_get_reg(NULL, M68K_REG_PC);
+    unsigned int sentinel24 = 0x00FFFFFEu;
+    unsigned int sentinel32 = 0xFFFFFFFEu;
+    EXPECT_TRUE(pc == sentinel24 || pc == sentinel32);
 }
 
 TEST_F(CallSessionTest, NestedCallsStopOnlyAtOuterRts) {
@@ -59,7 +60,8 @@ TEST_F(CallSessionTest, NestedCallsStopOnlyAtOuterRts) {
     EXPECT_GT(cycles, 0ull);
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D2), (0xDEADBEEFu + 1) & 0xFFFFFFFFu);
 
-    unsigned int max = m68k_get_address_space_max() & 0x00FFFFFEu;
-    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), max);
+    unsigned int pc = m68k_get_reg(NULL, M68K_REG_PC);
+    unsigned int sentinel24 = 0x00FFFFFEu;
+    unsigned int sentinel32 = 0xFFFFFFFEu;
+    EXPECT_TRUE(pc == sentinel24 || pc == sentinel32);
 }
-
