@@ -121,6 +121,12 @@ export interface System {
    */
   run(cycles: number): Promise<number>;
 
+  /**
+   * Executes exactly one instruction and stops before the next one.
+   * @returns The number of CPU cycles consumed by the instruction.
+   */
+  step(): Promise<number>;
+
   /** Resets the CPU to its initial state. */
   reset(): void;
 
