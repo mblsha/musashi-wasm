@@ -28,7 +28,8 @@ static std::unordered_set<unsigned int> _pc_hook_addrs;
 // Address policy encapsulating sentinel matching rules (32-bit with 24-bit accept)
 struct AddrPolicy32 {
   static inline bool matches(unsigned int pc, unsigned int sentinel) {
-    return (pc == sentinel) || (norm_pc(pc) == (sentinel & (kAddr24Mask & kEvenMask)));
+    const unsigned int mask = (kAddr24Mask & kEvenMask);
+    return (pc == sentinel) || ((pc & mask) == (sentinel & mask));
   }
 };
 
