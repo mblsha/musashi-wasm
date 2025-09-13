@@ -429,11 +429,11 @@ static char* get_imm_str_u(uint size)
 /* Make string of effective address mode */
 static char* get_ea_mode_str(uint instruction, uint size)
 {
-        static char b1[64];
-        static char b2[64];
-        static char* mode = b2;
-        const size_t MODE_BUF_SIZE = sizeof(b1);
-        uint extension;
+	static char b1[64];
+	static char b2[64];
+	static char* mode = b2;
+	const size_t MODE_BUF_SIZE = sizeof(b1);
+	uint extension;
 	uint base;
 	uint outer;
 	char base_reg[4];
@@ -480,7 +480,7 @@ static char* get_ea_mode_str(uint instruction, uint size)
 			{
 				if(EXT_EFFECTIVE_ZERO(extension))
 				{
-                                snprintf(mode, MODE_BUF_SIZE, "0");
+					snprintf(mode, MODE_BUF_SIZE, "0");
 					break;
 				}
 				base = EXT_BASE_DISPLACEMENT_PRESENT(extension) ? (EXT_BASE_DISPLACEMENT_LONG(extension) ? read_imm_32() : read_imm_16()) : 0;
@@ -500,7 +500,7 @@ static char* get_ea_mode_str(uint instruction, uint size)
 				preindex = (extension&7) > 0 && (extension&7) < 4;
 				postindex = (extension&7) > 4;
 
-                                snprintf(mode, MODE_BUF_SIZE, "(");
+				snprintf(mode, MODE_BUF_SIZE, "(");
 				if(preindex || postindex)
 					strcat(mode, "[");
 				if(base)
@@ -579,15 +579,15 @@ static char* get_ea_mode_str(uint instruction, uint size)
 			{
 				if(EXT_EFFECTIVE_ZERO(extension))
 				{
-                                snprintf(mode, MODE_BUF_SIZE, "0");
+					snprintf(mode, MODE_BUF_SIZE, "0");
 					break;
 				}
 				base = EXT_BASE_DISPLACEMENT_PRESENT(extension) ? (EXT_BASE_DISPLACEMENT_LONG(extension) ? read_imm_32() : read_imm_16()) : 0;
 				outer = EXT_OUTER_DISPLACEMENT_PRESENT(extension) ? (EXT_OUTER_DISPLACEMENT_LONG(extension) ? read_imm_32() : read_imm_16()) : 0;
-                                if(EXT_BASE_REGISTER_PRESENT(extension))
-                                        snprintf(base_reg, sizeof(base_reg), "PC");
-                                else
-                                        *base_reg = 0;
+				if(EXT_BASE_REGISTER_PRESENT(extension))
+					snprintf(base_reg, sizeof(base_reg), "PC");
+				else
+					*base_reg = 0;
 				if(EXT_INDEX_REGISTER_PRESENT(extension))
 				{
 					sprintf(index_reg, "%c%d.%c", EXT_INDEX_AR(extension) ? 'A' : 'D', EXT_INDEX_REGISTER(extension), EXT_INDEX_LONG(extension) ? 'l' : 'w');
@@ -599,7 +599,7 @@ static char* get_ea_mode_str(uint instruction, uint size)
 				preindex = (extension&7) > 0 && (extension&7) < 4;
 				postindex = (extension&7) > 4;
 
-                                snprintf(mode, MODE_BUF_SIZE, "(");
+				snprintf(mode, MODE_BUF_SIZE, "(");
 				if(preindex || postindex)
 					strcat(mode, "[");
 				if(base)
@@ -1842,7 +1842,7 @@ static void d68040_fpu(void)
 		case 0x5:	// control to ea
 		{
 			
-                        snprintf(g_dasm_str, sizeof(g_dasm_str), "fmovem.l   ");
+			snprintf(g_dasm_str, sizeof(g_dasm_str), "fmovem.l   ");
 			if (w2 & 0x1000) strcat(g_dasm_str, "fpcr");
 			if (w2 & 0x0800) strcat(g_dasm_str, "/fpsr");
 			if (w2 & 0x0400) strcat(g_dasm_str, "/fpiar");
