@@ -1,5 +1,13 @@
 // ESM-compatible test file using real WASM
 import { createSystem } from './index.js';
+// For testing break reasons from the C++ session
+enum BreakReason {
+  None = 0,
+  Trace = 1,
+  InstrHook = 2,
+  JsHook = 3,
+  Sentinel = 4,
+}
 import type { System } from './types.js';
 
 describe('@m68k/core', () => {
@@ -219,7 +227,7 @@ describe('@m68k/core', () => {
 
     // Assert break reason came from JS hook (override)
     const br = (system as any)._musashi?.getLastBreakReason?.() ?? 0;
-    expect(br).toBe(3); // BreakReason::JsHook
+    expect(br).toBe(BreakReason.JsHook);
     (system as any)._musashi?.resetLastBreakReason?.();
 
     // Verify PC parked at sentinel (accept 24-bit or full 32-bit even)
@@ -262,7 +270,7 @@ describe('@m68k/core', () => {
 
     // Assert break reason came from JS hook (override)
     const br2 = (system as any)._musashi?.getLastBreakReason?.() ?? 0;
-    expect(br2).toBe(3); // BreakReason::JsHook
+    expect(br2).toBe(BreakReason.JsHook);
     (system as any)._musashi?.resetLastBreakReason?.();
 
     // Sentinel check (accept 24-bit or full 32-bit even)
