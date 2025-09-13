@@ -29,7 +29,7 @@ static std::unordered_set<unsigned int> _pc_hook_addrs;
 struct ExecSession {
   bool active = false;
   bool done = false;
-  unsigned int sentinel_pc = 0xFFFFFFFEu; // Default to full 32-bit even-aligned
+  unsigned int sentinel_pc = kAddressSpaceMax - 1; // Full 32-bit even-aligned
 };
 static ExecSession _exec_session;
 
@@ -281,7 +281,7 @@ extern "C" {
     // Start a new session
     _exec_session.active = true;
     _exec_session.done = false;
-    _exec_session.sentinel_pc = (kAddressSpaceMax & ~1u);
+    _exec_session.sentinel_pc = kAddressSpaceMax - 1;
 
     // Set PC to entry (no full reset; higher-level code owns SR/stack)
     m68k_set_reg(M68K_REG_PC, entry_pc);
