@@ -29,9 +29,13 @@ static std::unordered_set<unsigned int> _pc_hook_addrs;
 struct ExecSession {
   bool active = false;
   bool done = false;
-  unsigned int sentinel_pc = 0x00FFFFFEu; // Max 24-bit address, even-aligned
+  unsigned int sentinel_pc = 0xFFFFFFFEu; // Default to full 32-bit even-aligned
 };
 static ExecSession _exec_session;
+
+// Address space maximum as a static constant. Prefer full 32-bit for sentinel,
+// while still accepting 24-bit-masked PCs from a 68000 core.
+static constexpr unsigned int kAddressSpaceMax = 0xFFFFFFFFu;
 
 /* ======================================================================== */
 /* JavaScript Callback System                                             */
@@ -269,12 +273,6 @@ extern "C" {
     return (it != _memory_names.end()) ? it->second.c_str() : nullptr;
   }
 
-  // Address space helpers
-  unsigned int m68k_get_address_space_max() {
-    // 68000 has 24-bit address space
-    return 0x00FFFFFFu;
-  }
-
   // Run until JS-side PC hook requests a stop; when that happens,
   // vector PC to sentinel (max address, even-aligned) and return cycles.
   // timeslice is the cycle budget per m68k_execute() burst.
@@ -283,7 +281,7 @@ extern "C" {
     // Start a new session
     _exec_session.active = true;
     _exec_session.done = false;
-    _exec_session.sentinel_pc = m68k_get_address_space_max() & 0x00FFFFFEu;
+    _exec_session.sentinel_pc = (kAddressSpaceMax & ~1u);
 
     // Set PC to entry (no full reset; higher-level code owns SR/stack)
     m68k_set_reg(M68K_REG_PC, entry_pc);
@@ -539,7 +537,7 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
     // This ensures JS probe callbacks work in tests
     (void)my_instruction_hook_function(pc);  // ignore result in tests
     // Also honor sentinel in tests to let C++ sessions terminate deterministically
-    if (_exec_session.active && pc == _exec_session.sentinel_pc) {
+    if (_exec_session.active && (pc == _exec_session.sentinel_pc || norm_pc(pc) == (_exec_session.sentinel_pc & 0x00FFFFFEu))) {
         _exec_session.done = true;
         return 1;
     }
@@ -570,8 +568,8 @@ extern "C" int m68k_instruction_hook_wrapper(unsigned int pc, unsigned int ir, u
         m68k_end_timeslice(); 
         return js_result; 
     }
-    // If session is active and we have reached sentinel, finish
-    if (_exec_session.active && pc == _exec_session.sentinel_pc) {
+    // If session is active and we have reached sentinel (accept 24-bit masked), finish
+    if (_exec_session.active && (pc == _exec_session.sentinel_pc || norm_pc(pc) == (_exec_session.sentinel_pc & 0x00FFFFFEu))) {
         _exec_session.done = true;
         m68k_end_timeslice();
         return 1;

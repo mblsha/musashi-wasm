@@ -217,12 +217,11 @@ describe('@m68k/core', () => {
     expect(cycles).toBeGreaterThan(0);
     expect(system.getRegisters().d2 >>> 0).toBe(0xcafebabe);
 
-    // Optional: If internals are accessible, verify PC parked at max sentinel
-    const mod = (system as any)._musashi?._module;
-    if (mod && typeof mod._m68k_get_address_space_max === 'function') {
-      const max = mod._m68k_get_address_space_max();
-      expect(system.getRegisters().pc >>> 0).toBe((max & 0x00fffffe) >>> 0);
-    }
+    // Verify PC parked at sentinel (accept 24-bit or full 32-bit even)
+    const pc = system.getRegisters().pc >>> 0;
+    const sentinel24 = 0x00fffffe >>> 0;
+    const sentinel32 = 0xfffffffe >>> 0;
+    expect([sentinel24, sentinel32]).toContain(pc);
 
     removeOverride();
   });
@@ -256,12 +255,11 @@ describe('@m68k/core', () => {
     // D2 should be DEADBEEF + 1 from ADD.L
     expect(system.getRegisters().d2 >>> 0).toBe(0xdeadbeef + 1 >>> 0);
 
-    // Optional sentinel check
-    const mod = (system as any)._musashi?._module;
-    if (mod && typeof mod._m68k_get_address_space_max === 'function') {
-      const max = mod._m68k_get_address_space_max();
-      expect(system.getRegisters().pc >>> 0).toBe((max & 0x00fffffe) >>> 0);
-    }
+    // Sentinel check (accept 24-bit or full 32-bit even)
+    const pc = system.getRegisters().pc >>> 0;
+    const sentinel24 = 0x00fffffe >>> 0;
+    const sentinel32 = 0xfffffffe >>> 0;
+    expect([sentinel24, sentinel32]).toContain(pc);
 
     removeOverride();
   });
