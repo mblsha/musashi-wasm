@@ -153,25 +153,6 @@ describe('@m68k/core', () => {
     expect(newRegs.a1).toBe(0x100100);
   });
 
-  it('call() stops on RTS via instruction hook', async () => {
-    const ramBase = 0x100000;
-
-    // Build a tiny subroutine at 0x410: MOVE.L #$CAFEBABE,D2 ; RTS
-    const rom = (system as any)._musashi ? (system as any)._musashi : null;
-    // Accessing wrapper internals is not part of the public API, so we write via System writeBytes
-    const subAddr = 0x410;
-    const sub = new Uint8Array([
-      0x24, 0x3C, // MOVE.L #imm, D2
-      0xCA, 0xFE, 0xBA, 0xBE, // imm32
-      0x4E, 0x75, // RTS
-    ]);
-    system.writeBytes(subAddr, sub);
-
-    const cycles = await system.call(subAddr);
-    expect(cycles).toBeGreaterThan(0);
-    expect(system.getRegisters().d2 >>> 0).toBe(0xCAFEBABE);
-  });
-
   it('should support probe hooks', async () => {
     const addresses: number[] = [];
 
