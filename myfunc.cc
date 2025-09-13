@@ -453,8 +453,11 @@ extern "C" void my_write_memory_glue(uint32_t address, uint32_t value, int size)
   my_write_memory(address, size, value);
 }
 
-// Forward declaration
-int _pc_hook_filtering_aware(unsigned int pc);
+// Helper: whether to invoke legacy PC hook for given pc based on filter set
+static inline bool should_invoke_pc_hook(unsigned int pc) {
+  if (_pc_hook_addrs.empty()) return true; // backward compatible: hook all
+  return _pc_hook_addrs.find(pc) != _pc_hook_addrs.end();
+}
 
 int my_instruction_hook_function(unsigned int pc_raw) {
   const uint32_t pc = norm_pc(pc_raw);
@@ -470,59 +473,21 @@ int my_instruction_hook_function(unsigned int pc_raw) {
   
   // Call JS probe callback if registered, honoring address filter semantics
   if (js_probe_callback) {
-    // When no filter is configured, probe all PCs; otherwise, only probe listed PCs
-    bool should_probe = _pc_hook_addrs.empty() || (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end());
-    if (should_probe) {
+    if (should_invoke_pc_hook(pc)) {
       int js_result = js_probe_callback(pc);
       if (js_result != 0) return js_result;  // JS wants to break
     }
   }
-  
-  // Call existing PC hook system
-  if (_pc_hook) {
-    // ALWAYS call the user callback - let it decide whether to ignore the PC
-    // This keeps the behavior identical to "no filtering" case
-    return _pc_hook_filtering_aware(pc);
+
+  // Call legacy PC hook if present and allowed by filter
+  if (_pc_hook && should_invoke_pc_hook(pc)) {
+    return _pc_hook(pc);
   }
-  
+
   return 0;
 }
 
-// New filtering-aware callback that handles filtering internally
-int _pc_hook_filtering_aware(unsigned int pc) {
-  // When _pc_hook_addrs is empty, hook all addresses (backward compatible)
-  // When _pc_hook_addrs has entries, only hook those specific addresses
-  if (_pc_hook_addrs.empty()) {
-    // Hook all addresses - this is the default behavior
-    if (_enable_printf_logging) {
-      static int hook_all_count = 0;
-      if (hook_all_count < 5) {  // Limit debug output
-        printf("DEBUG: Hook all addresses mode - calling hook for PC=0x%x\n", pc);
-        hook_all_count++;
-      }
-    }
-    return _pc_hook(pc);
-  } else {
-    // Only hook specific addresses
-    static bool debug_once = true;
-    if (debug_once && _enable_printf_logging) {
-      debug_once = false;
-      printf("DEBUG: Filtering mode - looking for addresses:");
-      for (auto addr : _pc_hook_addrs) {
-        printf(" 0x%x", addr);
-      }
-      printf("\n");
-    }
-    
-    if (_pc_hook_addrs.find(pc) != _pc_hook_addrs.end()) {
-      if (_enable_printf_logging) {
-        printf("DEBUG: Address filter match - calling hook for PC=0x%x\n", pc);
-      }
-      return _pc_hook(pc);
-    }
-    return 0; // filtered out
-  }
-}
+// (Removed _pc_hook_filtering_aware in favor of should_invoke_pc_hook + direct call)
 
 // This is the new wrapper called by the core
 /* Clang/GCC attributes to keep the wrapper from being "too smart". */
