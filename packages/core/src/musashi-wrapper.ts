@@ -227,7 +227,6 @@ export class MusashiWrapper {
   resetLastBreakReason(): void {
     this._module._m68k_reset_last_break_reason?.();
   }
-  }
 
   pulse_reset() {
     this._module._m68k_pulse_reset();
