@@ -48,6 +48,12 @@ export interface MusashiEmscriptenModule {
   _register_function_name?(address: number, name: EmscriptenBuffer): void;
   _register_memory_name?(address: number, name: EmscriptenBuffer): void;
 
+  // Raw m68ktrace memory callback + toggles
+  _m68k_set_trace_mem_callback?(f: EmscriptenFunction): void;
+  _m68k_trace_set_mem_enabled?(enable: number): void;
+  _m68k_trace_add_mem_region?(start: number, end: number): number;
+  _m68k_trace_clear_mem_regions?(): void;
+
   // New callback system
   _set_read8_callback?(f: EmscriptenFunction): void;
   _set_write8_callback?(f: EmscriptenFunction): void;
@@ -87,6 +93,9 @@ interface SystemBridge {
   write(address: number, size: 1 | 2 | 4, value: number): void;
   _handlePCHook(pc: number): boolean;
   ram: Uint8Array;
+  // Memory trace dispatchers supplied by SystemImpl
+  _handleMemoryRead?(addr: number, size: 1 | 2 | 4, value: number, pc: number): void;
+  _handleMemoryWrite?(addr: number, size: 1 | 2 | 4, value: number, pc: number): void;
 }
 
 export class MusashiWrapper {
@@ -96,6 +105,8 @@ export class MusashiWrapper {
   private _readFunc: EmscriptenFunction = 0;
   private _writeFunc: EmscriptenFunction = 0;
   private _probeFunc: EmscriptenFunction = 0;
+  private _memTraceFunc: EmscriptenFunction = 0;
+  private _memTraceActive = false;
   // No JS sentinel state; C++ session owns sentinel behavior.
   // CPU type for disassembler (68000)
   private readonly CPU_68000 = 0;
@@ -178,6 +189,13 @@ export class MusashiWrapper {
     if (this._probeFunc) {
       this._module.removeFunction?.(this._probeFunc);
       this._probeFunc = 0;
+    }
+    if (this._memTraceFunc) {
+      // Clear callback in core before removing to avoid dangling ptr
+      this._module._m68k_set_trace_mem_callback?.(0 as unknown as number);
+      this._module.removeFunction?.(this._memTraceFunc);
+      this._memTraceFunc = 0;
+      this._memTraceActive = false;
     }
     this._module._clear_regions?.();
     this._module._clear_pc_hook_addrs?.();
@@ -341,6 +359,51 @@ export class MusashiWrapper {
         this._system.ram[offset + 2] = (value >> 8) & 0xff;
         this._system.ram[offset + 3] = value & 0xff;
       }
+    }
+  }
+
+  // --- Memory Trace Hook Bridge ---
+  // Enable/disable forwarding of core memory trace events to SystemImpl
+  setMemoryTraceEnabled(enable: boolean): void {
+    if (!this._module._m68k_set_trace_mem_callback || !this._module._m68k_trace_enable || !this._module._m68k_trace_set_mem_enabled) {
+      // Not supported in this build
+      return;
+    }
+    if (enable && !this._memTraceActive) {
+      if (!this._memTraceFunc) {
+        // type(0=read,1=write), pc, addr, value, size, cycles
+        this._memTraceFunc = this._module.addFunction(
+          (
+            type: number,
+            pc: number,
+            addr: number,
+            value: number,
+            size: number,
+            _cycles: number
+          ) => {
+            const s = (size | 0) as 1 | 2 | 4;
+            const a = addr >>> 0;
+            const v = value >>> 0;
+            const p = pc >>> 0;
+            if (type === 0) {
+              this._system._handleMemoryRead?.(a, s, v, p);
+            } else {
+              this._system._handleMemoryWrite?.(a, s, v, p);
+            }
+            return 0;
+          },
+          'iiiiii'
+        );
+      }
+      // Wire into core and turn on tracing
+      this._module._m68k_set_trace_mem_callback(this._memTraceFunc);
+      this._module._m68k_trace_enable(1);
+      this._module._m68k_trace_set_mem_enabled(1);
+      this._memTraceActive = true;
+    } else if (!enable && this._memTraceActive) {
+      this._module._m68k_set_trace_mem_callback(0 as unknown as number);
+      this._module._m68k_trace_set_mem_enabled(0);
+      this._memTraceActive = false;
     }
   }
 

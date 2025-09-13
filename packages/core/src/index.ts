@@ -6,6 +6,8 @@ import type {
   Tracer,
   TraceConfig,
   SymbolMap,
+  MemoryAccessCallback,
+  MemoryAccessEvent,
 } from './types.js';
 import { MusashiWrapper, getModule } from './musashi-wrapper.js';
 
@@ -138,6 +140,8 @@ class SystemImpl implements System {
     probes: new Map<number, HookCallback>(),
     overrides: new Map<number, HookCallback>(),
   };
+  private _memReads = new Set<MemoryAccessCallback>();
+  private _memWrites = new Set<MemoryAccessCallback>();
   readonly tracer: Tracer;
 
   constructor(musashi: MusashiWrapper, config: SystemConfig) {
@@ -244,6 +248,43 @@ class SystemImpl implements System {
 
   cleanup(): void {
     this._musashi.cleanup();
+  }
+
+  // --- Memory Trace (read/write) ---
+  onMemoryRead(cb: MemoryAccessCallback): () => void {
+    this._memReads.add(cb);
+    this._updateMemTraceEnabled();
+    return () => {
+      this._memReads.delete(cb);
+      this._updateMemTraceEnabled();
+    };
+  }
+
+  onMemoryWrite(cb: MemoryAccessCallback): () => void {
+    this._memWrites.add(cb);
+    this._updateMemTraceEnabled();
+    return () => {
+      this._memWrites.delete(cb);
+      this._updateMemTraceEnabled();
+    };
+  }
+
+  // Called by MusashiWrapper when the core emits a memory event
+  _handleMemoryRead(addr: number, size: 1 | 2 | 4, value: number, pc: number): void {
+    if (this._memReads.size === 0) return;
+    const ev: MemoryAccessEvent = { addr, size, value, pc };
+    for (const cb of this._memReads) cb(ev);
+  }
+
+  _handleMemoryWrite(addr: number, size: 1 | 2 | 4, value: number, pc: number): void {
+    if (this._memWrites.size === 0) return;
+    const ev: MemoryAccessEvent = { addr, size, value, pc };
+    for (const cb of this._memWrites) cb(ev);
+  }
+
+  private _updateMemTraceEnabled(): void {
+    const want = this._memReads.size > 0 || this._memWrites.size > 0;
+    this._musashi.setMemoryTraceEnabled(want);
   }
 }
 
