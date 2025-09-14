@@ -7,7 +7,7 @@
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
-    "test:ci": "npm run test:ci --workspaces",
+    "test:ci": "./run-tests-ci.sh",
     "test:core": "NODE_OPTIONS='--experimental-vm-modules' npx jest --projects packages/core --runInBand --verbose --no-cache",
     "clean": "npm run clean --workspaces",
     "typecheck": "npm run typecheck --workspaces",
