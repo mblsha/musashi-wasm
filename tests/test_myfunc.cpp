@@ -158,6 +158,53 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
     // Disassembly already validated upfront
 }
 
+// Verify single-step on JSR jumps to target and skips over
+// the following in-line instructions (they do not execute yet).
+TEST_F(MyFuncTest, StepOneJsrSkipsOverFollowingInstructions) {
+    // Layout at 0x400:
+    //  0x400: JSR $000414          ; absolute long target
+    //  0x406: MOVE.L #$AABBCCDD,D0 ; would change D0 if executed
+    //  0x40C: NOP                  ; filler
+    //  0x414: RTS                  ; subroutine body (not executed in this test)
+
+    // JSR abs.l $000414
+    write_word(0x400, 0x4EB9);
+    write_long(0x402, 0x00000414u);
+
+    // MOVE.L #$AABBCCDD, D0 at 0x406 (should be skipped by the jump)
+    write_word(0x406, 0x203C);
+    write_long(0x408, 0xAABBCCDDu);
+
+    // NOP at 0x40C (also skipped on the JSR step)
+    write_word(0x40C, 0x4E71);
+
+    // Subroutine target: RTS at 0x414
+    write_word(0x414, 0x4E75);
+
+    // Sanity: initial registers
+    unsigned int sp0 = m68k_get_reg(NULL, M68K_REG_SP);
+    unsigned int pc0 = m68k_get_reg(NULL, M68K_REG_PC);
+    ASSERT_EQ(sp0, 0x1000u);
+    ASSERT_EQ(pc0, 0x400u);
+
+    // Step the JSR
+    (void)m68k_step_one();
+
+    unsigned int sp1 = m68k_get_reg(NULL, M68K_REG_SP);
+    unsigned int pc1 = m68k_get_reg(NULL, M68K_REG_PC);
+    unsigned int ppc1 = m68k_get_reg(NULL, M68K_REG_PPC);
+
+    // After JSR abs.l: PC points to target, PPC points to call site,
+    // SP is decremented by 4 and contains the return address (0x406).
+    EXPECT_EQ(pc1, 0x414u);
+    EXPECT_EQ(ppc1, 0x400u);
+    EXPECT_EQ(sp1, 0x0FFCu);
+    EXPECT_EQ(read_long(sp1), 0x00000406u);
+
+    // And the skipped instruction at 0x406 did not execute yet
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D0), 0u);
+}
+
 // Test memory regions
 TEST_F(MyFuncTest, MemoryRegions) {
     // Create a test region
