@@ -203,16 +203,16 @@ namespace M68kTestUtils {
             printf("\n");
         }
     }
-}
-
-// Convenience C++ wrapper returning the disassembly text and size as a pair.
-// This avoids manual buffer management at call sites and makes test
-// expectations concise via std::make_pair.
-inline std::pair<std::string, int> m68k_disassembly(uint32_t pc,
-                                                    unsigned int cpu_type = M68K_CPU_TYPE_68000) {
-    char buf[256];
-    unsigned int size = m68k_disassemble(buf, pc, cpu_type);
-    return std::make_pair(std::string(buf), static_cast<int>(size));
+    // Convenience C++ wrapper returning the disassembly text and size as a pair.
+    // This avoids manual buffer management at call sites and makes test
+    // expectations concise via std::make_pair.
+    inline std::pair<std::string, int> m68k_disassembly(
+        uint32_t pc,
+        unsigned int cpu_type = M68K_CPU_TYPE_68000) {
+        char buf[256];
+        unsigned int size = m68k_disassemble(buf, pc, cpu_type);
+        return std::make_pair(std::string(buf), static_cast<int>(size));
+    }
 }
 
 #endif // M68K_TEST_COMMON_H
