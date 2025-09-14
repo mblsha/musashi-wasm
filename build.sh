@@ -58,10 +58,8 @@ exported_functions=(
   _clear_regions
   _enable_printf_logging
   _free
-  
   _get_function_name
   _get_memory_name
-  
   _malloc
   _m68k_call_until_js_stop
   _m68k_cycles_run
@@ -103,16 +101,12 @@ exported_functions=(
   _register_memory_name
   _register_memory_range
   _reset_myfunc_state
-  
   _set_entry_point
   _set_full_instr_hook_func
-  
   _set_pc_hook_func
-  
   _set_probe_callback
   _set_read8_callback
   _set_read_mem_func
-  
   _set_write8_callback
   _set_write_mem_func
 )
