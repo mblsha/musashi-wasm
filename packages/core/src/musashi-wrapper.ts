@@ -18,12 +18,11 @@ export interface MusashiEmscriptenModule {
   _m68k_set_reg(index: number, value: number): void;
   _malloc(size: number): EmscriptenBuffer;
   _free(ptr: EmscriptenBuffer): void;
-  _set_pc_hook_func(f: EmscriptenFunction): void;
-  _set_read_mem_func(f: EmscriptenFunction): void;
-  _set_write_mem_func(f: EmscriptenFunction): void;
+  _set_read8_callback?(f: EmscriptenFunction): void;
+  _set_write8_callback?(f: EmscriptenFunction): void;
+  _set_probe_callback?(f: EmscriptenFunction): void;
   _clear_regions(): void;
   _clear_pc_hook_addrs(): void;
-  _clear_pc_hook_func(): void;
   _reset_myfunc_state(): void;
   addFunction(f: unknown, type: string): EmscriptenFunction;
   removeFunction(f: EmscriptenFunction): void;
@@ -56,9 +55,7 @@ export interface MusashiEmscriptenModule {
   _m68k_trace_clear_mem_regions?(): void;
 
   // New callback system
-  _set_read8_callback?(f: EmscriptenFunction): void;
-  _set_write8_callback?(f: EmscriptenFunction): void;
-  _set_probe_callback?(f: EmscriptenFunction): void;
+  // callbacks defined above
   // Disassembler entry point (optional export)
   _m68k_disassemble?(
     outBuf: EmscriptenBuffer,
@@ -188,7 +185,8 @@ export class MusashiWrapper {
     }
     this._module._clear_regions?.();
     this._module._clear_pc_hook_addrs?.();
-    this._module._clear_pc_hook_func?.();
+    // Disable probe callback explicitly if available
+    try { this._module._set_probe_callback?.(0 as unknown as number); } catch {}
     this._module._reset_myfunc_state?.();
   }
 

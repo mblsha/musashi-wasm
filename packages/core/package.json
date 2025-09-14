@@ -12,6 +12,7 @@
     }
   },
   "scripts": {
+    "pretest": "mkdir -p wasm && (cp ../../musashi-node.out.mjs wasm/ && cp ../../musashi-node.out.wasm wasm/) || true",
     "build": "tsc",
     "clean": "rm -rf dist",
     "test": "NODE_OPTIONS='--experimental-vm-modules' npx jest",
@@ -60,7 +61,9 @@
     "moduleNameMapper": {
       "^\\./types\\.js$": "<rootDir>/src/types.ts",
       "^\\./musashi-wrapper\\.js$": "<rootDir>/src/musashi-wrapper.ts",
-      "^\\./index\\.js$": "<rootDir>/src/index.ts"
+      "^\\./index\\.js$": "<rootDir>/src/index.ts",
+      "^\\./test-utils\\.js$": "<rootDir>/src/test-utils.ts",
+      "^@m68k/common$": "<rootDir>/../common/src/index.ts"
     },
     "roots": ["<rootDir>/src"],
     "testMatch": ["**/*.test.ts"]

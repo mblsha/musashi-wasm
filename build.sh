@@ -53,7 +53,6 @@ exported_functions=(
   _add_region
   _clear_instr_hook_func
   _clear_pc_hook_addrs
-  _clear_pc_hook_func
   _clear_registered_names
   _clear_regions
   _enable_printf_logging
@@ -94,12 +93,9 @@ exported_functions=(
   _reset_myfunc_state
   _set_entry_point
   _set_full_instr_hook_func
-  _set_pc_hook_func
   _set_probe_callback
   _set_read8_callback
-  _set_read_mem_func
   _set_write8_callback
-  _set_write_mem_func
 )
 
 # Add Perfetto-only exports when enabled (parity with Fish)

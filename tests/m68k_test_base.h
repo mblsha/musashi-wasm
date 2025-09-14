@@ -17,9 +17,9 @@
 #include "m68ktrace.h"
 
 extern "C" {
-    void set_read_mem_func(int (*func)(unsigned int address, int size));
-    void set_write_mem_func(void (*func)(unsigned int address, int size, unsigned int value));
-    void set_pc_hook_func(int (*func)(unsigned int pc));
+    void set_read8_callback(int32_t fp);
+    void set_write8_callback(int32_t fp);
+    void set_probe_callback(int32_t fp);
     
     unsigned int m68k_disassemble(char* str_buff, unsigned int pc, unsigned int cpu_type);
     unsigned int m68k_read_disassembler_8(unsigned int address);
@@ -92,9 +92,9 @@ protected:
         instruction_count = 0;
         total_cycles = 0;
         
-        set_read_mem_func(read_memory_static);
-        set_write_mem_func(write_memory_static);
-        set_pc_hook_func(pc_hook_static);
+        set_read8_callback(reinterpret_cast<int32_t>(read8_static));
+        set_write8_callback(reinterpret_cast<int32_t>(write8_static));
+        set_probe_callback(reinterpret_cast<int32_t>((pc_hook_static)));
         
         m68k_init();
         
@@ -275,6 +275,15 @@ private:
     
     static void write_memory_static(unsigned int address, int size, unsigned int value) {
         if (instance) instance->write_memory(address, size, value);
+    }
+
+    static uint8_t read8_static(uint32_t address) {
+        if (!instance || address >= instance->memory.size()) return 0;
+        return instance->memory[address];
+    }
+    static void write8_static(uint32_t address, uint8_t value) {
+        if (!instance || address >= instance->memory.size()) return;
+        instance->memory[address] = value;
     }
     
     static int pc_hook_static(unsigned int pc) {

@@ -141,6 +141,10 @@ This release maintains full backward compatibility for the WebAssembly API while
 - Drop Emscripten `ccall/cwrap` runtime requirement from WASM builds. Tests updated to call direct exports and manually marshal strings. This reduces reliance on legacy Emscripten runtime shims while keeping `addFunction/removeFunction` and `getValue/setValue` available.
 - Update `musashi-wasm-test` Perfetto integration tests to avoid `Module.ccall()` and use direct `_symbol` calls with explicit string allocation.
 
+### 💥 Breaking (native)
+
+- Remove `perfetto_*` C wrappers from `myfunc.cc`; use the canonical `_m68k_perfetto_*` API directly. C++ tests updated accordingly. When `ENABLE_PERFETTO=0`, `m68k_perfetto_*` remain as no-op stubs.
+
 ### ⚠️ Deprecations (planned)
 
 - Legacy setter exports (`_set_read_mem_func`, `_set_write_mem_func`, `_set_pc_hook_func`) are slated for removal in a future major release. Prefer the byte-oriented `_set_read8_callback`, `_set_write8_callback`, and `_set_probe_callback`.

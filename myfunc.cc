@@ -249,27 +249,7 @@ extern "C" {
     printf("enable_printf_logging\n");
     _enable_printf_logging = true;
   }
-  void set_read_mem_func(read_mem_t func) {
-    if (_enable_printf_logging) {
-      printf("set_read_mem_func: %p\n", (void*)func);
-      printf("DEPRECATED: set_read_mem_func is deprecated; prefer _set_read8_callback.\n");
-    }
-     _read_mem = func;
-  }
-  void set_write_mem_func(write_mem_t func) {
-    if (_enable_printf_logging) {
-      printf("set_write_mem_func: %p\n", (void*)func);
-      printf("DEPRECATED: set_write_mem_func is deprecated; prefer _set_write8_callback.\n");
-    }
-    _write_mem = func;
-  }
-  void set_pc_hook_func(pc_hook_t func) {
-    if (_enable_printf_logging) {
-      printf("set_pc_hook_func: %p\n", (void*)func);
-      printf("DEPRECATED: set_pc_hook_func is deprecated; prefer _set_probe_callback.\n");
-    }
-    _pc_hook = func;
-  }
+  /* legacy hook setters removed in major bump */
   
   // Full instruction hook setter (3 params: pc, ir, cycles)
   void set_full_instr_hook_func(instr_hook_t func) {
@@ -325,9 +305,7 @@ extern "C" {
     _pc_hook_addrs.clear();
   }
   
-  void clear_pc_hook_func() {
-    _pc_hook = nullptr;
-  }
+  /* legacy clear_pc_hook_func removed; use _set_probe_callback(0) */
 
   void clear_instr_hook_func() {
     _instr_hook = nullptr;

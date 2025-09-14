@@ -376,8 +376,8 @@ TEST_F(MyFuncTest, ClearPcHookDisablesCallback) {
     m68k_execute(100);
     ASSERT_GE(pc_hooks.size(), 2u);
 
-    // Clear the PC hook function and ensure no hooks fire
-    clear_pc_hook_func();
+    // Clear the probe callback and ensure no hooks fire
+    set_probe_callback(0);
     pc_hooks.clear();
     m68k_execute(100);
     EXPECT_TRUE(pc_hooks.empty());
