@@ -3,7 +3,7 @@
 // These types are placeholders for Emscripten's internal types
 type EmscriptenBuffer = number;
 type EmscriptenFunction = number;
-import { M68kReg } from './types.js';
+import { M68kRegister } from '@m68k/common';
 
 export interface MusashiEmscriptenModule {
   _my_initialize(): boolean;
@@ -150,7 +150,7 @@ export class MusashiWrapper {
     this._module._m68k_pulse_reset();
 
     // Verify initialization
-    const pc = this._module._m68k_get_reg(0, M68kReg.PC);
+    const pc = this._module._m68k_get_reg(0, M68kRegister.PC);
     if (pc !== 0x400) {
       throw new Error(
         `CPU not properly initialized, PC=0x${pc.toString(16)} (expected 0x400)`
@@ -249,11 +249,11 @@ export class MusashiWrapper {
     this._module._m68k_pulse_reset();
   }
 
-  get_reg(index: M68kReg): number {
+  get_reg(index: M68kRegister): number {
     return this._module._m68k_get_reg(0, index) >>> 0;
   }
 
-  set_reg(index: M68kReg, value: number) {
+  set_reg(index: M68kRegister, value: number) {
     this._module._m68k_set_reg(index, value);
   }
 
