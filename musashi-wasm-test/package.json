@@ -4,8 +4,8 @@
   "description": "Minimalistic integration test for the Musashi M68k WASM module on Node.js.",
   "main": "index.js",
   "scripts": {
-    "test": "NODE_OPTIONS='--experimental-vm-modules' npx jest",
-    "test:ci": "NODE_OPTIONS='--experimental-vm-modules' npx jest --ci --reporters=default --reporters=jest-junit"
+    "test": "NODE_OPTIONS='--experimental-vm-modules' node ../scripts/run-with-timeout.mjs 60 npx jest --runInBand",
+    "test:ci": "NODE_OPTIONS='--experimental-vm-modules' node ../scripts/run-with-timeout.mjs 60 npx jest --ci --runInBand --reporters=default --reporters=jest-junit"
   },
   "author": "",
   "license": "ISC",

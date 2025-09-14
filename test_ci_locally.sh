@@ -77,8 +77,8 @@ if [ "$ALL_GOOD" = true ]; then
   echo "Smoke tests completed"
 
   echo ""
-  echo "Running ctest to verify tests pass..."
-  ctest --output-on-failure -j$(nproc) || echo "Some tests failed - check output above"
+  echo "Running ctest (timeboxed 60s) to verify tests pass..."
+  timeout 60s ctest --output-on-failure -j$(nproc) || echo "Some tests failed or timed out - check output above"
 else
   echo ""
   echo "========================================"

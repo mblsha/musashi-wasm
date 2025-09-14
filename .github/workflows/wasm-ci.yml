@@ -130,21 +130,21 @@ jobs:
             packages/**/package-lock.json
 
       # Run Node integration tests (repo's musashi-wasm-test)
-      - name: Run Node.js integration tests
+      - name: Run Node.js integration tests (timeboxed 60s)
         run: |
           cd musashi-wasm-test
           npm ci
-          npm run test:ci || true
+          node ../scripts/run-with-timeout.mjs 60 npm run test:ci || true
 
       # Run TypeScript tests (once per matrix entry, toggled by PERFETTO_ENABLED)
-      - name: Run TypeScript tests
+      - name: Run TypeScript tests (timeboxed 60s)
         env:
           PERFETTO_ENABLED: ${{ matrix.perfetto && '1' || '0' }}
         run: |
           npm ci
           npm ci --workspaces
           npm run build
-          npm run test:core || true
+          node scripts/run-with-timeout.mjs 60 npm run test:core || true
 
       # Upload WASM artifacts with stable names used by npm-publish.yml
       - name: Upload WASM artifacts (standard)

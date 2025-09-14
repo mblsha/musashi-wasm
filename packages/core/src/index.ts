@@ -170,11 +170,25 @@ class SystemImpl implements System {
     return one ? (one.size >>> 0) : 0;
   }
   read(address: number, size: 1 | 2 | 4): number {
-    return this._musashi.read_memory(address, size);
+    const addr = address >>> 0;
+    const ramBase = 0x100000 >>> 0;
+    const ramEnd = (ramBase + this.ram.length) >>> 0;
+    if (addr >= ramBase && addr < ramEnd) {
+      // Enforce RAM bounds for multi-byte access
+      if (addr + size > ramEnd) return 0;
+    }
+    return this._musashi.read_memory(addr, size);
   }
 
   write(address: number, size: 1 | 2 | 4, value: number): void {
-    this._musashi.write_memory(address, size, value);
+    const addr = address >>> 0;
+    const ramBase = 0x100000 >>> 0;
+    const ramEnd = (ramBase + this.ram.length) >>> 0;
+    if (addr >= ramBase && addr < ramEnd) {
+      // Enforce RAM bounds for multi-byte access
+      if (addr + size > ramEnd) return;
+    }
+    this._musashi.write_memory(addr, size, value >>> 0);
   }
 
   readBytes(address: number, length: number): Uint8Array {

@@ -222,8 +222,9 @@ export class MusashiWrapper {
     // Ensure export exists for type safety, then cast and call
     this.requireExport('_m68k_call_until_js_stop');
     const callUntil = this._module._m68k_call_until_js_stop!;
-    // Defer timeslice to C++ default by passing 0
-    return callUntil(address >>> 0, 0) >>> 0;
+    // Defer timeslice to C++ default by passing 0. Normalise BigInt/Number.
+    const res = callUntil(address >>> 0, 0) as unknown as number | bigint;
+    return Number(res) >>> 0;
   }
 
   // Expose break reason helpers for tests
@@ -341,6 +342,7 @@ export class MusashiWrapper {
             }
             return 0;
           },
+          // Signature: int(type, pc, addr, value, size, cycles[i64]) -> int
           'iiiiiij'
         );
       }

@@ -5,10 +5,11 @@
     "packages/*"
   ],
   "scripts": {
+    "stage:wasm": "mkdir -p packages/core/wasm && cp -f musashi-node.out.mjs packages/core/wasm/ && cp -f musashi-node.out.wasm packages/core/wasm/ || true",
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
     "test:ci": "npm run test:ci --workspaces",
-    "test:core": "NODE_OPTIONS='--experimental-vm-modules' npx jest --projects packages/core --runInBand --verbose --no-cache",
+    "test:core": "npm run -s stage:wasm && NODE_OPTIONS='--experimental-vm-modules' node scripts/run-with-timeout.mjs 60 npx jest --projects packages/core --runInBand --verbose --no-cache",
     "clean": "npm run clean --workspaces",
     "typecheck": "npm run typecheck --workspaces",
     "lint": "npm run lint --workspaces",
