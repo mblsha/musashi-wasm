@@ -155,14 +155,8 @@ class SystemImpl implements System {
 
   // (no fusion-specific instrumentation helpers)
 
-  // Single-string disassembly (no address prefix)
-  disassemble(address: number): string | null {
-    const pc = address >>> 0;
-    const one = this._musashi.disassemble(pc);
-    if (!one) return null;
-    return one.text;
-    }
-  disassembleDetailed(address: number): { text: string; size: number } | null {
+  // Disassembly returns text and size in one call
+  disassemble(address: number): { text: string; size: number } | null {
     return this._musashi.disassemble(address >>> 0);
   }
   read(address: number, size: 1 | 2 | 4): number {

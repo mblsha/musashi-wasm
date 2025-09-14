@@ -155,11 +155,8 @@ export interface System {
   /** Accesses the optional Perfetto tracing functionality. */
   readonly tracer: Tracer;
 
-  /** Disassembles a single instruction at the given address and returns a formatted string (or null if unavailable). */
-  disassemble(address: number): string | null;
-
-  /** Returns disassembly text and decoded size in one call (or null if unavailable). */
-  disassembleDetailed(address: number): { text: string; size: number } | null;
+  /** Disassembles the instruction at the given address. Returns text and size or null if unavailable. */
+  disassemble(address: number): { text: string; size: number } | null;
 
   /**
    * Register a callback for memory reads performed by the CPU. The callback receives

@@ -101,7 +101,7 @@ View the trace at [ui.perfetto.dev](https://ui.perfetto.dev).
 ## API Updates
 
 - Unified PC hooks: `system.addHook(address, sys => 'continue' | 'stop')`. Use `'stop'` to halt execution (useful for `call()` and stepping).
-- Rich disassembly: `system.disassembleDetailed(pc)` returns `{ text, size }` in one call while `disassemble(pc)` returns the formatted text.
+- Disassembly: `system.disassemble(pc)` returns `{ text, size }`.
 - Cleanup: `system.dispose()` to release underlying WASM callbacks/regions when done.
 
 ## Migration Guide
@@ -118,8 +118,8 @@ This release removes legacy hook helpers and a redundant size helper. Suggested 
 
 - Disassembly helpers
   - Before: `disassemble(pc)` for text and `getInstructionSize(pc)` for size.
-  - After: `disassembleDetailed(pc)` returns `{ text, size }` in one call.
-  - Note: `getInstructionSize(pc)` has been removed.
+  - After: `disassemble(pc)` returns `{ text, size }` in one call.
+  - Note: `getInstructionSize(pc)` and the text-only `disassemble(pc)` variant have been removed.
 
 - Lifecycle cleanup
   - New: `system.dispose()` tears down WASM callbacks/regions. Call it when the system is no longer needed (tests, short‑lived tools).
