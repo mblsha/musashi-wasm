@@ -8,6 +8,7 @@ import type {
   SymbolMap,
   MemoryAccessCallback,
   MemoryAccessEvent,
+  HookResult,
 } from './types.js';
 import { MusashiWrapper, getModule } from './musashi-wrapper.js';
 
@@ -20,6 +21,9 @@ export type {
   Tracer,
   TraceConfig,
   SymbolMap,
+  MemoryAccessCallback,
+  MemoryAccessEvent,
+  HookResult,
 };
 
 // --- Private Implementation ---
@@ -142,6 +146,7 @@ class SystemImpl implements System {
   };
   private _memReads = new Set<MemoryAccessCallback>();
   private _memWrites = new Set<MemoryAccessCallback>();
+  private _unifiedHooks = new Map<number, (system: System) => 'continue' | 'stop'>();
   readonly tracer: Tracer;
 
   constructor(musashi: MusashiWrapper, config: SystemConfig) {
@@ -163,6 +168,9 @@ class SystemImpl implements System {
     if (!one) return null;
     return one.text;
     }
+  disassembleDetailed(address: number): { text: string; size: number } | null {
+    return this._musashi.disassemble(address >>> 0);
+  }
   getInstructionSize(pc: number): number {
     const one = this._musashi.disassemble(pc >>> 0);
     return one ? (one.size >>> 0) : 0;
@@ -238,8 +246,19 @@ class SystemImpl implements System {
     return () => this._hooks.overrides.delete(address);
   }
 
+  addHook(address: number, handler: (system: System) => 'continue' | 'stop'): () => void {
+    this._unifiedHooks.set(address >>> 0, handler);
+    this._musashi.add_pc_hook_addr(address >>> 0);
+    return () => this._unifiedHooks.delete(address >>> 0);
+  }
+
   // --- Internal methods for the Musashi wrapper ---
   _handlePCHook(pc: number): boolean {
+    const unified = this._unifiedHooks.get(pc);
+    if (unified) {
+      const res = unified(this);
+      return res === 'stop';
+    }
     const probe = this._hooks.probes.get(pc);
     if (probe) {
       probe(this);
@@ -257,6 +276,10 @@ class SystemImpl implements System {
 
   cleanup(): void {
     this._musashi.cleanup();
+  }
+
+  dispose(): void {
+    this.cleanup();
   }
 
   // --- Memory Trace (read/write) ---

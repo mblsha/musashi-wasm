@@ -27,6 +27,9 @@ export interface CpuRegisters {
 /** A function to be executed when a specific address is hit during execution. */
 export type HookCallback = (system: System) => void;
 
+/** Unified hook result indicating how execution should proceed. */
+export type HookResult = 'continue' | 'stop';
+
 /** Memory access event payload for JS callbacks. */
 export interface MemoryAccessEvent {
   addr: number;
@@ -159,11 +162,21 @@ export interface System {
    */
   override(address: number, callback: HookCallback): () => void;
 
+  /**
+   * Adds a unified PC hook at an address. The callback returns whether to
+   * continue execution or request a stop (useful for stepping and call()).
+   * This is a more general alternative to probe/override.
+   */
+  addHook(address: number, handler: (system: System) => HookResult): () => void;
+
   /** Accesses the optional Perfetto tracing functionality. */
   readonly tracer: Tracer;
 
   /** Disassembles a single instruction at the given address and returns a formatted string (or null if unavailable). */
   disassemble(address: number): string | null;
+
+  /** Returns disassembly text and decoded size in one call (or null if unavailable). */
+  disassembleDetailed(address: number): { text: string; size: number } | null;
 
   /**
    * Returns the size in bytes of the instruction at the given PC.
@@ -184,4 +197,10 @@ export interface System {
    * Returns a function to unsubscribe.
    */
   onMemoryWrite(cb: MemoryAccessCallback): () => void;
+
+  /**
+   * Disposes resources held by the underlying WASM bridge (callbacks, regions).
+   * After dispose(), the System should be considered unusable.
+   */
+  dispose(): void;
 }
