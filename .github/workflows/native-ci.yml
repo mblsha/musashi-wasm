@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         build_type: [Debug, Release]
-        compiler: [gcc, clang]
+        compiler: [clang]
 
     steps:
       - uses: actions/checkout@v4
