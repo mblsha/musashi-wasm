@@ -163,6 +163,10 @@ class SystemImpl implements System {
     if (!one) return null;
     return one.text;
     }
+  getInstructionSize(pc: number): number {
+    const one = this._musashi.disassemble(pc >>> 0);
+    return one ? (one.size >>> 0) : 0;
+  }
   read(address: number, size: 1 | 2 | 4): number {
     return this._musashi.read_memory(address, size);
   }
