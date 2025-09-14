@@ -25,7 +25,7 @@ describe('JS probe respects address filtering', () => {
 
   beforeEach(() => {
     Module._m68k_init();
-    Module.ccall('clear_regions', 'void', [], []);
+    Module._clear_regions();
   });
 
   it('calls probe only for filtered PCs', () => {
@@ -35,7 +35,7 @@ describe('JS probe respects address filtering', () => {
 
     try {
       // Map region
-      Module.ccall('add_region', 'void', ['number', 'number', 'number'], [0, MEM_SIZE, memPtr]);
+      Module._add_region(0, MEM_SIZE, memPtr);
 
       // Reset vectors
       mem[0] = 0x00; mem[1] = 0x00; mem[2] = 0x10; mem[3] = 0x00; // SP
@@ -50,10 +50,10 @@ describe('JS probe respects address filtering', () => {
       // Set JS probe
       let calls = [];
       const probeFunc = Module.addFunction((pc) => { calls.push(pc); return 0; }, 'ii');
-      Module.ccall('set_probe_callback', 'void', ['number'], [probeFunc]);
+      Module._set_probe_callback(probeFunc);
 
       // Filter to only one PC: 0x404
-      Module.ccall('add_pc_hook_addr', 'void', ['number'], [0x404]);
+      Module._add_pc_hook_addr(0x404);
 
       // Reset and run
       Module._m68k_pulse_reset();
@@ -66,7 +66,7 @@ describe('JS probe respects address filtering', () => {
       Module.removeFunction(probeFunc);
     } finally {
       Module._free(memPtr);
-      Module.ccall('clear_regions', 'void', [], []);
+      Module._clear_regions();
     }
   });
 });

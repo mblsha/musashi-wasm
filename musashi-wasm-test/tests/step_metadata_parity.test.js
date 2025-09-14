@@ -31,7 +31,7 @@ describe('Single-step metadata parity against disassembler size', () => {
     const mem = Module.HEAPU8.subarray(memPtr, memPtr + REGION_SIZE);
 
     // Map region
-    Module.ccall('add_region', 'void', ['number', 'number', 'number'], [0, REGION_SIZE, memPtr]);
+    Module._add_region(0, REGION_SIZE, memPtr);
 
     // Reset vectors: SP=0x10000, PC=0x400
     mem[0] = 0x00; mem[1] = 0x01; mem[2] = 0x00; mem[3] = 0x00;
@@ -56,7 +56,7 @@ describe('Single-step metadata parity against disassembler size', () => {
       const stepAndAssert = (pc) => {
         // Decode size via disassembler
         const buf = Module._malloc(128);
-        const size = Module.ccall('m68k_disassemble', 'number', ['number','number','number'], [buf, pc, 0]);
+        const size = Module._m68k_disassemble(buf, pc, 0);
         Module._free(buf);
         expect(size).toBeGreaterThan(0);
 
@@ -78,7 +78,7 @@ describe('Single-step metadata parity against disassembler size', () => {
       pc = stepAndAssert(pc);
     } finally {
       try { Module._free(memPtr); } catch {}
-      try { Module.ccall('clear_regions', 'void', [], []); } catch {}
+      try { Module._clear_regions(); } catch {}
     }
   });
 });

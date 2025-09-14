@@ -50,12 +50,12 @@ describe('Musashi WASM Node.js Integration Test', () => {
         console.log('\n=== Test Setup for:', expect.getState().currentTestName, '===');
         Module._m68k_init();
         // Clear regions and callbacks between tests for proper cleanup
-        Module.ccall('clear_regions', 'void', [], []);
-        Module.ccall('set_read_mem_func', 'void', ['number'], [0]);
-        Module.ccall('set_write_mem_func', 'void', ['number'], [0]);
-        Module.ccall('clear_pc_hook_func', 'void', [], []);
+        Module._clear_regions();
+        Module._set_read_mem_func(0);
+        Module._set_write_mem_func(0);
+        Module._clear_pc_hook_func();
         // Enable debug logging
-        Module.ccall('enable_printf_logging', 'void', [], []);
+        try { Module._enable_printf_logging(); } catch {}
     });
 
     it('should correctly execute a simple program using the full API bridge', () => {
@@ -91,14 +91,14 @@ describe('Musashi WASM Node.js Integration Test', () => {
 
             // Map this WASM memory as a region for fast access
             console.log(`Adding region: start=0x0 size=0x${MEMORY_SIZE.toString(16)} ptr=0x${wasmMemoryPtr.toString(16)}`);
-            Module.ccall('add_region', 'void', ['number', 'number', 'number'], [0x0, MEMORY_SIZE, wasmMemoryPtr]);
+        Module._add_region(0x0, MEMORY_SIZE, wasmMemoryPtr);
 
             // Set up write callback for memory outside the region
             const writeCallbackSpy = jest.fn((address, size, value) => {});
             writeCallbackPtr = Module.addFunction((address, size, value) => {
                 writeCallbackSpy(address, size, value);
             }, 'viii');
-            Module.ccall('set_write_mem_func', 'void', ['number'], [writeCallbackPtr]);
+            Module._set_write_mem_func(writeCallbackPtr);
 
             // 3. Requirement: Instruction Hooking
             const pcLog = [];
@@ -107,7 +107,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
                 return 0; // Continue execution
             });
             pcHookPtr = Module.addFunction(pcHookSpy, 'ii');
-            Module.ccall('set_pc_hook_func', 'void', ['number'], [pcHookPtr]);
+            Module._set_pc_hook_func(pcHookPtr);
 
             // --- Test Setup ---
             // Write program to memory
@@ -200,8 +200,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
         const memPtr = Module._malloc(memSize);
         
         // Add memory region so disassembler can read from it
-        Module.ccall('add_region', 'void', ['number', 'number', 'number'], 
-            [0, memSize, memPtr]);
+        Module._add_region(0, memSize, memPtr);
         
         // Write NOP instruction at PC_ADDR
         Module.HEAPU8.set(NOP_OPCODE, memPtr + PC_ADDR);
@@ -211,8 +210,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
         const bufferPtr = Module._malloc(bufferSize);
         
         try {
-            Module.ccall('m68k_disassemble', 'number', ['number', 'number', 'number'], 
-                [bufferPtr, PC_ADDR, 0]); // CPU Type 0 (68000)
+            Module._m68k_disassemble(bufferPtr, PC_ADDR, 0); // CPU Type 0 (68000)
             const result = Module.UTF8ToString(bufferPtr);
             
             // Disassembler adds tabs and spacing, so we check for the core part
@@ -220,7 +218,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
         } finally {
             Module._free(memPtr);
             Module._free(bufferPtr);
-            Module.ccall('clear_regions', 'void', [], []);
+            Module._clear_regions();
         }
     });
 
@@ -237,8 +235,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
             const regionView = Module.HEAPU8.subarray(regionMemPtr, regionMemPtr + REGION_SIZE);
             
             // Add the region
-            Module.ccall('add_region', 'void', ['number', 'number', 'number'], 
-                [REGION_BASE, REGION_SIZE, regionMemPtr]);
+            Module._add_region(REGION_BASE, REGION_SIZE, regionMemPtr);
             
             // Set up callbacks for addresses outside regions
             const readCallbackSpy = jest.fn((address, size) => {
@@ -249,8 +246,8 @@ describe('Musashi WASM Node.js Integration Test', () => {
             readCallbackPtr = Module.addFunction(readCallbackSpy, 'iii');
             writeCallbackPtr = Module.addFunction(writeCallbackSpy, 'viii');
             
-            Module.ccall('set_read_mem_func', 'void', ['number'], [readCallbackPtr]);
-            Module.ccall('set_write_mem_func', 'void', ['number'], [writeCallbackPtr]);
+            Module._set_read_mem_func(readCallbackPtr);
+            Module._set_write_mem_func(writeCallbackPtr);
             
             // Write test data to region
             const testData = 0xDEADBEEF;
@@ -288,7 +285,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
             if (regionMemPtr) Module._free(regionMemPtr);
             if (readCallbackPtr) Module.removeFunction(readCallbackPtr);
             if (writeCallbackPtr) Module.removeFunction(writeCallbackPtr);
-            Module.ccall('clear_regions', 'void', [], []);
+            Module._clear_regions();
         }
     });
 
@@ -302,8 +299,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
         
         try {
             // Add memory region
-            Module.ccall('add_region', 'void', ['number', 'number', 'number'], 
-                [0, MEMORY_SIZE, memPtr]);
+            Module._add_region(0, MEMORY_SIZE, memPtr);
             
             // Set reset vectors (SP=0x100, PC=0x10)
             memory[0] = 0x00; memory[1] = 0x00; memory[2] = 0x01; memory[3] = 0x00; // SP
@@ -328,7 +324,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
             expect(totalCycles).toBe(actualCycles);
         } finally {
             Module._free(memPtr);
-            Module.ccall('clear_regions', 'void', [], []);
+            Module._clear_regions();
         }
     });
 
@@ -338,8 +334,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
         const memPtr = Module._malloc(memSize);
         
         try {
-            Module.ccall('add_region', 'void', ['number', 'number', 'number'], 
-                [0, memSize, memPtr]);
+            Module._add_region(0, memSize, memPtr);
             
             Module._m68k_init();
             
@@ -352,7 +347,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
             // The CPU needs to be in a specific state to set these registers
         } finally {
             Module._free(memPtr);
-            Module.ccall('clear_regions', 'void', [], []);
+            Module._clear_regions();
         }
     });
 
@@ -364,7 +359,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
             // Set up memory
             memPtr = Module._malloc(MEMORY_SIZE);
             const memory = Module.HEAPU8.subarray(memPtr, memPtr + MEMORY_SIZE);
-            Module.ccall('add_region', 'void', ['number', 'number', 'number'], [0, MEMORY_SIZE, memPtr]);
+            Module._add_region(0, MEMORY_SIZE, memPtr);
             
             // Write several NOP instructions
             for (let i = 0x400; i < 0x410; i += 2) {
@@ -382,7 +377,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
                 instructionCount++;
                 return instructionCount >= 3 ? 1 : 0; // Stop after 3 instructions
             }, 'ii');
-            Module.ccall('set_pc_hook_func', 'void', ['number'], [pcHookPtr]);
+            Module._set_pc_hook_func(pcHookPtr);
             
             // Reset and execute
             Module._m68k_pulse_reset();
@@ -396,7 +391,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
         } finally {
             if (memPtr) Module._free(memPtr);
             if (pcHookPtr) Module.removeFunction(pcHookPtr);
-            Module.ccall('clear_regions', 'void', [], []);
+            Module._clear_regions();
         }
     });
 });

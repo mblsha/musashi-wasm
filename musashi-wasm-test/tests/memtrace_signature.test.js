@@ -34,7 +34,7 @@ describe('Memory trace callback signature (iiiiij) works in Node', () => {
     const mem = Module.HEAPU8.subarray(memPtr, memPtr + REGION_SIZE);
 
     // Map region [0..REGION_SIZE)
-    Module.ccall('add_region', 'void', ['number', 'number', 'number'], [0, REGION_SIZE, memPtr]);
+    Module._add_region(0, REGION_SIZE, memPtr);
 
     // Reset vectors: SP=0x10000, PC=0x400
     mem[0] = 0x00; mem[1] = 0x01; mem[2] = 0x00; mem[3] = 0x00;
@@ -82,7 +82,7 @@ describe('Memory trace callback signature (iiiiij) works in Node', () => {
       try { Module._m68k_set_trace_mem_callback(0); } catch {}
       try { Module.removeFunction(cbPtr); } catch {}
       try { Module._free(memPtr); } catch {}
-      try { Module.ccall('clear_regions', 'void', [], []); } catch {}
+      try { Module._clear_regions(); } catch {}
     }
   });
 });

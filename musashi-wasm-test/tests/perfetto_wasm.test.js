@@ -20,11 +20,19 @@ describe('Musashi WASM Perfetto Integration Test', () => {
         }
     });
 
+    // Helper to allocate a C string in WASM memory
+    function allocCString(Module, str) {
+        const ptr = Module._malloc(str.length + 1);
+        for (let i = 0; i < str.length; i++) Module.HEAPU8[ptr + i] = str.charCodeAt(i);
+        Module.HEAPU8[ptr + str.length] = 0;
+        return ptr;
+    }
+
     // Isolate tests by cleaning up state before each run
     beforeEach(() => {
         // Reset the emulator and API state
-        Module.ccall('reset_myfunc_state', 'void', [], []);
-        Module._m68k_init();
+        if (typeof Module._reset_myfunc_state === 'function') Module._reset_myfunc_state();
+        if (typeof Module._m68k_init === 'function') Module._m68k_init();
     });
 
     afterEach(() => {
@@ -136,7 +144,7 @@ describe('Musashi WASM Perfetto Integration Test', () => {
             // 2. Setup Memory
             wasmMemoryPtr = Module._malloc(MEMORY_SIZE);
             const jsMemory = Module.HEAPU8.subarray(wasmMemoryPtr, wasmMemoryPtr + MEMORY_SIZE);
-            Module.ccall('add_region', 'void', ['number', 'number', 'number'], [0, MEMORY_SIZE, wasmMemoryPtr]);
+            Module._add_region(0, MEMORY_SIZE, wasmMemoryPtr);
 
             // Load the program into memory
             jsMemory.set(machineCode, PROG_START_ADDR);
@@ -152,22 +160,40 @@ describe('Musashi WASM Perfetto Integration Test', () => {
             jsMemory[7] = PROG_START_ADDR & 0xFF;
             
             // 3. Initialize and Configure Perfetto
-            const initResult = Module.ccall('m68k_perfetto_init', 'number', ['string'], ['MusashiWasmTest']);
-            expect(initResult).toBe(0);
+            const pname = 'MusashiWasmTest';
+            const pnamePtr = allocCString(Module, pname);
+            try {
+                const initResult = Module._m68k_perfetto_init(pnamePtr);
+                expect(initResult).toBe(0);
+            } finally {
+                Module._free(pnamePtr);
+            }
 
             // Register symbol names to enrich the trace, just like the C++ test
-            Module.ccall('register_function_name', 'void', ['number', 'string'], [0x400, 'main']);
-            Module.ccall('register_function_name', 'void', ['number', 'string'], [0x44c, 'merge_sort']);
-            Module.ccall('register_function_name', 'void', ['number', 'string'], [0x500, 'factorial']);
-            Module.ccall('register_function_name', 'void', ['number', 'string'], [0x520, 'func_a']);
-            Module.ccall('register_function_name', 'void', ['number', 'string'], [0x530, 'func_b']);
-            Module.ccall('register_function_name', 'void', ['number', 'string'], [0x540, 'func_c']);
-            Module.ccall('register_function_name', 'void', ['number', 'string'], [0x550, 'write_pattern']);
+            const names = [
+                [0x400, 'main'],
+                [0x44c, 'merge_sort'],
+                [0x500, 'factorial'],
+                [0x520, 'func_a'],
+                [0x530, 'func_b'],
+                [0x540, 'func_c'],
+                [0x550, 'write_pattern'],
+            ];
+            for (const [addr, nm] of names) {
+                const nPtr = allocCString(Module, nm);
+                try { Module._register_function_name(addr, nPtr); } finally { Module._free(nPtr); }
+            }
             
             // Register memory regions
-            Module.ccall('register_memory_name', 'void', ['number', 'string'], [0x2000, 'array_to_sort']);
-            Module.ccall('register_memory_name', 'void', ['number', 'string'], [0x3000, 'factorial_result']);
-            Module.ccall('register_memory_name', 'void', ['number', 'string'], [0x4000, 'pattern_buffer']);
+            const memNames = [
+                [0x2000, 'array_to_sort'],
+                [0x3000, 'factorial_result'],
+                [0x4000, 'pattern_buffer'],
+            ];
+            for (const [addr, nm] of memNames) {
+                const nPtr = allocCString(Module, nm);
+                try { Module._register_memory_name(addr, nPtr); } finally { Module._free(nPtr); }
+            }
             
             // Enable all tracing features
             Module._m68k_perfetto_enable_flow(1);
@@ -214,7 +240,7 @@ describe('Musashi WASM Perfetto Integration Test', () => {
         } finally {
             // Free allocated WASM memory
             if (wasmMemoryPtr) Module._free(wasmMemoryPtr);
-            Module.ccall('clear_regions', 'void', [], []);
+            if (typeof Module._clear_regions === 'function') Module._clear_regions();
         }
     });
 
@@ -227,7 +253,7 @@ describe('Musashi WASM Perfetto Integration Test', () => {
             // Setup memory
             wasmMemoryPtr = Module._malloc(MEMORY_SIZE);
             const jsMemory = Module.HEAPU8.subarray(wasmMemoryPtr, wasmMemoryPtr + MEMORY_SIZE);
-            Module.ccall('add_region', 'void', ['number', 'number', 'number'], [0, MEMORY_SIZE, wasmMemoryPtr]);
+            Module._add_region(0, MEMORY_SIZE, wasmMemoryPtr);
 
             // Simple test program from the C++ test
             const simpleProgram = new Uint8Array([
@@ -255,8 +281,14 @@ describe('Musashi WASM Perfetto Integration Test', () => {
             jsMemory[7] = 0x00;
 
             // Initialize Perfetto
-            const initResult = Module.ccall('m68k_perfetto_init', 'number', ['string'], ['SimpleInstructionTest']);
-            expect(initResult).toBe(0);
+            const sname = 'SimpleInstructionTest';
+            const snamePtr = allocCString(Module, sname);
+            try {
+                const initResult = Module._m68k_perfetto_init(snamePtr);
+                expect(initResult).toBe(0);
+            } finally {
+                Module._free(snamePtr);
+            }
 
             // Enable instruction tracing only
             Module._m68k_perfetto_enable_instructions(1);
@@ -293,7 +325,7 @@ describe('Musashi WASM Perfetto Integration Test', () => {
 
         } finally {
             if (wasmMemoryPtr) Module._free(wasmMemoryPtr);
-            Module.ccall('clear_regions', 'void', [], []);
+            if (typeof Module._clear_regions === 'function') Module._clear_regions();
             if (Module._m68k_perfetto_is_initialized && Module._m68k_perfetto_is_initialized()) {
                 Module._m68k_perfetto_destroy();
             }
@@ -303,12 +335,16 @@ describe('Musashi WASM Perfetto Integration Test', () => {
     test('should support symbol naming', () => {
         if (!perfettoAvailable) { return; }
         // Test that symbol naming functions don't crash
-        Module.ccall('register_function_name', 'void', ['number', 'string'], [0x400, 'test_function']);
-        Module.ccall('register_memory_name', 'void', ['number', 'string'], [0x1000, 'test_memory']);
-        Module.ccall('register_memory_range', 'void', ['number', 'number', 'string'], [0x2000, 256, 'test_buffer']);
+        const fnPtr = allocCString(Module, 'test_function');
+        const memPtr = allocCString(Module, 'test_memory');
+        const bufPtr = allocCString(Module, 'test_buffer');
+        Module._register_function_name(0x400, fnPtr);
+        Module._register_memory_name(0x1000, memPtr);
+        Module._register_memory_range(0x2000, 256, bufPtr);
+        Module._free(fnPtr); Module._free(memPtr); Module._free(bufPtr);
         
         // Clear names to verify cleanup works
-        Module.ccall('clear_registered_names', 'void', [], []);
+        if (typeof Module._clear_registered_names === 'function') Module._clear_registered_names();
         
         // No crash = success
         expect(true).toBe(true);

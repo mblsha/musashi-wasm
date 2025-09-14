@@ -10,19 +10,8 @@
 #include <cstdio>
 #include <cstdlib>
 
-/* Forward declarations for myfunc.cc wrapper functions */
+/* Forward declarations for symbol naming functions from myfunc.cc */
 extern "C" {
-    /* Perfetto wrapper functions from myfunc.cc */
-    int perfetto_init(const char* process_name);
-    void perfetto_destroy(void);
-    void perfetto_enable_flow(int enable);
-    void perfetto_enable_memory(int enable);
-    void perfetto_enable_instructions(int enable);
-    int perfetto_export_trace(uint8_t** data_out, size_t* size_out);
-    void perfetto_free_trace_data(uint8_t* data);
-    int perfetto_save_trace(const char* filename);
-    int perfetto_is_initialized(void);
-    
     /* Symbol naming functions from myfunc.cc */
     void register_function_name(unsigned int address, const char* name);
     void register_memory_name(unsigned int address, const char* name);
@@ -44,8 +33,8 @@ protected:
     
     void OnTearDown() override {
         /* Clean up Perfetto if initialized */
-        if (::perfetto_is_initialized()) {
-            ::perfetto_destroy();
+        if (::m68k_perfetto_is_initialized()) {
+            ::m68k_perfetto_destroy();
         }
         
         /* Disable tracing */
@@ -75,52 +64,52 @@ protected:
 
 TEST_F(PerfettoTest, InitializationAndCleanup) {
     /* Test initialization */
-    EXPECT_FALSE(::perfetto_is_initialized());
+    EXPECT_FALSE(::m68k_perfetto_is_initialized());
     
-    int result = ::perfetto_init("TestEmulator");
+    int result = ::m68k_perfetto_init("TestEmulator");
     
     #ifdef ENABLE_PERFETTO
         EXPECT_EQ(result, 0);
-        EXPECT_TRUE(::perfetto_is_initialized());
+        EXPECT_TRUE(::m68k_perfetto_is_initialized());
         
         /* Test cleanup */
-        ::perfetto_destroy();
-        EXPECT_FALSE(::perfetto_is_initialized());
+        ::m68k_perfetto_destroy();
+        EXPECT_FALSE(::m68k_perfetto_is_initialized());
     #else
         /* When Perfetto is disabled, functions should be no-ops */
-        EXPECT_FALSE(::perfetto_is_initialized());
+        EXPECT_FALSE(::m68k_perfetto_is_initialized());
     #endif
 }
 
 TEST_F(PerfettoTest, FeatureEnableDisable) {
-    if (::perfetto_init("TestEmulator") == 0) {
+    if (::m68k_perfetto_init("TestEmulator") == 0) {
         /* These should not crash even when Perfetto is disabled */
-        ::perfetto_enable_flow(1);
-        ::perfetto_enable_memory(1);
-        ::perfetto_enable_instructions(1);
+        ::m68k_perfetto_enable_flow(1);
+        ::m68k_perfetto_enable_memory(1);
+        ::m68k_perfetto_enable_instructions(1);
         
-        ::perfetto_enable_flow(0);
-        ::perfetto_enable_memory(0);
-        ::perfetto_enable_instructions(0);
+        ::m68k_perfetto_enable_flow(0);
+        ::m68k_perfetto_enable_memory(0);
+        ::m68k_perfetto_enable_instructions(0);
         
         SUCCEED(); /* If we reach here without crashing, test passes */
     }
 }
 
 TEST_F(PerfettoTest, TraceExportEmpty) {
-    if (::perfetto_init("TestEmulator") == 0) {
+    if (::m68k_perfetto_init("TestEmulator") == 0) {
         uint8_t* trace_data = nullptr;
         size_t trace_size = 0;
         
         /* Export trace (should work even if empty) */
-        int export_result = ::perfetto_export_trace(&trace_data, &trace_size);
+        int export_result = ::m68k_perfetto_export_trace(&trace_data, &trace_size);
         
         #ifdef ENABLE_PERFETTO
             EXPECT_EQ(export_result, 0);
             /* Note: Empty trace might still have some header data */
             if (trace_data) {
                 EXPECT_GT(trace_size, 0);
-                ::perfetto_free_trace_data(trace_data);
+                ::m68k_perfetto_free_trace_data(trace_data);
             }
         #else
             EXPECT_EQ(export_result, -1);
@@ -135,12 +124,12 @@ TEST_F(PerfettoTest, TraceExportEmpty) {
 /* ======================================================================== */
 
 TEST_F(PerfettoTest, BasicInstructionTracing) {
-    if (::perfetto_init("M68K_Instruction_Test") != 0) {
+    if (::m68k_perfetto_init("M68K_Instruction_Test") != 0) {
         GTEST_SKIP() << "Perfetto not available, skipping instruction tracing test";
     }
     
     /* Enable instruction tracing */
-    ::perfetto_enable_instructions(1);
+    ::m68k_perfetto_enable_instructions(1);
     
     /* Create a simple program */
     create_simple_program();
@@ -156,24 +145,24 @@ TEST_F(PerfettoTest, BasicInstructionTracing) {
     uint8_t* trace_data = nullptr;
     size_t trace_size = 0;
     
-    int export_result = ::perfetto_export_trace(&trace_data, &trace_size);
+    int export_result = ::m68k_perfetto_export_trace(&trace_data, &trace_size);
     
     #ifdef ENABLE_PERFETTO
         EXPECT_EQ(export_result, 0);
         if (trace_data) {
             EXPECT_GT(trace_size, 0);
-            ::perfetto_free_trace_data(trace_data);
+            ::m68k_perfetto_free_trace_data(trace_data);
         }
     #endif
 }
 
 TEST_F(PerfettoTest, FlowTracing) {
-    if (::perfetto_init("M68K_Flow_Test") != 0) {
+    if (::m68k_perfetto_init("M68K_Flow_Test") != 0) {
         GTEST_SKIP() << "Perfetto not available, skipping flow tracing test";
     }
     
     /* Enable flow tracing */
-    ::perfetto_enable_flow(1);
+    ::m68k_perfetto_enable_flow(1);
     
     /* Create a simple program */
     create_simple_program();
@@ -184,7 +173,7 @@ TEST_F(PerfettoTest, FlowTracing) {
     
     #ifdef ENABLE_PERFETTO
         /* Verify we can save the trace */
-        int save_result = ::perfetto_save_trace("test_flow.perfetto-trace");
+        int save_result = ::m68k_perfetto_save_trace("test_flow.perfetto-trace");
         EXPECT_EQ(save_result, 0);
     #endif
 }
@@ -208,13 +197,13 @@ TEST_F(PerfettoTest, SymbolNaming) {
 /* ======================================================================== */
 
 TEST_F(PerfettoTest, BranchAndSubroutineTracing) {
-    if (::perfetto_init("M68K_Branch_Test") != 0) {
+    if (::m68k_perfetto_init("M68K_Branch_Test") != 0) {
         GTEST_SKIP() << "Perfetto not available, skipping branch tracing test";
     }
     
     /* Enable all tracing features */
-    ::perfetto_enable_flow(1);
-    ::perfetto_enable_instructions(1);
+    ::m68k_perfetto_enable_flow(1);
+    ::m68k_perfetto_enable_instructions(1);
     
     /* Create program with branch and subroutine */
     uint32_t pc = 0x400;
