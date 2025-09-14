@@ -1,3 +1,5 @@
+import type { M68kRegister as CommonM68kRegister } from '@m68k/common';
+
 declare module 'musashi-wasm' {
   export interface MusashiModule {
     _m68k_init(): void;
@@ -21,40 +23,7 @@ declare module 'musashi-wasm' {
     allocateUTF8(str: string): number;
   }
 
-  export enum M68kRegister {
-    D0 = 0,
-    D1 = 1,
-    D2 = 2,
-    D3 = 3,
-    D4 = 4,
-    D5 = 5,
-    D6 = 6,
-    D7 = 7,
-    A0 = 8,
-    A1 = 9,
-    A2 = 10,
-    A3 = 11,
-    A4 = 12,
-    A5 = 13,
-    A6 = 14,
-    A7 = 15,
-    PC = 16,
-    SR = 17,
-    SP = 18,
-    USP = 19,
-    ISP = 20,
-    MSP = 21,
-    SFC = 22,
-    DFC = 23,
-    VBR = 24,
-    CACR = 25,
-    CAAR = 26,
-    PREF_ADDR = 27,
-    PREF_DATA = 28,
-    PPC = 29,
-    IR = 30,
-    CPU_TYPE = 31
-  }
+  export type M68kRegister = CommonM68kRegister;
 
   export type ReadMemoryCallback = (address: number) => number;
   export type WriteMemoryCallback = (address: number, value: number) => void;
