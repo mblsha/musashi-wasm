@@ -58,12 +58,12 @@ TEST_F(MyFuncTest, SingleStepNormalizesPcAndPpc) {
     // MOVE.L #$12345678, D0 (6 bytes) ; followed by NOP
     write_word(0x400, 0x203C); // MOVE.L #imm, D0
     write_long(0x402, 0x12345678);
-    write_word(0x408, 0x4E71);   // NOP
+    write_word(0x406, 0x4E71);   // NOP
 
     // Validate disassembly text and size immediately after writing
     EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x400),
               std::make_pair(std::string("move.l  #$12345678, D0"), 6));
-    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x408),
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x406),
               std::make_pair(std::string("nop"), 2));
 
     unsigned int start = m68k_get_reg(NULL, M68K_REG_PC);
