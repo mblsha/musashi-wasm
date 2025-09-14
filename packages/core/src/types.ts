@@ -186,4 +186,10 @@ export interface System {
    * Returns a function to unsubscribe.
    */
   onMemoryWrite(cb: MemoryAccessCallback): () => void;
+
+  /**
+   * Releases resources associated with the underlying WASM module/session.
+   * Should be called when the system is no longer needed to prevent leaks.
+   */
+  cleanup(): void;
 }

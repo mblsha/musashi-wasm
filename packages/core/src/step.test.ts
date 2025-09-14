@@ -34,6 +34,10 @@ describe('@m68k/core step()', () => {
     system = await createSystem({ rom, ramSize: 0x1000 });
   });
 
+  afterEach(() => {
+    system.cleanup();
+  });
+
   it('executes exactly one instruction and advances PC', async () => {
     const regs0 = system.getRegisters();
     expect(regs0.pc >>> 0).toBe(0x400);

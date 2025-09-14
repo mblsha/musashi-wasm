@@ -57,7 +57,8 @@ describe('@m68k/core', () => {
   });
 
   afterEach(() => {
-    // No cleanup method in System interface
+    // Clean up system resources to prevent Jest from hanging
+    system.cleanup();
   });
 
   it('should create a system', () => {
