@@ -542,10 +542,17 @@ export class MusashiWrapper {
 }
 
 // Factory function to load and initialize the wasm module
-export async function getModule(): Promise<MusashiWrapper> {
+let sharedModule: MusashiEmscriptenModule | null = null;
+let modulePromise: Promise<MusashiEmscriptenModule> | null = null;
+
+export function resetSharedModule(): void {
+  sharedModule = null;
+  modulePromise = null;
+}
+
+async function loadModule(): Promise<MusashiEmscriptenModule> {
   // Environment detection without DOM types
-  const isNode =
-    typeof process !== 'undefined' && !!process.versions?.node;
+  const isNode = typeof process !== 'undefined' && !!process.versions?.node;
 
   // Dynamic import based on environment
   let module: unknown;
@@ -576,5 +583,28 @@ export async function getModule(): Promise<MusashiWrapper> {
     module = await moduleFactory();
   }
 
-  return new MusashiWrapper(module as MusashiEmscriptenModule);
+  return module as MusashiEmscriptenModule;
+}
+
+export async function getModule(): Promise<MusashiWrapper> {
+  const isTest = typeof process !== 'undefined' && (
+    process.env.NODE_ENV === 'test' ||
+    process.env.JEST_WORKER_ID !== undefined ||
+    (Array.isArray(process.argv) && process.argv.some(a => typeof a === 'string' && a.includes('jest')))
+  );
+
+  if (isTest) {
+    if (!modulePromise) {
+      modulePromise = loadModule().then((mod) => {
+        sharedModule = mod;
+        return mod;
+      });
+    }
+    const mod = await modulePromise;
+    return new MusashiWrapper(mod);
+  }
+
+  // Non-test: create a fresh module instance
+  const mod = await loadModule();
+  return new MusashiWrapper(mod);
 }
