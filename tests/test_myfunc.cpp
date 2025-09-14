@@ -60,6 +60,15 @@ TEST_F(MyFuncTest, SingleStepNormalizesPcAndPpc) {
     write_long(0x402, 0x12345678);
     write_word(0x408, 0x4E71);   // NOP
 
+    // Validate disassembly text and size immediately after writing
+    char buf[256];
+    unsigned int sz0 = m68k_disassemble(buf, 0x400, M68K_CPU_TYPE_68000);
+    EXPECT_EQ(sz0, 6u);
+    EXPECT_STREQ(buf, "move.l  #$12345678, D0");
+    unsigned int sz1 = m68k_disassemble(buf, 0x408, M68K_CPU_TYPE_68000);
+    EXPECT_EQ(sz1, 2u);
+    EXPECT_STREQ(buf, "nop");
+
     unsigned int start = m68k_get_reg(NULL, M68K_REG_PC);
     ASSERT_EQ(start, 0x400u);
 
@@ -73,15 +82,6 @@ TEST_F(MyFuncTest, SingleStepNormalizesPcAndPpc) {
     EXPECT_EQ(ppc, 0x400u);
     // And D0 should have the immediate value
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D0), 0x12345678u);
-
-    // Also validate disassembly text and size for clarity
-    char buf[256];
-    unsigned int sz0 = m68k_disassemble(buf, 0x400, M68K_CPU_TYPE_68000);
-    EXPECT_EQ(sz0, 6u);
-    EXPECT_STREQ(buf, "move.l  #$12345678, D0");
-    unsigned int sz1 = m68k_disassemble(buf, 0x406, M68K_CPU_TYPE_68000);
-    EXPECT_EQ(sz1, 2u);
-    EXPECT_STREQ(buf, "nop");
 }
 
 // Validate memory trace callback is invoked during a write and the event
@@ -125,6 +125,18 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
     write_word(0x406, 0x2F00); // MOVE.L D0, -(SP)
     write_word(0x408, 0x4E75); // RTS
 
+    // Validate disassembly immediately after writing each instruction
+    char buf2[256];
+    unsigned int s0 = m68k_disassemble(buf2, 0x400, M68K_CPU_TYPE_68000);
+    EXPECT_EQ(s0, 6u);
+    EXPECT_STREQ(buf2, "move.l  #$CAFEBABE, D0");
+    unsigned int s1 = m68k_disassemble(buf2, 0x406, M68K_CPU_TYPE_68000);
+    EXPECT_EQ(s1, 2u);
+    EXPECT_STREQ(buf2, "move.l  D0, -(A7)");
+    unsigned int s2 = m68k_disassemble(buf2, 0x408, M68K_CPU_TYPE_68000);
+    EXPECT_EQ(s2, 2u);
+    EXPECT_STREQ(buf2, "rts");
+
     // Ensure SP is in a valid RAM range (base class set via reset vector)
     ASSERT_GT(m68k_get_reg(NULL, M68K_REG_SP), 0u);
 
@@ -145,11 +157,7 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
     // Cycles should be non-decreasing and represent total cycles executed
     EXPECT_GE(g_last_cycles, 0u);
 
-    // Disassemble and assert exact instruction string at 0x406
-    char buf2[256];
-    unsigned int sz = m68k_disassemble(buf2, 0x406, M68K_CPU_TYPE_68000);
-    EXPECT_EQ(sz, 2u);
-    EXPECT_STREQ(buf2, "move.l  D0, -(A7)");
+    // Disassembly already validated upfront
 }
 
 // Test memory regions
