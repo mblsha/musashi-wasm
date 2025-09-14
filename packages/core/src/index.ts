@@ -153,7 +153,7 @@ class SystemImpl implements System {
     this.tracer = new TracerImpl(musashi);
 
     // Initialize Musashi with memory regions and hooks
-    this._musashi.init(this, config.rom, this.ram);
+    this._musashi.init(this, config.rom, this.ram, config.memoryLayout);
   }
 
   // (no fusion-specific instrumentation helpers)
