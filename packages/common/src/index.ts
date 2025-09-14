@@ -35,3 +35,7 @@ export enum M68kRegister {
   CPU_TYPE = 31,
 }
 
+// Shared callback types for WASM bridges and wrappers
+export type ReadMemoryCallback = (address: number) => number;
+export type WriteMemoryCallback = (address: number, value: number) => void;
+export type PCHookCallback = (address: number) => number;
