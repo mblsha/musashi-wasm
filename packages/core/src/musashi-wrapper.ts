@@ -66,18 +66,7 @@ export interface MusashiEmscriptenModule {
     cpu_type: number
   ): number;
 
-  // New register helpers
-  _set_d_reg?(n: number, value: number): void;
-  _get_d_reg?(n: number): number;
-  _set_a_reg?(n: number, value: number): void;
-  _get_a_reg?(n: number): number;
-  _set_pc_reg?(value: number): void;
-  _get_pc_reg?(): number;
-  _set_sr_reg?(value: number): void;
-  _get_sr_reg?(): number;
-  _set_isp_reg?(value: number): void;
-  _set_usp_reg?(value: number): void;
-  _get_sp_reg?(): number;
+  
   // New C++-side session helper
   _m68k_call_until_js_stop?(entry_pc: number, timeslice: number): number;
   // Test/debug helpers
