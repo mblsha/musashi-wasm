@@ -392,7 +392,8 @@ export class MusashiWrapper {
             }
             return 0;
           },
-          'iiiiii'
+          // Signature: (i,i,i,i,i,j) -> i  (last arg cycles is unsigned long long)
+          'iiiiij'
         );
       }
       // Wire into core and turn on tracing
