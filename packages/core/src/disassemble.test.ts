@@ -42,7 +42,8 @@ describe('disassembly helpers', () => {
       { addr: 0x0850, bytes: [0x61, 0x06], expect: 'bsr     $858' },
       { addr: 0x0860, bytes: [0x06, 0x81, 0x00, 0x00, 0x00, 0x01], expect: 'addi.l  #$1, D1' },
       { addr: 0x0870, bytes: [0x48, 0x57], expect: 'pea     (A7)' },
-      { addr: 0x0880, bytes: [0x51, 0xc8, 0xff, 0xfe], expect: 'dbra    D0, $87e' },
+      // DBRA with disp16=-2 from 0x0880 branches to 0x0880
+      { addr: 0x0880, bytes: [0x51, 0xc8, 0xff, 0xfe], expect: 'dbra    D0, $880' },
     ];
 
     for (const tc of cases) {

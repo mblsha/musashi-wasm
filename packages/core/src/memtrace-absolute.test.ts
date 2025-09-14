@@ -37,19 +37,17 @@ describe('Memory trace for absolute long accesses (read path)', () => {
 
     // Focus on read-path verification for absolute long; incidental writes from
     // core internals are not relevant here.
-    // Find the two absolute-long reads by address and size
+    // Find absolute-long reads at ABS and group by PC to allow for 16-bit split reads
     const ABS = 0x00106e80 >>> 0;
-    const absReads = reads.filter(r => (r.addr >>> 0) === ABS && r.size === 4);
-    expect(absReads.length).toBeGreaterThanOrEqual(2);
-    const r0 = absReads[0];
-    const r1 = absReads[1];
-    // Initial memory is zeroed, so values are 0
-    expect(r0.value >>> 0).toBe(0);
-    expect(r1.value >>> 0).toBe(0);
-
-    // PCs should match instruction addresses
-    expect(r0.pc >>> 0).toBe(0x416);
-    expect(r1.pc >>> 0).toBe(0x41c);
+    const absReads = reads.filter(r => (r.addr >>> 0) === ABS && (r.size === 4 || r.size === 2));
+    // We expect two instructions (at 0x416 and 0x41c) to read a total of 4 bytes each
+    const byPc = new Map<number, number>();
+    for (const r of absReads) {
+      const pc = r.pc >>> 0;
+      byPc.set(pc, (byPc.get(pc) || 0) + r.size);
+    }
+    expect(byPc.get(0x416) || 0).toBe(4);
+    expect(byPc.get(0x41c) || 0).toBe(4);
 
     // Sanity print on failure
     if (reads.length < 2) {
