@@ -123,9 +123,13 @@ export interface System {
 
   /**
    * Executes exactly one instruction and stops before the next one.
-   * @returns The number of CPU cycles consumed by the instruction.
+   * Returns execution metadata for the instruction.
+   * - cycles: CPU cycles consumed by the instruction
+   * - startPc: PC at instruction start
+   * - endPc: PC after instruction completes
+   * - ppc: optional previous PC reported by the core (usually equals startPc)
    */
-  step(): Promise<number>;
+  step(): Promise<{ cycles: number; startPc: number; endPc: number; ppc?: number }>;
 
   /** Resets the CPU to its initial state. */
   reset(): void;

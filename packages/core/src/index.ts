@@ -205,8 +205,13 @@ class SystemImpl implements System {
     return this._musashi.execute(cycles);
   }
 
-  async step(): Promise<number> {
-    return this._musashi.step();
+  async step(): Promise<{ cycles: number; startPc: number; endPc: number; ppc?: number }> {
+    const startPc = this._musashi.get_reg(16) >>> 0; // PC before executing
+    const cycles = this._musashi.step() >>> 0;
+    const endPc = this._musashi.get_reg(16) >>> 0; // PC after executing
+    // Previous PC as reported by the core; may equal startPc
+    const ppc = this._musashi.get_reg(19) >>> 0;
+    return { cycles, startPc, endPc, ppc };
   }
 
   reset(): void {

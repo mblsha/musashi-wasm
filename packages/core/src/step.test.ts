@@ -38,24 +38,29 @@ describe('@m68k/core step()', () => {
     const regs0 = system.getRegisters();
     expect(regs0.pc >>> 0).toBe(0x400);
 
-    const c1 = await system.step();
-    expect(c1).toBeGreaterThan(0);
+    const s1 = await system.step();
+    expect(s1.cycles).toBeGreaterThan(0);
+    expect(s1.startPc >>> 0).toBe(0x400);
+    expect(s1.endPc >>> 0).toBe(0x406);
     const regs1 = system.getRegisters();
     expect(regs1.pc >>> 0).toBe(0x406); // 6-byte immediate MOVE
     expect(regs1.d0 >>> 0).toBe(0x12345678);
 
     // Ensure next step advances by 2 bytes for MOVE.L D0,(A0)
     system.setRegister('a0', 0x100000);
-    const c2 = await system.step();
-    expect(c2).toBeGreaterThan(0);
+    const s2 = await system.step();
+    expect(s2.cycles).toBeGreaterThan(0);
+    expect(s2.startPc >>> 0).toBe(0x406);
+    expect(s2.endPc >>> 0).toBe(0x408);
     const regs2 = system.getRegisters();
     expect(regs2.pc >>> 0).toBe(0x408);
 
     // Next step should skip 6-byte ADD.L #1,D1
-    const c3 = await system.step();
-    expect(c3).toBeGreaterThan(0);
+    const s3 = await system.step();
+    expect(s3.cycles).toBeGreaterThan(0);
+    expect(s3.startPc >>> 0).toBe(0x408);
+    expect(s3.endPc >>> 0).toBe(0x40e);
     const regs3 = system.getRegisters();
     expect(regs3.pc >>> 0).toBe(0x40e);
   });
 });
-
