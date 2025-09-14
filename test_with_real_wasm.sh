@@ -3,7 +3,7 @@
 # Test with Real WASM - Comprehensive Local Development Script
 #
 # This script automates the complete build and test process for local development:
-# 1. Builds WASM modules using ./build.fish (with optional Perfetto support)
+# 1. Builds WASM modules using ./build.sh (with optional Perfetto support)
 # 2. Copies WASM artifacts to packages/core/wasm/
 # 3. Runs TypeScript tests in packages/core/
 # 4. Runs integration tests in musashi-wasm-test/
@@ -111,7 +111,7 @@ check_dependencies() {
     
     # Check for required commands
     log_info "Checking required commands..."
-    for cmd in fish node npm; do
+    for cmd in node npm; do
         if check_command "$cmd"; then
             log_success "$cmd found"
         else
@@ -152,7 +152,7 @@ check_dependencies() {
     
     # Check for required files
     log_info "Checking required files..."
-    for file in "$SCRIPT_DIR/build.fish" "$PACKAGES_CORE_DIR/package.json" "$WASM_TEST_DIR/package.json"; do
+    for file in "$SCRIPT_DIR/build.sh" "$PACKAGES_CORE_DIR/package.json" "$WASM_TEST_DIR/package.json"; do
         if check_file "$file"; then
             log_success "File found: $(basename "$file")"
         else
@@ -224,7 +224,7 @@ build_wasm() {
     
     cd "$SCRIPT_DIR"
     
-    # Export Perfetto flag for build.fish
+    # Export Perfetto flag for build.sh
     if [ "$ENABLE_PERFETTO" = "1" ]; then
         export ENABLE_PERFETTO=1
         log_info "Building with Perfetto tracing enabled"
@@ -232,11 +232,11 @@ build_wasm() {
         log_info "Building without Perfetto tracing"
     fi
     
-    log_info "Running ./build.fish..."
+    log_info "Running ./build.sh..."
     if [ "$VERBOSE" = "1" ]; then
-        ./build.fish
+        ./build.sh
     else
-        ./build.fish > build_output.log 2>&1 || {
+        ./build.sh > build_output.log 2>&1 || {
             log_error "WASM build failed. Check build_output.log for details:"
             tail -20 build_output.log
             exit 1

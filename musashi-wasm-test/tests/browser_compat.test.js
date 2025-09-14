@@ -58,7 +58,7 @@ describe('Browser Compatibility', () => {
       // In Node.js, the module should load if it exists
       if (loadError) {
         // Module might not be built yet, which is ok for this test
-        console.log('Note: musashi-node.out.mjs not found. Run ./build.fish to build it.');
+        console.log('Note: musashi-node.out.mjs not found. Run ./build.sh to build it.');
         expect(loadError.message).toMatch(/Cannot find module|not found/i);
       } else {
         expect(module).toBeDefined();

@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 // Ensure WASM module exists
 const modulePath = path.resolve(__dirname, '../../musashi-node.out.mjs');
 if (!fs.existsSync(modulePath)) {
-  console.error(`Missing WASM module at ${modulePath}. Build via ./build.fish`);
+  console.error(`Missing WASM module at ${modulePath}. Build via ./build.sh`);
   process.exit(1);
 }
 
@@ -70,4 +70,3 @@ describe('JS probe respects address filtering', () => {
     }
   });
 });
-
