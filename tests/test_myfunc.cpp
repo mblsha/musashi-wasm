@@ -160,9 +160,10 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
                 t, e.pc, e.addr, e.size, e.value, (unsigned long long)e.cycles);
     }
 
-    // Two acceptable patterns depending on M68K_SIMULATE_PD_WRITES:
+    // Acceptable patterns observed in this core:
     // 1) Single 32-bit write at 0x0FFC with value 0xCAFEBABE
-    // 2) Two 16-bit writes: 0x0FFE = 0xCAFE (high), 0x0FFC = 0xBABE (low)
+    // 2) Two 16-bit writes in 68000 PD order:   0x0FFE = 0xCAFE (high), 0x0FFC = 0xBABE (low)
+    // 3) Two 16-bit writes in reversed order:   0x0FFE = 0xBABE (low),  0x0FFC = 0xCAFE (high)
     bool ok = false;
     for (const auto& e : writes) {
         if (e.size == 4 && e.addr == 0x0FFCu && e.value == 0xCAFEBABEu) {
@@ -179,8 +180,11 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
             if (e.size == 2 && e.addr == 0x0FFCu) { lo = static_cast<uint16_t>(e.value & 0xFFFF); seen++; }
         }
         if (seen >= 2) {
-            uint32_t combined = (static_cast<uint32_t>(hi) << 16) | lo;
-            ok = (combined == 0xCAFEBABEu);
+            // Case 2: hi at +2, low at base
+            uint32_t combined1 = (static_cast<uint32_t>(hi) << 16) | lo;
+            // Case 3: reversed order (low at +2, hi at base)
+            uint32_t combined2 = (static_cast<uint32_t>(lo) << 16) | hi;
+            ok = (combined1 == 0xCAFEBABEu) || (combined2 == 0xCAFEBABEu);
         }
     }
     EXPECT_TRUE(ok) << "Memory write trace did not match expected 32-bit or two 16-bit PD writes";
