@@ -39,7 +39,11 @@ describe('Memory trace for absolute long accesses (read path)', () => {
     // core internals are not relevant here.
     // Find absolute-long reads at ABS and group by PC to allow for 16-bit split reads
     const ABS = 0x00106e80 >>> 0;
-    const absReads = reads.filter(r => (r.addr >>> 0) === ABS && (r.size === 4 || r.size === 2));
+    // Some cores perform 32-bit reads as two 16-bit reads starting at ABS or ABS+2.
+    const absReads = reads.filter(r => {
+      const a = r.addr >>> 0;
+      return a >= ABS && a < (ABS + 4) && (r.size === 1 || r.size === 2 || r.size === 4);
+    });
     // We expect two instructions (at 0x416 and 0x41c) to read a total of 4 bytes each
     const byPc = new Map<number, number>();
     for (const r of absReads) {
