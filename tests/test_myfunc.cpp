@@ -181,6 +181,16 @@ TEST_F(MyFuncTest, StepOneJsrSkipsOverFollowingInstructions) {
     // Subroutine target: RTS at 0x414
     write_word(0x414, 0x4E75);
 
+    // Validate disassembly text and sizes
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x400),
+              std::make_pair(std::string("jsr     $414.l"), 6));
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x406),
+              std::make_pair(std::string("move.l  #$aabbccdd, D0"), 6));
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x40C),
+              std::make_pair(std::string("nop"), 2));
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x414),
+              std::make_pair(std::string("rts"), 2));
+
     // Sanity: initial registers
     unsigned int sp0 = m68k_get_reg(NULL, M68K_REG_SP);
     unsigned int pc0 = m68k_get_reg(NULL, M68K_REG_PC);
