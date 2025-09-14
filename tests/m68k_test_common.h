@@ -13,9 +13,9 @@
 #include "m68k.h"
 
 extern "C" {
-    void set_read8_callback(int32_t fp);
-    void set_write8_callback(int32_t fp);
-    void set_probe_callback(int32_t fp);
+    void set_read_mem_func(int (*func)(unsigned int address, int size));
+    void set_write_mem_func(void (*func)(unsigned int address, int size, unsigned int value));
+    void set_pc_hook_func(int (*func)(unsigned int pc));
     void clear_pc_hook_addrs();
     void reset_myfunc_state();
     void clear_regions();
@@ -55,9 +55,9 @@ protected:
         m68k_init();
         
         // Set our callbacks (don't use regions - let callbacks handle everything)
-        set_read8_callback(reinterpret_cast<int32_t>(read8_static));
-        set_write8_callback(reinterpret_cast<int32_t>(write8_static));
-        set_probe_callback(reinterpret_cast<int32_t>(pc_hook_static));
+        set_read_mem_func(read_memory_static);
+        set_write_mem_func(write_memory_static);
+        set_pc_hook_func(pc_hook_static);
         
         write_long(0, 0x1000);  /* Initial SP */
         write_long(4, 0x400);   /* Initial PC */
@@ -163,15 +163,7 @@ private:
         }
     }
 
-    static uint8_t read8_static(uint32_t address) {
-        if (!instance || address >= instance->memory.size()) return 0;
-        return instance->memory[address];
-    }
-
-    static void write8_static(uint32_t address, uint8_t value) {
-        if (!instance || address >= instance->memory.size()) return;
-        instance->memory[address] = value;
-    }
+    // no byte-level callbacks in native tests
     
     static int pc_hook_static(unsigned int pc) {
         return instance ? instance->OnPcHook(pc) : 0;

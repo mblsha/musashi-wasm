@@ -94,7 +94,6 @@ exported_functions=(
   _set_entry_point
   _set_full_instr_hook_func
   _set_pc_hook_func
-  _set_probe_callback
   _set_read_mem_func
   _set_write_mem_func
 )

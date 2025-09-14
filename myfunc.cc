@@ -165,42 +165,7 @@ static inline HookResult processHooks(const HookContext& ctx, bool allow_break) 
 /* JavaScript Callback System                                             */
 /* ======================================================================== */
 
-// JavaScript callback function pointers
-typedef uint8_t (*read8_callback_t)(uint32_t addr);
-typedef void (*write8_callback_t)(uint32_t addr, uint8_t val);
-typedef int (*probe_callback_t)(uint32_t addr);
-
-static read8_callback_t js_read8_callback = nullptr;
-static write8_callback_t js_write8_callback = nullptr;
-static probe_callback_t js_probe_callback = nullptr;
-
-// 24-bit address masking for 68000 (16MB address space)
-static inline uint32_t addr24(uint32_t addr) {
-    return addr & 0x00FFFFFFu;
-}
-
-// Big-endian composition functions with address masking
-static uint16_t read16_be(uint32_t addr) {
-    if (!js_read8_callback) return 0;
-    addr = addr24(addr);
-    return (js_read8_callback(addr) << 8) | js_read8_callback(addr24(addr + 1));
-}
-
-static uint32_t read32_be(uint32_t addr) {
-    return ((uint32_t)read16_be(addr) << 16) | read16_be(addr + 2);
-}
-
-static void write16_be(uint32_t addr, uint16_t val) {
-    if (!js_write8_callback) return;
-    addr = addr24(addr);
-    js_write8_callback(addr, (val >> 8) & 0xFF);
-    js_write8_callback(addr24(addr + 1), val & 0xFF);
-}
-
-static void write32_be(uint32_t addr, uint32_t val) {
-    write16_be(addr, (val >> 16) & 0xFFFF);
-    write16_be(addr + 2, val & 0xFFFF);
-}
+// No read8/write8/probe JS callback system in native core
 
 struct Region {
   unsigned int start_;
@@ -272,24 +237,7 @@ extern "C" {
     _instr_hook = func;
   }
   
-  // JavaScript callback setters - these are what TypeScript actually calls
-  void set_read8_callback(int32_t fp) {
-    js_read8_callback = (read8_callback_t)fp;
-    if (_enable_printf_logging)
-      printf("set_read8_callback: %p\n", (void*)fp);
-  }
-  
-  void set_write8_callback(int32_t fp) {
-    js_write8_callback = (write8_callback_t)fp;
-    if (_enable_printf_logging)
-      printf("set_write8_callback: %p\n", (void*)fp);
-  }
-  
-  void set_probe_callback(int32_t fp) {
-    js_probe_callback = (probe_callback_t)fp;
-    if (_enable_printf_logging)
-      printf("set_probe_callback: %p\n", (void*)fp);
-  }
+  /* byte-level JS callback setters not used in this build */
   // Normalize to 24-bit, even address (68k opcodes are word-aligned)
   static inline uint32_t norm_pc(uint32_t a) {
     return (a & 0x00FFFFFEu);
@@ -321,7 +269,7 @@ extern "C" {
     _pc_hook_addrs.clear();
   }
   
-  /* legacy clear_pc_hook_func removed; use _set_probe_callback(0) */
+  /* legacy probe-clear via clear_pc_hook_func() */
 
   void clear_instr_hook_func() {
     _instr_hook = nullptr;
@@ -521,21 +469,7 @@ extern "C" unsigned int my_read_memory(unsigned int address, int size) {
     }
   }
   
-  // Try JS callback (big-endian composition)
-  if (js_read8_callback) {
-    unsigned int result;
-    switch(size) {
-      case 1: result = js_read8_callback(addr24(address)); break;
-      case 2: result = read16_be(address); break;
-      case 4: result = read32_be(address); break;
-      default: result = 0; break;
-    }
-    if (_enable_printf_logging && address < 0x100) {
-      printf("DEBUG: my_read_memory JS callback: addr=0x%x size=%d value=0x%x\n", 
-             address, size, result);
-    }
-    return result;
-  }
+  // No JS byte-level callback path
   
   // Fall back to old callback system
   if (_read_mem) {
@@ -564,15 +498,7 @@ extern "C" void my_write_memory(unsigned int address, int size, unsigned int val
     }
   }
   
-  // Try JS callback (big-endian decomposition)
-  if (js_write8_callback) {
-    switch(size) {
-      case 1: js_write8_callback(addr24(address), value & 0xFF); break;
-      case 2: write16_be(address, value & 0xFFFF); break;
-      case 4: write32_be(address, value); break;
-    }
-    return;
-  }
+  // No JS byte-level callback path
   
   // Fall back to old callback system
   if (_write_mem) {
@@ -601,20 +527,12 @@ int my_instruction_hook_function(unsigned int pc_raw) {
   if (_enable_printf_logging) {
     static int hook_count = 0;
     if (hook_count < 5) {
-      printf("DEBUG: my_instruction_hook_function called with pc=0x%x, _pc_hook=%p, js_probe_callback=%p\n", 
-             pc, (void*)_pc_hook, (void*)js_probe_callback);
+      printf("DEBUG: my_instruction_hook_function called with pc=0x%x, _pc_hook=%p\n", 
+             pc, (void*)_pc_hook);
       hook_count++;
     }
   }
   
-  // Call JS probe callback if registered, honoring address filter semantics
-  if (js_probe_callback) {
-    if (should_invoke_pc_hook(pc)) {
-      int js_result = js_probe_callback(pc);
-      if (js_result != 0) return js_result;  // JS wants to break
-    }
-  }
-
   // Call legacy PC hook if present and allowed by filter
   if (_pc_hook && should_invoke_pc_hook(pc)) {
     return _pc_hook(pc);
