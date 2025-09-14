@@ -2,7 +2,6 @@ import type {
   System,
   SystemConfig,
   CpuRegisters,
-  HookCallback,
   Tracer,
   TraceConfig,
   SymbolMap,
@@ -17,7 +16,6 @@ export type {
   System,
   SystemConfig,
   CpuRegisters,
-  HookCallback,
   Tracer,
   TraceConfig,
   SymbolMap,
@@ -140,10 +138,6 @@ class SystemImpl implements System {
   private _musashi: MusashiWrapper;
   readonly ram: Uint8Array;
   private _rom: Uint8Array;
-  private _hooks = {
-    probes: new Map<number, HookCallback>(),
-    overrides: new Map<number, HookCallback>(),
-  };
   private _memReads = new Set<MemoryAccessCallback>();
   private _memWrites = new Set<MemoryAccessCallback>();
   private _unifiedHooks = new Map<number, (system: System) => 'continue' | 'stop'>();
@@ -170,10 +164,6 @@ class SystemImpl implements System {
     }
   disassembleDetailed(address: number): { text: string; size: number } | null {
     return this._musashi.disassemble(address >>> 0);
-  }
-  getInstructionSize(pc: number): number {
-    const one = this._musashi.disassemble(pc >>> 0);
-    return one ? (one.size >>> 0) : 0;
   }
   read(address: number, size: 1 | 2 | 4): number {
     return this._musashi.read_memory(address, size);
@@ -234,18 +224,6 @@ class SystemImpl implements System {
     this._musashi.pulse_reset();
   }
 
-  probe(address: number, callback: HookCallback): () => void {
-    this._hooks.probes.set(address, callback);
-    this._musashi.add_pc_hook_addr(address);
-    return () => this._hooks.probes.delete(address);
-  }
-
-  override(address: number, callback: HookCallback): () => void {
-    this._hooks.overrides.set(address, callback);
-    this._musashi.add_pc_hook_addr(address);
-    return () => this._hooks.overrides.delete(address);
-  }
-
   addHook(address: number, handler: (system: System) => 'continue' | 'stop'): () => void {
     this._unifiedHooks.set(address >>> 0, handler);
     this._musashi.add_pc_hook_addr(address >>> 0);
@@ -258,17 +236,6 @@ class SystemImpl implements System {
     if (unified) {
       const res = unified(this);
       return res === 'stop';
-    }
-    const probe = this._hooks.probes.get(pc);
-    if (probe) {
-      probe(this);
-      return false; // Continue execution
-    }
-
-    const override = this._hooks.overrides.get(pc);
-    if (override) {
-      override(this);
-      return true; // Stop and execute RTS
     }
 
     return false; // Continue execution

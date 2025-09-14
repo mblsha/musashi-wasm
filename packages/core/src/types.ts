@@ -24,9 +24,6 @@ export interface CpuRegisters {
   ppc: number; // Previous Program Counter
 }
 
-/** A function to be executed when a specific address is hit during execution. */
-export type HookCallback = (system: System) => void;
-
 /** Unified hook result indicating how execution should proceed. */
 export type HookResult = 'continue' | 'stop';
 
@@ -149,20 +146,6 @@ export interface System {
   reset(): void;
 
   /**
-   * Attaches a "probe" to an address. The callback is executed when the PC
-   * hits this address, after which native execution continues.
-   * @returns A function to remove the hook.
-   */
-  probe(address: number, callback: HookCallback): () => void;
-
-  /**
-   * Attaches an "override" to an address. The callback is executed instead
-   * of the native code. The emulator executes an RTS immediately after.
-   * @returns A function to remove the hook.
-   */
-  override(address: number, callback: HookCallback): () => void;
-
-  /**
    * Adds a unified PC hook at an address. The callback returns whether to
    * continue execution or request a stop (useful for stepping and call()).
    * This is a more general alternative to probe/override.
@@ -177,12 +160,6 @@ export interface System {
 
   /** Returns disassembly text and decoded size in one call (or null if unavailable). */
   disassembleDetailed(address: number): { text: string; size: number } | null;
-
-  /**
-   * Returns the size in bytes of the instruction at the given PC.
-   * Returns 0 if the disassembler is unavailable or decoding fails.
-   */
-  getInstructionSize(pc: number): number;
 
   /**
    * Register a callback for memory reads performed by the CPU. The callback receives

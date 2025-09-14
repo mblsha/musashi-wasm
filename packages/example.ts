@@ -97,14 +97,16 @@ async function main() {
   
   // Set up execution hooks
   let instructionCount = 0;
-  const removeProbe = system.probe(0x400, () => {
+  const removeProbe = system.addHook(0x400, () => {
     console.log('Program started at 0x400');
+    return 'continue';
   });
   
-  const removeFactorialProbe = system.probe(0x420, (sys) => {
+  const removeFactorialProbe = system.addHook(0x420, (sys) => {
     const regs = sys.getRegisters();
     console.log(`Factorial called with D0 = ${regs.d0}`);
     instructionCount++;
+    return 'continue';
   });
   
   // Check if Perfetto tracing is available
