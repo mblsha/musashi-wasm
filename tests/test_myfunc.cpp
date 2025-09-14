@@ -61,13 +61,10 @@ TEST_F(MyFuncTest, SingleStepNormalizesPcAndPpc) {
     write_word(0x408, 0x4E71);   // NOP
 
     // Validate disassembly text and size immediately after writing
-    char buf[256];
-    unsigned int sz0 = m68k_disassemble(buf, 0x400, M68K_CPU_TYPE_68000);
-    EXPECT_EQ(sz0, 6u);
-    EXPECT_STREQ(buf, "move.l  #$12345678, D0");
-    unsigned int sz1 = m68k_disassemble(buf, 0x408, M68K_CPU_TYPE_68000);
-    EXPECT_EQ(sz1, 2u);
-    EXPECT_STREQ(buf, "nop");
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x400),
+              std::make_pair(std::string("move.l  #$12345678, D0"), 6));
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x408),
+              std::make_pair(std::string("nop"), 2));
 
     unsigned int start = m68k_get_reg(NULL, M68K_REG_PC);
     ASSERT_EQ(start, 0x400u);
@@ -126,16 +123,12 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
     write_word(0x408, 0x4E75); // RTS
 
     // Validate disassembly immediately after writing each instruction
-    char buf2[256];
-    unsigned int s0 = m68k_disassemble(buf2, 0x400, M68K_CPU_TYPE_68000);
-    EXPECT_EQ(s0, 6u);
-    EXPECT_STREQ(buf2, "move.l  #$CAFEBABE, D0");
-    unsigned int s1 = m68k_disassemble(buf2, 0x406, M68K_CPU_TYPE_68000);
-    EXPECT_EQ(s1, 2u);
-    EXPECT_STREQ(buf2, "move.l  D0, -(A7)");
-    unsigned int s2 = m68k_disassemble(buf2, 0x408, M68K_CPU_TYPE_68000);
-    EXPECT_EQ(s2, 2u);
-    EXPECT_STREQ(buf2, "rts");
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x400),
+              std::make_pair(std::string("move.l  #$CAFEBABE, D0"), 6));
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x406),
+              std::make_pair(std::string("move.l  D0, -(A7)"), 2));
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x408),
+              std::make_pair(std::string("rts"), 2));
 
     // Ensure SP is in a valid RAM range (base class set via reset vector)
     ASSERT_GT(m68k_get_reg(NULL, M68K_REG_SP), 0u);
