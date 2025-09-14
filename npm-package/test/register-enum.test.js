@@ -1,79 +1,78 @@
-const fs = require('fs');
-const path = require('path');
-const Musashi = require('../lib/index.js');
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-function enumValueFromDts(name) {
-  const dtsPath = path.join(__dirname, '..', 'lib', 'index.d.ts');
-  const text = fs.readFileSync(dtsPath, 'utf8');
-  const re = new RegExp(`\\b${name}\\s*=\\s*(\\d+)`);
-  const m = text.match(re);
-  if (!m) throw new Error(`Enum ${name} not found in index.d.ts`);
-  return parseInt(m[1], 10);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+function parseEnumMap() {
+  const dts = readFileSync(join(__dirname, '..', 'lib', 'index.d.ts'), 'utf8');
+  const map = new Map();
+  const enumBlock = dts.split('export enum M68kRegister')[1].split('}')[0];
+  for (const line of enumBlock.split('\n')) {
+    const m = line.match(/\s*([A-Z_0-9]+)\s*=\s*(\d+)/);
+    if (m) map.set(m[1], parseInt(m[2], 10));
+  }
+  return map;
 }
 
-describe('M68kRegister.PPC enum value', () => {
-  it('is 19 in the d.ts', () => {
-    const ppc = enumValueFromDts('PPC');
-    expect(ppc).toBe(19);
+async function loadModule() {
+  const { default: createModule } = await import('../../musashi-node.out.mjs');
+  return await createModule();
+}
+
+function cString(mod, js) {
+  const bytes = new TextEncoder().encode(js + '\0');
+  const ptr = mod._malloc(bytes.length);
+  mod.HEAPU8.set(bytes, ptr);
+  return ptr;
+}
+
+describe('Register enum and native name resolution', () => {
+  test('PPC enum is 19 in the d.ts', () => {
+    const map = parseEnumMap();
+    expect(map.get('PPC')).toBe(19);
   });
 
-  it('works with getReg() to read previous PC', async () => {
-    const memSize = 1024 * 1024; // 1MB (power of two)
-    const resetSP = 0x00001000;
+  test('m68k_regnum_from_name() matches enum for all names', async () => {
+    const mod = await loadModule();
+    const map = parseEnumMap();
+    for (const [name, exp] of map.entries()) {
+      const ptr = cString(mod, name);
+      const got = mod._m68k_regnum_from_name(ptr);
+      expect(got).toBe(exp);
+      mod._free(ptr);
+    }
+  }, 20000);
+
+  test('getReg(PPC) returns previous PC after stepping one instruction', async () => {
+    const mod = await loadModule();
+    const map = parseEnumMap();
+    const PC = map.get('PC');
+    const PPC = map.get('PPC');
+
+    const memSize = 1 << 20; // 1MB power-of-two buffer
+    const mem = new Uint8Array(memSize);
     const resetPC = 0x00000400;
-    const PC = enumValueFromDts('PC');
-    const PPC = enumValueFromDts('PPC');
+    // Place a single NOP at resetPC
+    mem[resetPC] = 0x4e; mem[resetPC + 1] = 0x71;
 
-    const cpu = new Musashi();
-    await cpu.init();
-    const memPtr = cpu.allocateMemory(memSize);
+    // Wire 8-bit callbacks directly
+    const read8 = mod.addFunction((addr) => mem[addr & (memSize - 1)], 'ii');
+    const write8 = mod.addFunction((addr, val) => { mem[addr & (memSize - 1)] = val & 0xff; }, 'vii');
+    mod._set_read8_callback(read8);
+    mod._set_write8_callback(write8);
 
-    const memory = new Uint8Array(memSize);
-    // Reset vectors (big-endian)
-    memory[0] = (resetSP >> 24) & 0xff;
-    memory[1] = (resetSP >> 16) & 0xff;
-    memory[2] = (resetSP >> 8) & 0xff;
-    memory[3] = resetSP & 0xff;
-    memory[4] = (resetPC >> 24) & 0xff;
-    memory[5] = (resetPC >> 16) & 0xff;
-    memory[6] = (resetPC >> 8) & 0xff;
-    memory[7] = resetPC & 0xff;
-    // First instruction: NOP at resetPC
-    memory[resetPC] = 0x4e;
-    memory[resetPC + 1] = 0x71;
+    mod._m68k_init();
+    // Set SR and PC without relying on ROM vectors
+    mod._set_entry_point(resetPC);
 
-    cpu.setReadMemFunc(address => memory[address & (memSize - 1)]);
-    cpu.setWriteMemFunc((address, value) => {
-      memory[address & (memSize - 1)] = value & 0xff;
-    });
+    // Step exactly one instruction
+    mod._m68k_step_one();
 
-    cpu.writeMemory(memPtr, memory);
-    cpu.addRegion(0, memSize, memPtr);
-
-    let firstPc = -1;
-    cpu.setPCHookFunc(pc => {
-      if (firstPc === -1) {
-        firstPc = pc >>> 0;
-        return 1; // stop after first instruction boundary is seen
-      }
-      return 0;
-    });
-
-    cpu.pulseReset();
-    // Sanity: PC is the reset vector
-    expect(cpu.getReg(PC) >>> 0).toBe(resetPC >>> 0);
-
-    // Run a small slice; PC hook will immediately stop at first instruction
-    cpu.execute(50);
-
-    // The hook saw the instruction start PC
-    expect(firstPc >>> 0).toBe(resetPC >>> 0);
-    // PPC should reflect the previous PC, which equals the firstPc we observed
-    const ppcVal = cpu.getReg(PPC) >>> 0;
-    expect(ppcVal).toBe(firstPc >>> 0);
-
-    cpu.clearRegions();
-    cpu.freeMemory(memPtr);
-  });
+    const pc = mod._m68k_get_reg(0, PC) >>> 0;
+    const ppc = mod._m68k_get_reg(0, PPC) >>> 0;
+    expect(ppc).toBe(resetPC >>> 0);
+    expect(pc).toBe((resetPC + 2) >>> 0);
+  }, 20000);
 });
 
