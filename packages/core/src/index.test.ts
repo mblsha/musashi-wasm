@@ -156,15 +156,16 @@ describe('@m68k/core', () => {
     expect(newRegs.a1).toBe(0x100100);
   });
 
-  it('should support probe hooks', async () => {
+  it('should support hooks that continue', async () => {
     const addresses: number[] = [];
 
     // Initial PC should be 0x400 from reset vector
     const initialPc = system.getRegisters().pc;
     expect(initialPc).toBe(0x400);
 
-    const removeHook = system.probe(0x400, sys => {
+    const removeHook = system.addHook(0x400, sys => {
       addresses.push(sys.getRegisters().pc);
+      return 'continue';
     });
 
     // Execute some instructions
@@ -179,15 +180,16 @@ describe('@m68k/core', () => {
     removeHook();
   });
 
-  it('should override execution at a given address', async () => {
+  it('should stop execution at a given address', async () => {
     const calls: number[] = [];
     const overrideAddress = 0x408; // ADD.L #1, D1 instruction
 
-    const removeOverride = system.override(overrideAddress, sys => {
+    const removeOverride = system.addHook(overrideAddress, sys => {
       calls.push(sys.getRegisters().pc);
       // Custom behavior: set D1 and jump to RTS
       sys.setRegister('d1', 0x42);
       sys.setRegister('pc', 0x40e); // Address of RTS instruction
+      return 'stop';
     });
 
     await system.run(100);

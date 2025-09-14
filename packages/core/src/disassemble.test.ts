@@ -16,8 +16,8 @@ describe('disassembly helpers', () => {
     sys.write(0x400, 1, 0x4e);
     sys.write(0x401, 1, 0x71);
 
-    const line = sys.disassemble(0x400);
-    expect(line).toBe('nop');
+    const info = sys.disassemble(0x400);
+    expect(info?.text).toBe('nop');
   });
 
   it('disassembles a short sequence', async () => {
@@ -30,8 +30,8 @@ describe('disassembly helpers', () => {
     sys.write(0x602, 1, 0x4e);
     sys.write(0x603, 1, 0x75);
 
-    expect(sys.disassemble(0x600)).toBe('nop');
-    expect(sys.disassemble(0x602)).toBe('rts');
+    expect(sys.disassemble(0x600)?.text).toBe('nop');
+    expect(sys.disassemble(0x602)?.text).toBe('rts');
   });
 
   it('disassembles complex instructions and formats text lines', async () => {

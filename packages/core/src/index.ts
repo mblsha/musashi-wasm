@@ -2,7 +2,6 @@ import type {
   System,
   SystemConfig,
   CpuRegisters,
-  HookCallback,
   Tracer,
   TraceConfig,
   SymbolMap,
@@ -18,7 +17,6 @@ export type {
   System,
   SystemConfig,
   CpuRegisters,
-  HookCallback,
   Tracer,
   TraceConfig,
   SymbolMap,
@@ -142,10 +140,6 @@ class SystemImpl implements System {
   private _musashi: MusashiWrapper;
   readonly ram: Uint8Array;
   private _rom: Uint8Array;
-  private _hooks = {
-    probes: new Map<number, HookCallback>(),
-    overrides: new Map<number, HookCallback>(),
-  };
   private _unifiedHooks = new Map<number, (system: System) => HookResult>();
   private _memReads = new Set<MemoryAccessCallback>();
   private _memWrites = new Set<MemoryAccessCallback>();
@@ -234,26 +228,14 @@ class SystemImpl implements System {
     // Previous PC as reported by the core; may equal startPc
     const ppc = this._musashi.get_reg(M68kRegister.PPC) >>> 0;
     // Normalize endPc to decoded instruction size boundary when possible.
-    // This avoids prefetch-related discrepancies in metadata while leaving core state intact.
-    const size = this.getInstructionSize(startPc) >>> 0;
+    const one = this._musashi.disassemble(startPc);
+    const size = one ? (one.size >>> 0) : 0;
     const endPc = size > 0 ? ((startPc + size) >>> 0) : endPcActual;
     return { cycles, startPc, endPc, ppc };
   }
 
   reset(): void {
     this._musashi.pulse_reset();
-  }
-
-  probe(address: number, callback: HookCallback): () => void {
-    this._hooks.probes.set(address, callback);
-    this._musashi.add_pc_hook_addr(address);
-    return () => this._hooks.probes.delete(address);
-  }
-
-  override(address: number, callback: HookCallback): () => void {
-    this._hooks.overrides.set(address, callback);
-    this._musashi.add_pc_hook_addr(address);
-    return () => this._hooks.overrides.delete(address);
   }
 
   addHook(address: number, handler: (system: System) => HookResult): () => void {
@@ -265,24 +247,10 @@ class SystemImpl implements System {
 
   // --- Internal methods for the Musashi wrapper ---
   _handlePCHook(pc: number): boolean {
-    // Prefer unified hook if present
     const unified = this._unifiedHooks.get(pc);
-    if (unified) {
-      const res = unified(this);
-      if (res === 'stop') return true;
-      // fall through to legacy hooks if continue
-    }
-    const probe = this._hooks.probes.get(pc);
-    if (probe) {
-      probe(this);
-      return false; // Continue execution
-    }
-    const override = this._hooks.overrides.get(pc);
-    if (override) {
-      override(this);
-      return true; // Stop and execute RTS
-    }
-    return false; // Continue execution
+    if (!unified) return false;
+    const res = unified(this);
+    return res === 'stop';
   }
 
   cleanup(): void {
