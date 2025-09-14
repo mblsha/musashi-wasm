@@ -35,6 +35,10 @@ const cycles = await system.run(1000);
 // Access registers
 const regs = system.getRegisters();
 console.log(`D0: 0x${regs.d0.toString(16)}`);
+ 
+// Single-step one instruction and inspect metadata
+const { cycles: c1, startPc, endPc } = await system.step();
+console.log(`Stepped ${c1} cycles from 0x${startPc.toString(16)} to 0x${endPc.toString(16)}`);
 ```
 
 ### Building from Source
