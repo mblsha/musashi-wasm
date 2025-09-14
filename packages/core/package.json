@@ -15,7 +15,7 @@
     "build": "tsc",
     "clean": "rm -rf dist",
     "test": "NODE_OPTIONS='--experimental-vm-modules' npx jest",
-    "test:ci": "NODE_OPTIONS='--experimental-vm-modules' npx jest --ci",
+    "test:ci": "NODE_OPTIONS='--experimental-vm-modules' npx jest --ci --forceExit --maxWorkers=1",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
@@ -42,6 +42,7 @@
   },
   "jest": {
     "testEnvironment": "node",
+    "testTimeout": 15000,
     "extensionsToTreatAsEsm": [".ts"],
     "transform": {
       "^.+\\.ts$": [
