@@ -64,10 +64,20 @@ describe('M68kRegister enum parity with native resolver', () => {
     mem[resetPC] = 0x4e; mem[resetPC + 1] = 0x71;
 
     // Wire 8-bit callbacks directly
-    const read8 = mod.addFunction((addr) => mem[addr & (memSize - 1)], 'ii');
-    const write8 = mod.addFunction((addr, val) => { mem[addr & (memSize - 1)] = val & 0xff; }, 'vii');
-    mod._set_read8_callback(read8);
-    mod._set_write8_callback(write8);
+    const readMem = mod.addFunction((addr, size) => {
+      addr = addr & (memSize - 1);
+      if (size === 1) return mem[addr];
+      if (size === 2) return (mem[addr] << 8) | mem[addr + 1];
+      return (mem[addr] << 24) | (mem[addr + 1] << 16) | (mem[addr + 2] << 8) | mem[addr + 3];
+    }, 'iii');
+    const writeMem = mod.addFunction((addr, size, val) => {
+      addr = addr & (memSize - 1);
+      if (size === 1) { mem[addr] = val & 0xff; return; }
+      if (size === 2) { mem[addr] = (val >> 8) & 0xff; mem[addr + 1] = val & 0xff; return; }
+      mem[addr] = (val >> 24) & 0xff; mem[addr + 1] = (val >> 16) & 0xff; mem[addr + 2] = (val >> 8) & 0xff; mem[addr + 3] = val & 0xff;
+    }, 'viii');
+    mod._set_read_mem_func(readMem);
+    mod._set_write_mem_func(writeMem);
 
     mod._m68k_init();
     // Set SR and PC without relying on ROM vectors

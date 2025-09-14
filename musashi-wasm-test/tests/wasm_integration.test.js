@@ -51,10 +51,10 @@ describe('Musashi WASM Node.js Integration Test', () => {
         Module._m68k_init();
         // Clear regions and callbacks between tests for proper cleanup
         Module._clear_regions();
-        // Clear byte-level callbacks
-        if (Module._set_read8_callback) Module._set_read8_callback(0);
-        if (Module._set_write8_callback) Module._set_write8_callback(0);
-        if (Module._set_probe_callback) Module._set_probe_callback(0);
+        // Clear legacy callbacks
+        if (Module._set_read_mem_func) Module._set_read_mem_func(0);
+        if (Module._set_write_mem_func) Module._set_write_mem_func(0);
+        if (Module._clear_pc_hook_func) Module._clear_pc_hook_func();
         // Enable debug logging
         try { Module._enable_printf_logging(); } catch {}
     });
@@ -99,7 +99,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
             writeCallbackPtr = Module.addFunction((address, size, value) => {
                 writeCallbackSpy(address, size, value);
             }, 'viii');
-            if (Module._set_write8_callback) Module._set_write8_callback(writeCallbackPtr);
+            if (Module._set_write_mem_func) Module._set_write_mem_func(writeCallbackPtr);
 
             // 3. Requirement: Instruction Hooking
             const pcLog = [];
@@ -108,7 +108,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
                 return 0; // Continue execution
             });
             pcHookPtr = Module.addFunction(pcHookSpy, 'ii');
-            if (Module._set_probe_callback) Module._set_probe_callback(pcHookPtr);
+            if (Module._set_pc_hook_func) Module._set_pc_hook_func(pcHookPtr);
 
             // --- Test Setup ---
             // Write program to memory
@@ -245,8 +245,8 @@ describe('Musashi WASM Node.js Integration Test', () => {
             readCallbackPtr = Module.addFunction(readCallbackSpy, 'iii');
             writeCallbackPtr = Module.addFunction(writeCallbackSpy, 'viii');
             
-            if (Module._set_read8_callback) Module._set_read8_callback(readCallbackPtr);
-            if (Module._set_write8_callback) Module._set_write8_callback(writeCallbackPtr);
+            if (Module._set_read_mem_func) Module._set_read_mem_func(readCallbackPtr);
+            if (Module._set_write_mem_func) Module._set_write_mem_func(writeCallbackPtr);
             
             // Write test data to region
             const testData = 0xDEADBEEF;
@@ -376,7 +376,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
                 instructionCount++;
                 return instructionCount >= 3 ? 1 : 0; // Stop after 3 instructions
             }, 'ii');
-            if (Module._set_probe_callback) Module._set_probe_callback(pcHookPtr);
+            if (Module._set_pc_hook_func) Module._set_pc_hook_func(pcHookPtr);
             
             // Reset and execute
             Module._m68k_pulse_reset();

@@ -50,7 +50,7 @@ describe('JS probe respects address filtering', () => {
       // Set JS probe
       let calls = [];
       const probeFunc = Module.addFunction((pc) => { calls.push(pc); return 0; }, 'ii');
-      Module._set_probe_callback(probeFunc);
+      Module._set_pc_hook_func(probeFunc);
 
       // Filter to only one PC: 0x404
       Module._add_pc_hook_addr(0x404);

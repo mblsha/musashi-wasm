@@ -145,7 +145,4 @@ This release maintains full backward compatibility for the WebAssembly API while
 
 - Remove `perfetto_*` C wrappers from `myfunc.cc`; use the canonical `_m68k_perfetto_*` API directly. C++ tests updated accordingly. When `ENABLE_PERFETTO=0`, `m68k_perfetto_*` remain as no-op stubs.
 
-### ⚠️ Deprecations (planned)
-
-- Legacy setter exports (`_set_read_mem_func`, `_set_write_mem_func`, `_set_pc_hook_func`) are slated for removal in a future major release. Prefer the byte-oriented `_set_read8_callback`, `_set_write8_callback`, and `_set_probe_callback`.
-- Consider consolidating on `_m68k_perfetto_*` function family and removing duplicate `perfetto_*` wrappers in native builds.
+ 

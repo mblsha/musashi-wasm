@@ -240,6 +240,22 @@ static std::unordered_map<unsigned int, std::string> _function_names;
 static std::unordered_map<unsigned int, std::string> _memory_names;
 
 extern "C" {
+  void set_read_mem_func(read_mem_t func) {
+    if (_enable_printf_logging)
+      printf("set_read_mem_func: %p\n", (void*)func);
+     _read_mem = func;
+  }
+  void set_write_mem_func(write_mem_t func) {
+    if (_enable_printf_logging)
+      printf("set_write_mem_func: %p\n", (void*)func);
+    _write_mem = func;
+  }
+  void set_pc_hook_func(pc_hook_t func) {
+    _pc_hook = func;
+  }
+  void clear_pc_hook_func() {
+    _pc_hook = nullptr;
+  }
   int my_initialize() {
     int result = _initialized;
     _initialized = true;

@@ -18,9 +18,9 @@ export interface MusashiEmscriptenModule {
   _m68k_set_reg(index: number, value: number): void;
   _malloc(size: number): EmscriptenBuffer;
   _free(ptr: EmscriptenBuffer): void;
-  _set_read8_callback?(f: EmscriptenFunction): void;
-  _set_write8_callback?(f: EmscriptenFunction): void;
-  _set_probe_callback?(f: EmscriptenFunction): void;
+  _set_read_mem_func(f: EmscriptenFunction): void;
+  _set_write_mem_func(f: EmscriptenFunction): void;
+  _set_pc_hook_func(f: EmscriptenFunction): void;
   _clear_regions(): void;
   _clear_pc_hook_addrs(): void;
   _reset_myfunc_state(): void;
@@ -121,15 +121,9 @@ export class MusashiWrapper {
     }, 'ii');
 
     // Register callbacks with C
-    if (this._module._set_read8_callback) {
-      this._module._set_read8_callback(this._readFunc);
-    }
-    if (this._module._set_write8_callback) {
-      this._module._set_write8_callback(this._writeFunc);
-    }
-    if (this._module._set_probe_callback) {
-      this._module._set_probe_callback(this._probeFunc);
-    }
+    this._module._set_read_mem_func(this._module.addFunction((addr: number, size: number) => this.readHandler(addr >>> 0, (size as 1|2|4)), 'iii'));
+    this._module._set_write_mem_func(this._module.addFunction((addr: number, size: number, val: number) => this.writeHandler(addr >>> 0, (size as 1|2|4), val >>> 0), 'viii'));
+    this._module._set_pc_hook_func(this._probeFunc);
 
     // Copy ROM and RAM into our memory
     this._memory.set(rom, 0x000000);
@@ -186,7 +180,7 @@ export class MusashiWrapper {
     this._module._clear_regions?.();
     this._module._clear_pc_hook_addrs?.();
     // Disable probe callback explicitly if available
-    try { this._module._set_probe_callback?.(0 as unknown as number); } catch {}
+    try { this._module._set_pc_hook_func?.(0 as unknown as number); } catch {}
     this._module._reset_myfunc_state?.();
   }
 

@@ -101,19 +101,19 @@ class Musashi {
   // Callbacks
   setReadMemFunc(func) {
     const ptr = this.module.addFunction(func, 'ii');
-    if (this.module._set_read8_callback) this.module._set_read8_callback(ptr);
+    this.module._set_read_mem_func(ptr);
     return ptr;
   }
   
   setWriteMemFunc(func) {
     const ptr = this.module.addFunction(func, 'vii');
-    if (this.module._set_write8_callback) this.module._set_write8_callback(ptr);
+    this.module._set_write_mem_func(ptr);
     return ptr;
   }
   
   setPCHookFunc(func) {
     const ptr = this.module.addFunction(func, 'ii');
-    if (this.module._set_probe_callback) this.module._set_probe_callback(ptr);
+    this.module._set_pc_hook_func(ptr);
     return ptr;
   }
   
@@ -228,19 +228,19 @@ export class Musashi {
   // Callbacks
   setReadMemFunc(func) {
     const ptr = this.module.addFunction(func, 'ii');
-    if (this.module._set_read8_callback) this.module._set_read8_callback(ptr);
+    this.module._set_read_mem_func(ptr);
     return ptr;
   }
   
   setWriteMemFunc(func) {
     const ptr = this.module.addFunction(func, 'vii');
-    if (this.module._set_write8_callback) this.module._set_write8_callback(ptr);
+    this.module._set_write_mem_func(ptr);
     return ptr;
   }
   
   setPCHookFunc(func) {
     const ptr = this.module.addFunction(func, 'ii');
-    if (this.module._set_probe_callback) this.module._set_probe_callback(ptr);
+    this.module._set_pc_hook_func(ptr);
     return ptr;
   }
   
@@ -357,19 +357,19 @@ class MusashiPerfetto {
   
   setReadMemFunc(func) {
     const ptr = this.module.addFunction(func, 'ii');
-    if (this.module._set_read8_callback) this.module._set_read8_callback(ptr);
+    this.module._set_read_mem_func(ptr);
     return ptr;
   }
   
   setWriteMemFunc(func) {
     const ptr = this.module.addFunction(func, 'vii');
-    if (this.module._set_write8_callback) this.module._set_write8_callback(ptr);
+    this.module._set_write_mem_func(ptr);
     return ptr;
   }
   
   setPCHookFunc(func) {
     const ptr = this.module.addFunction(func, 'ii');
-    if (this.module._set_probe_callback) this.module._set_probe_callback(ptr);
+    this.module._set_pc_hook_func(ptr);
     return ptr;
   }
   
@@ -542,9 +542,9 @@ export class MusashiPerfetto {
   setReg(reg, value) { this.module._m68k_set_reg(reg, value); }
   addRegion(base, size, dataPtr) { return this.module._add_region(base, size, dataPtr); }
   clearRegions() { this.module._clear_regions(); }
-  setReadMemFunc(func) { const ptr = this.module.addFunction(func, 'ii'); if (this.module._set_read8_callback) this.module._set_read8_callback(ptr); return ptr; }
-  setWriteMemFunc(func) { const ptr = this.module.addFunction(func, 'vii'); if (this.module._set_write8_callback) this.module._set_write8_callback(ptr); return ptr; }
-  setPCHookFunc(func) { const ptr = this.module.addFunction(func, 'ii'); if (this.module._set_probe_callback) this.module._set_probe_callback(ptr); return ptr; }
+  setReadMemFunc(func) { const ptr = this.module.addFunction(func, 'ii'); this.module._set_read_mem_func(ptr); return ptr; }
+  setWriteMemFunc(func) { const ptr = this.module.addFunction(func, 'vii'); this.module._set_write_mem_func(ptr); return ptr; }
+  setPCHookFunc(func) { const ptr = this.module.addFunction(func, 'ii'); this.module._set_pc_hook_func(ptr); return ptr; }
   removeFunction(ptr) { this.module.removeFunction(ptr); }
   allocateMemory(size) { return this.module._malloc(size); }
   freeMemory(ptr) { this.module._free(ptr); }
