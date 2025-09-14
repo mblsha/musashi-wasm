@@ -487,6 +487,44 @@ extern "C" {
   uint32_t get_sp_reg(void) {
     return m68k_get_reg(NULL, M68K_REG_SP);
   }
+
+  // Resolve register enum value by name. Returns -1 if unknown.
+  // Recognizes: D0-D7, A0-A7, PC, SR, SP, PPC, USP, ISP, MSP, SFC, DFC,
+  // VBR, CACR, CAAR, PREF_ADDR/PREFADDR, PREF_DATA/PREFDATA, IR, CPU_TYPE/CPUTYPE
+  int m68k_regnum_from_name(const char* name) {
+    if (!name) return -1;
+    // Normalize to uppercase and remove spaces
+    std::string s;
+    for (const char* p = name; *p; ++p) {
+      char c = *p;
+      if (c >= 'a' && c <= 'z') c = static_cast<char>(c - ('a' - 'A'));
+      if (c == ' ') continue;
+      s.push_back(c);
+    }
+    if (s.size() == 2 && s[0] == 'D' && s[1] >= '0' && s[1] <= '7') {
+      return static_cast<int>(M68K_REG_D0 + (s[1] - '0'));
+    }
+    if (s.size() == 2 && s[0] == 'A' && s[1] >= '0' && s[1] <= '7') {
+      return static_cast<int>(M68K_REG_A0 + (s[1] - '0'));
+    }
+    if (s == "PC") return static_cast<int>(M68K_REG_PC);
+    if (s == "SR") return static_cast<int>(M68K_REG_SR);
+    if (s == "SP") return static_cast<int>(M68K_REG_SP);
+    if (s == "PPC") return static_cast<int>(M68K_REG_PPC);
+    if (s == "USP") return static_cast<int>(M68K_REG_USP);
+    if (s == "ISP") return static_cast<int>(M68K_REG_ISP);
+    if (s == "MSP") return static_cast<int>(M68K_REG_MSP);
+    if (s == "SFC") return static_cast<int>(M68K_REG_SFC);
+    if (s == "DFC") return static_cast<int>(M68K_REG_DFC);
+    if (s == "VBR") return static_cast<int>(M68K_REG_VBR);
+    if (s == "CACR") return static_cast<int>(M68K_REG_CACR);
+    if (s == "CAAR") return static_cast<int>(M68K_REG_CAAR);
+    if (s == "PREF_ADDR" || s == "PREFADDR") return static_cast<int>(M68K_REG_PREF_ADDR);
+    if (s == "PREF_DATA" || s == "PREFDATA") return static_cast<int>(M68K_REG_PREF_DATA);
+    if (s == "IR") return static_cast<int>(M68K_REG_IR);
+    if (s == "CPU_TYPE" || s == "CPUTYPE") return static_cast<int>(M68K_REG_CPU_TYPE);
+    return -1;
+  }
 } // extern "C"
 
 extern "C" unsigned int my_read_memory(unsigned int address, int size) {

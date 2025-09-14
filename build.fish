@@ -157,7 +157,8 @@ set -l exported_functions \
     _set_isp_reg \
     _set_usp_reg \
     _get_sp_reg \
-    _m68k_call_until_js_stop
+    _m68k_call_until_js_stop \
+    _m68k_regnum_from_name
     \
     _m68k_get_last_break_reason \
     _m68k_reset_last_break_reason
