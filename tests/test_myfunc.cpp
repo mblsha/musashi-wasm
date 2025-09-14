@@ -160,34 +160,18 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
                 t, e.pc, e.addr, e.size, e.value, (unsigned long long)e.cycles);
     }
 
-    // Acceptable patterns observed in this core:
-    // 1) Single 32-bit write at 0x0FFC with value 0xCAFEBABE
-    // 2) Two 16-bit writes in 68000 PD order:   0x0FFE = 0xCAFE (high), 0x0FFC = 0xBABE (low)
-    // 3) Two 16-bit writes in reversed order:   0x0FFE = 0xBABE (low),  0x0FFC = 0xCAFE (high)
-    bool ok = false;
+    // Intentionally strict expectation to surface side-effects:
+    // require two 16-bit writes in 68000 PD order:
+    //   0x0FFE = 0xCAFE (high), 0x0FFC = 0xBABE (low)
+    ASSERT_EQ(writes.size(), 2u) << "Expected exactly two write events";
+    bool seen_hi = false;
+    bool seen_lo = false;
     for (const auto& e : writes) {
-        if (e.size == 4 && e.addr == 0x0FFCu && e.value == 0xCAFEBABEu) {
-            ok = true;
-            break;
-        }
+        ASSERT_EQ(e.size, 2u) << "Expected 16-bit writes only";
+        if (e.addr == 0x0FFEu && (e.value & 0xFFFFu) == 0xCAFEu) seen_hi = true;
+        if (e.addr == 0x0FFCu && (e.value & 0xFFFFu) == 0xBABEu) seen_lo = true;
     }
-    if (!ok) {
-        // Try to match the pair of word writes
-        int seen = 0;
-        uint16_t hi = 0, lo = 0;
-        for (const auto& e : writes) {
-            if (e.size == 2 && e.addr == 0x0FFEu) { hi = static_cast<uint16_t>(e.value & 0xFFFF); seen++; }
-            if (e.size == 2 && e.addr == 0x0FFCu) { lo = static_cast<uint16_t>(e.value & 0xFFFF); seen++; }
-        }
-        if (seen >= 2) {
-            // Case 2: hi at +2, low at base
-            uint32_t combined1 = (static_cast<uint32_t>(hi) << 16) | lo;
-            // Case 3: reversed order (low at +2, hi at base)
-            uint32_t combined2 = (static_cast<uint32_t>(lo) << 16) | hi;
-            ok = (combined1 == 0xCAFEBABEu) || (combined2 == 0xCAFEBABEu);
-        }
-    }
-    EXPECT_TRUE(ok) << "Memory write trace did not match expected 32-bit or two 16-bit PD writes";
+    EXPECT_TRUE(seen_hi && seen_lo) << "Expected 0x0FFE=0xCAFE and 0x0FFC=0xBABE (68000 PD order)";
 
     // Disassembly already validated upfront
 }
