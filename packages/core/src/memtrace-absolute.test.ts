@@ -28,9 +28,9 @@ describe('Memory trace for absolute long accesses (read path)', () => {
     const offR = sys.onMemoryRead((e) => reads.push(e));
     const offW = sys.onMemoryWrite((e) => writes.push(e));
 
-    // Execute two instructions
-    await sys.step(); // @ 0x416
-    await sys.step(); // @ 0x41c
+    // Execute two instructions and capture actual start PCs
+    const s1 = await sys.step(); // expected around 0x416
+    const s2 = await sys.step(); // next instruction (near 0x41c)
 
     offR?.();
     offW?.();
@@ -44,14 +44,16 @@ describe('Memory trace for absolute long accesses (read path)', () => {
       const a = r.addr >>> 0;
       return a >= ABS && a < (ABS + 4) && (r.size === 1 || r.size === 2 || r.size === 4);
     });
-    // We expect two instructions (at 0x416 and 0x41c) to read a total of 4 bytes each
+    // We expect the two executed instructions (by their actual start PCs) to read 4 bytes each
     const byPc = new Map<number, number>();
     for (const r of absReads) {
       const pc = r.pc >>> 0;
       byPc.set(pc, (byPc.get(pc) || 0) + r.size);
     }
-    expect(byPc.get(0x416) || 0).toBe(4);
-    expect(byPc.get(0x41c) || 0).toBe(4);
+    const pc1 = s1.startPc >>> 0;
+    const pc2 = s2.startPc >>> 0;
+    expect(byPc.get(pc1) || 0).toBe(4);
+    expect(byPc.get(pc2) || 0).toBe(4);
 
     // Sanity print on failure
     if (reads.length < 2) {

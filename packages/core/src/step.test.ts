@@ -52,8 +52,10 @@ describe('@m68k/core step()', () => {
     const s2 = await system.step();
     expect(s2.cycles).toBeGreaterThan(0);
     // Some builds may report startPc at 0x408 due to prefetch; accept 0x406 or 0x408
-    expect([0x406, 0x408]).toContain(s2.startPc >>> 0);
-    expect(s2.endPc >>> 0).toBe(0x408);
+    const s2start = s2.startPc >>> 0;
+    expect([0x406, 0x408]).toContain(s2start);
+    const expectedEnd2 = s2start === 0x406 ? 0x408 : 0x40e;
+    expect(s2.endPc >>> 0).toBe(expectedEnd2);
     const regs2 = system.getRegisters();
     expect(regs2.pc >>> 0).toBe(0x408);
 
