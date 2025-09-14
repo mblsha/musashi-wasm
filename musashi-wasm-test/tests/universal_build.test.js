@@ -24,7 +24,7 @@ describe('Universal Build Compatibility', () => {
     
     if (loadError) {
       // If the universal build doesn't exist yet, skip the test
-      console.log('Universal build not found. Run ./build.fish to create it.');
+      console.log('Universal build not found. Run ./build.sh to create it.');
       return;
     }
     
@@ -41,7 +41,7 @@ describe('Universal Build Compatibility', () => {
     const universalPath = join(__dirname, '../../musashi-universal.out.mjs');
     
     if (!existsSync(universalPath)) {
-      console.log('Universal build not found. Run ./build.fish to create it.');
+      console.log('Universal build not found. Run ./build.sh to create it.');
       return;
     }
     

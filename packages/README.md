@@ -135,7 +135,7 @@ VERBOSE=1 ./test_with_real_wasm.sh
 ```
 
 This script automatically:
-1. Builds WASM modules using `./build.fish` 
+1. Builds WASM modules using `./build.sh` 
 2. Copies artifacts to `packages/core/wasm/`
 3. Runs TypeScript tests in `packages/core/`
 4. Runs integration tests in `musashi-wasm-test/`
@@ -153,11 +153,11 @@ This script automatically:
 
 - Emscripten SDK (EMSDK) installed and activated
 - Node.js 16+ 
-- Fish shell (for build.fish script)
+- Bash shell (build.sh)
 - For Perfetto: protobuf dependencies (built automatically if needed)
 
 ## Requirements
 
 - Node.js 16+ or modern browser
 - The WASM module must be built first: `make wasm`
-- For Perfetto support: `ENABLE_PERFETTO=1 ./build.fish`
+- For Perfetto support: `ENABLE_PERFETTO=1 ./build.sh`

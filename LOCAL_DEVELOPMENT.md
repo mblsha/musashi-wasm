@@ -21,7 +21,7 @@ The script automates the complete development workflow:
 
 1. **Dependency Checks**: Verifies all required tools and dependencies
 2. **Perfetto Dependencies**: Builds protobuf and abseil libraries if needed
-3. **WASM Build**: Runs `./build.fish` to create WebAssembly modules
+3. **WASM Build**: Runs `./build.sh` to create WebAssembly modules
 4. **Artifact Copying**: Copies WASM files to `packages/core/wasm/`
 5. **Core Tests**: Runs TypeScript tests in `packages/core/`
 6. **Integration Tests**: Runs WASM integration tests in `musashi-wasm-test/`
@@ -70,7 +70,7 @@ SKIP_WASM_BUILD=1 SKIP_INTEGRATION=1 ./test_with_real_wasm.sh
 ### Required Tools
 - **Emscripten SDK (EMSDK)**: WebAssembly compiler toolchain
 - **Node.js 16+**: JavaScript runtime
-- **Fish Shell**: For build.fish script execution
+- **bash**: For build.sh script execution
 - **npm**: Package manager
 
 ### EMSDK Setup
@@ -125,11 +125,10 @@ Enable with `VERBOSE=1` to see:
 source /path/to/emsdk/emsdk_env.sh
 ```
 
-**Fish shell not available**
+**Emscripten not in PATH**
 ```bash
-# Solution: Install fish shell
-# macOS: brew install fish
-# Ubuntu: apt install fish
+# Solution: Install/activate EMSDK and ensure emcc is in PATH
+source /path/to/emsdk/emsdk_env.sh
 ```
 
 **Perfetto build fails**
@@ -140,8 +139,8 @@ source /path/to/emsdk/emsdk_env.sh
 
 **WASM artifacts missing**
 ```bash
-# Solution: Ensure build.fish completed successfully
-./build.fish
+# Solution: Ensure build.sh completed successfully
+./build.sh
 ls -la musashi*.out.*
 ```
 

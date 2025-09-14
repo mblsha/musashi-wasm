@@ -14,7 +14,7 @@ The test validates the core JavaScript-to-WASM API, ensuring that functions for 
 1. **Build Musashi:** Navigate to the root of the Musashi repository and run the build command:
    ```bash
    make wasm
-   # or ./build.fish
+   # or ./build.sh
    ```
    This will generate `musashi-node.out.js` and `musashi-node.out.wasm` in the root directory.
 
@@ -90,7 +90,7 @@ This tests:
 
 If the tests fail:
 
-1. **Module Not Found**: Ensure you've built the WASM module with `make wasm` or `./build.fish`
+1. **Module Not Found**: Ensure you've built the WASM module with `make wasm` or `./build.sh`
 2. **Function Not Exported**: Check that the build script includes all necessary exports
 3. **Memory Issues**: Verify that memory allocation and cleanup are working correctly
 4. **Hook Failures**: Ensure function pointers are correctly managed with `addFunction`/`removeFunction`

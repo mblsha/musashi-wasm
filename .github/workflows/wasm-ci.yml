@@ -51,10 +51,7 @@ jobs:
           version: ${{ env.EMSDK_VERSION }}
           actions-cache-folder: ${{ env.EM_CACHE_FOLDER }}
 
-      - name: Install Fish shell
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y fish
+      # Fish no longer required; building via bash script
 
       # Cache Protobuf/Abseil only for Perfetto builds (cache installed outputs + generated PBs)
       - name: Cache Protobuf/Abseil (Perfetto only)
@@ -93,8 +90,8 @@ jobs:
         env:
           ENABLE_PERFETTO: ${{ matrix.perfetto && '1' || '0' }}
         run: |
-          chmod +x build.fish
-          fish ./build.fish
+          chmod +x build.sh
+          ./build.sh
 
       - name: Verify WASM outputs exist
         run: |

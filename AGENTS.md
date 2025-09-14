@@ -19,8 +19,8 @@
 - Build TS workspaces: `npm run build`.
 - Test TS: `npm test` (e.g., `npm test --workspace=@m68k/core`).
 - Type check: `npm run typecheck` (runs `tsc --noEmit`).
-- Build WASM: `./build.fish` or `./build_wasm_simple.sh`.
-- Build WASM with Perfetto: `ENABLE_PERFETTO=1 ./build.fish`.
+- Build WASM: `./build.sh`.
+- Build WASM with Perfetto: `ENABLE_PERFETTO=1 ./build.sh`.
 - Native C++ tests: `cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure`.
 - Package wrapper: `cd npm-package && npm run build`.
 
