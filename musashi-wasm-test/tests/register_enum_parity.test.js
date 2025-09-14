@@ -1,14 +1,21 @@
-import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
+import fs from 'fs';
+import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import createMusashiModule from '../load-musashi.js';
 
-function parseEnumMap() {
-  const dts = readFileSync(join(__dirname, '..', 'lib', 'index.d.ts'), 'utf8');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function parseEnumFromCommon() {
+  const tsPath = path.resolve(__dirname, '../../packages/common/src/index.ts');
+  const src = fs.readFileSync(tsPath, 'utf8');
+  const start = src.indexOf('export enum M68kRegister');
+  if (start < 0) throw new Error('M68kRegister enum not found in @m68k/common');
+  const after = src.slice(start);
+  const block = after.slice(after.indexOf('{') + 1, after.indexOf('}'));
   const map = new Map();
-  const enumBlock = dts.split('export enum M68kRegister')[1].split('}')[0];
-  for (const line of enumBlock.split('\n')) {
+  for (const line of block.split('\n')) {
     const m = line.match(/\s*([A-Z_0-9]+)\s*=\s*(\d+)/);
     if (m) map.set(m[1], parseInt(m[2], 10));
   }
@@ -16,8 +23,8 @@ function parseEnumMap() {
 }
 
 async function loadModule() {
-  const { default: createModule } = await import('../../musashi-node.out.mjs');
-  return await createModule();
+  const mod = await createMusashiModule();
+  return mod;
 }
 
 function cString(mod, js) {
@@ -27,15 +34,15 @@ function cString(mod, js) {
   return ptr;
 }
 
-describe('Register enum and native name resolution', () => {
-  test('PPC enum is 19 in the d.ts', () => {
-    const map = parseEnumMap();
+describe('M68kRegister enum parity with native resolver', () => {
+  test('PPC enum is 19 per common enum', () => {
+    const map = parseEnumFromCommon();
     expect(map.get('PPC')).toBe(19);
   });
 
-  test('m68k_regnum_from_name() matches enum for all names', async () => {
+  test('m68k_regnum_from_name() matches @m68k/common enum for all names', async () => {
     const mod = await loadModule();
-    const map = parseEnumMap();
+    const map = parseEnumFromCommon();
     for (const [name, exp] of map.entries()) {
       const ptr = cString(mod, name);
       const got = mod._m68k_regnum_from_name(ptr);
@@ -46,7 +53,7 @@ describe('Register enum and native name resolution', () => {
 
   test('getReg(PPC) returns previous PC after stepping one instruction', async () => {
     const mod = await loadModule();
-    const map = parseEnumMap();
+    const map = parseEnumFromCommon();
     const PC = map.get('PC');
     const PPC = map.get('PPC');
 
