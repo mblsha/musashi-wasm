@@ -429,64 +429,7 @@ extern "C" {
     return cycles;
   }
   
-  /* ======================================================================== */
-  /* ==================== REGISTER ACCESS HELPERS ========================== */
-  /* ======================================================================== */
-  
-  // Direct register access helpers for TypeScript (avoids enum drift issues)
-  void set_d_reg(int n, uint32_t value) {
-    if (n >= 0 && n < 8) {
-      m68k_set_reg(static_cast<m68k_register_t>(M68K_REG_D0 + n), value);
-    }
-  }
-  
-  uint32_t get_d_reg(int n) {
-    if (n >= 0 && n < 8) {
-      return m68k_get_reg(NULL, static_cast<m68k_register_t>(M68K_REG_D0 + n));
-    }
-    return 0;
-  }
-  
-  void set_a_reg(int n, uint32_t value) {
-    if (n >= 0 && n < 8) {
-      m68k_set_reg(static_cast<m68k_register_t>(M68K_REG_A0 + n), value);
-    }
-  }
-  
-  uint32_t get_a_reg(int n) {
-    if (n >= 0 && n < 8) {
-      return m68k_get_reg(NULL, static_cast<m68k_register_t>(M68K_REG_A0 + n));
-    }
-    return 0;
-  }
-  
-  void set_pc_reg(uint32_t value) {
-    m68k_set_reg(M68K_REG_PC, value);
-  }
-  
-  uint32_t get_pc_reg(void) {
-    return m68k_get_reg(NULL, M68K_REG_PC);
-  }
-  
-  void set_sr_reg(uint16_t value) {
-    m68k_set_reg(M68K_REG_SR, value);
-  }
-  
-  uint32_t get_sr_reg(void) {
-    return m68k_get_reg(NULL, M68K_REG_SR);
-  }
-  
-  void set_isp_reg(uint32_t value) {
-    m68k_set_reg(M68K_REG_ISP, value);
-  }
-  
-  void set_usp_reg(uint32_t value) {
-    m68k_set_reg(M68K_REG_USP, value);
-  }
-  
-  uint32_t get_sp_reg(void) {
-    return m68k_get_reg(NULL, M68K_REG_SP);
-  }
+  /* (Removed register accessor helpers; use m68k_get_reg/m68k_set_reg from TS) */
 
   // Resolve register enum value by name. Returns -1 if unknown.
   // Recognizes: D0-D7, A0-A7, PC, SR, SP, PPC, USP, ISP, MSP, SFC, DFC,
