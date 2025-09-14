@@ -88,15 +88,6 @@ exported_functions=(
   _m68k_trace_set_instr_enabled
   _m68k_trace_set_mem_enabled
   _my_initialize
-  _perfetto_destroy
-  _perfetto_enable_flow
-  _perfetto_enable_instructions
-  _perfetto_enable_memory
-  _perfetto_export_trace
-  _perfetto_free_trace_data
-  _perfetto_init
-  _perfetto_is_initialized
-  _perfetto_save_trace
   _register_function_name
   _register_memory_name
   _register_memory_range
@@ -104,10 +95,7 @@ exported_functions=(
   _set_entry_point
   _set_full_instr_hook_func
   _set_pc_hook_func
-  _set_probe_callback
-  _set_read8_callback
   _set_read_mem_func
-  _set_write8_callback
   _set_write_mem_func
 )
 
@@ -129,13 +117,13 @@ fi
 
 # Runtime function includes (need $-prefixed names)
 default_lib_funcs=(
-  '$addFunction' '$removeFunction' '$ccall' '$cwrap' '$getValue'
+  '$addFunction' '$removeFunction' '$getValue'
   '$setValue' '$UTF8ToString' '$stringToUTF8' '$writeArrayToMemory'
 )
 
 runtime_methods=(
   HEAP8 HEAPU8 HEAP16 HEAPU16 HEAP32 HEAPU32 HEAPF32 HEAPF64
-  addFunction removeFunction ccall cwrap getValue setValue UTF8ToString
+  addFunction removeFunction getValue setValue UTF8ToString
   stringToUTF8 writeArrayToMemory
 )
 
