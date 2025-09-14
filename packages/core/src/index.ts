@@ -215,7 +215,10 @@ class SystemImpl implements System {
 
   async step(): Promise<{ cycles: number; startPc: number; endPc: number; ppc?: number }> {
     const startPc = this._musashi.get_reg(16) >>> 0; // PC before executing
-    const cycles = this._musashi.step() >>> 0;
+    // musashi.step() may return an unsigned long long (BigInt with WASM_BIGINT)
+    // Normalize to Number before masking to avoid BigInt/Number mixing.
+    const c = this._musashi.step();
+    const cycles = Number(c) >>> 0;
     const endPc = this._musashi.get_reg(16) >>> 0; // PC after executing
     // Previous PC as reported by the core; may equal startPc
     const ppc = this._musashi.get_reg(19) >>> 0;
