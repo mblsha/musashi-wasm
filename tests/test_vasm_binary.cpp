@@ -49,10 +49,10 @@ TEST_F(VasmBinaryTest, ExecuteBinaryWithPerfettoTrace) {
     m68k_trace_enable(1);
     
     /* Initialize Perfetto */
-    if (perfetto_init("VasmBinary") == 0) {
-        perfetto_enable_flow(1);
-        perfetto_enable_memory(0);      /* Disable memory tracing for cleaner output */
-        perfetto_enable_instructions(0); /* Disable instruction tracing */
+    if (m68k_perfetto_init("VasmBinary") == 0) {
+        m68k_perfetto_enable_flow(1);
+        m68k_perfetto_enable_memory(0);      /* Disable memory tracing for cleaner output */
+        m68k_perfetto_enable_instructions(0); /* Disable instruction tracing */
     }
     
     /* Execute the program */
@@ -115,9 +115,9 @@ TEST_F(VasmBinaryTest, ExecuteBinaryWithPerfettoTrace) {
     EXPECT_TRUE(memory_modified) << "Program should write results to memory";
     
     /* Save Perfetto trace if initialized */
-    if (perfetto_is_initialized()) {
-        perfetto_save_trace("vasm_binary_trace.perfetto-trace");
-        perfetto_destroy();
+    if (m68k_perfetto_is_initialized()) {
+        m68k_perfetto_save_trace("vasm_binary_trace.perfetto-trace");
+        m68k_perfetto_destroy();
     }
 }
 

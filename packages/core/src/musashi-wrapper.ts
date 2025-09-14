@@ -185,31 +185,21 @@ export class MusashiWrapper {
       this._ramWindows.push({ start: 0x100000, length: ram.length >>> 0, offset: 0 });
     }
 
-    // Setup callbacks FIRST (critical for expert's fix)
-    this._readFunc = this._module.addFunction((addr: number) => {
-      const a = addr >>> 0;
-      return (this._memory[a] || 0) & 0xff;
-    }, 'ii');
+    // Setup callbacks (size-aware read/write; PC hook)
+    const readSizedPtr = this._module.addFunction((addr: number, size: number) =>
+      this.readHandler(addr >>> 0, (size | 0) as 1 | 2 | 4), 'iii');
+    const writeSizedPtr = this._module.addFunction((addr: number, size: number, val: number) =>
+      this.writeHandler(addr >>> 0, (size | 0) as 1 | 2 | 4, val >>> 0), 'viii');
+    this._probeFunc = this._module.addFunction((addr: number) =>
+      (this._system._handlePCHook(addr >>> 0) ? 1 : 0), 'ii');
 
-    this._writeFunc = this._module.addFunction((addr: number, val: number) => {
-      const a = addr >>> 0;
-      this._memory[a] = val & 0xff;
-    }, 'vii');
-
-    this._probeFunc = this._module.addFunction((addr: number) => {
-      return this._system._handlePCHook(addr >>> 0) ? 1 : 0;
-    }, 'ii');
+    this._readFunc = readSizedPtr;
+    this._writeFunc = writeSizedPtr;
 
     // Register callbacks with C
-    if (this._module._set_read8_callback) {
-      this._module._set_read8_callback(this._readFunc);
-    }
-    if (this._module._set_write8_callback) {
-      this._module._set_write8_callback(this._writeFunc);
-    }
-    if (this._module._set_probe_callback) {
-      this._module._set_probe_callback(this._probeFunc);
-    }
+    this._module._set_read_mem_func(readSizedPtr);
+    this._module._set_write_mem_func(writeSizedPtr);
+    this._module._set_pc_hook_func(this._probeFunc);
 
     // Copy ROM and RAM into our memory
     this._memory.set(rom, 0x000000);
@@ -265,7 +255,7 @@ export class MusashiWrapper {
     }
     this._module._clear_regions?.();
     this._module._clear_pc_hook_addrs?.();
-    this._module._clear_pc_hook_func?.();
+    try { this._module._set_pc_hook_func?.(0 as unknown as number); } catch {}
     this._module._reset_myfunc_state?.();
   }
 

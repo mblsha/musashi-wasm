@@ -184,7 +184,7 @@ TEST_F(PerfettoTest, FlowTracing) {
     
     #ifdef ENABLE_PERFETTO
         /* Verify we can save the trace */
-        int save_result = ::perfetto_save_trace("test_flow.perfetto-trace");
+        int save_result = ::m68k_perfetto_save_trace("test_flow.perfetto-trace");
         EXPECT_EQ(save_result, 0);
     #endif
 }
@@ -245,17 +245,17 @@ TEST_F(PerfettoTest, BranchAndSubroutineTracing) {
     
     #ifdef ENABLE_PERFETTO
         /* Save trace for inspection */
-        ::perfetto_save_trace("test_branch_subroutine.perfetto-trace");
+        ::m68k_perfetto_save_trace("test_branch_subroutine.perfetto-trace");
     #endif
 }
 
 TEST_F(PerfettoTest, MemoryAccessTracing) {
-    if (::perfetto_init("M68K_Memory_Test") != 0) {
+    if (::m68k_perfetto_init("M68K_Memory_Test") != 0) {
         GTEST_SKIP() << "Perfetto not available, skipping memory tracing test";
     }
     
     /* Enable memory tracing */
-    ::perfetto_enable_memory(1);
+    ::m68k_perfetto_enable_memory(1);
     
     /* Create program that accesses memory */
     uint32_t pc = 0x400;
@@ -284,7 +284,7 @@ TEST_F(PerfettoTest, MemoryAccessTracing) {
     
     #ifdef ENABLE_PERFETTO
         /* Save trace */
-        ::perfetto_save_trace("test_memory_access.perfetto-trace");
+        ::m68k_perfetto_save_trace("test_memory_access.perfetto-trace");
     #endif
 }
 
@@ -313,9 +313,9 @@ TEST_F(PerfettoTest, ManuallyEncodedProgram) {
     }
     
     /* Initialize Perfetto if available */
-    if (::perfetto_init("M68K_Manual_Program") == 0) {
-        ::perfetto_enable_flow(1);
-        ::perfetto_enable_instructions(1);
+    if (::m68k_perfetto_init("M68K_Manual_Program") == 0) {
+        ::m68k_perfetto_enable_flow(1);
+        ::m68k_perfetto_enable_instructions(1);
     }
     
     /* Execute the program */
@@ -333,8 +333,8 @@ TEST_F(PerfettoTest, ManuallyEncodedProgram) {
     
     #ifdef ENABLE_PERFETTO
         /* Save trace if Perfetto was initialized */
-        if (::perfetto_is_initialized()) {
-            ::perfetto_save_trace("test_manual_program.perfetto-trace");
+        if (::m68k_perfetto_is_initialized()) {
+            ::m68k_perfetto_save_trace("test_manual_program.perfetto-trace");
         }
     #endif
 }
