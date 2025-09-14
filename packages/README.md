@@ -12,6 +12,7 @@ The core M68k emulator package that provides:
 - Register manipulation
 - Execution control (run, call, reset)
 - Hook system (probe and override)
+- Hook system (`addHook` unified API; `probe` and `override` retained for compatibility)
 - Optional Perfetto tracing support
 
 ### @m68k/memory
@@ -97,6 +98,12 @@ if (system.tracer.isAvailable()) {
 ```
 
 View the trace at [ui.perfetto.dev](https://ui.perfetto.dev).
+
+## New APIs (ergonomics)
+
+- Unified PC hooks: `system.addHook(address, sys => 'continue' | 'stop')`. Use `'stop'` to halt execution (useful for `call()` and stepping). `probe` and `override` remain available but are superseded by `addHook`.
+- Rich disassembly: `system.disassembleDetailed(pc)` returns `{ text, size }` in one call while `disassemble(pc)` keeps returning the formatted text.
+- Cleanup: `system.dispose()` to release underlying WASM callbacks/regions when done.
 
 ## Building
 
