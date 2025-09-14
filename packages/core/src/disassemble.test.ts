@@ -32,7 +32,8 @@ describe('disassembly helpers', () => {
     const sys = await createSystem({ rom, ramSize: 0x20000 });
 
     const cases: Array<{ addr: number; bytes: number[]; expect: string }> = [
-      { addr: 0x0800, bytes: [0x73, 0x7f], expect: 'moveq   #$7f, D3' },
+      // MOVEQ #$7f,D3 encoding: 0x767f (0111 ddd 0 iiiiiiii)
+      { addr: 0x0800, bytes: [0x76, 0x7f], expect: 'moveq   #$7f, D3' },
       { addr: 0x0810, bytes: [0x4e, 0x56, 0xff, 0xf8], expect: 'link    A6, #-$8' },
       { addr: 0x0820, bytes: [0x4e, 0x5e], expect: 'unlk    A6' },
       { addr: 0x0830, bytes: [0x41, 0xf9, 0x00, 0x12, 0x34, 0x56], expect: 'lea     $123456.l, A0' },
