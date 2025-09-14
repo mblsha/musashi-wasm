@@ -12,7 +12,7 @@
   ],
   "exports": {
     ".": {
-      "import": "./index.mjs",
+      "import": "./lib/index.mjs",
       "types": "./lib/index.d.ts"
     },
     "./browser": {
@@ -20,8 +20,8 @@
       "types": "./lib/index.d.ts"
     },
     "./perfetto": {
-      "import": "./perf.mjs",
-      "types": "./lib/perfetto.d.ts"
+      "import": "./lib/perfetto.mjs",
+      "types": "./lib/index.d.ts"
     }
   },
   "types": "./lib/index.d.ts",
@@ -51,5 +51,8 @@
   "scripts": {
     "build": "node ./scripts/generate-wrapper.js",
     "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@m68k/common": "^0.1.0"
   }
 }

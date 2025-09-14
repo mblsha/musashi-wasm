@@ -23,7 +23,7 @@ npm install musashi-wasm
 ### Basic Usage (Standard Build)
 
 ```javascript
-const Musashi = require('musashi-wasm');
+import Musashi from 'musashi-wasm';
 
 async function runEmulator() {
   const cpu = new Musashi();
@@ -83,7 +83,7 @@ runEmulator().catch(console.error);
 ### With Perfetto Tracing
 
 ```javascript
-const MusashiPerfetto = require('musashi-wasm/perfetto');
+import { MusashiPerfetto } from 'musashi-wasm/perfetto';
 
 async function runWithTracing() {
   const cpu = new MusashiPerfetto();
@@ -99,10 +99,12 @@ async function runWithTracing() {
   // Export trace
   const traceData = await cpu.exportTrace();
   if (traceData) {
-    // Save to file (Node.js)
-    const fs = require('fs');
-    fs.writeFileSync('trace.perfetto-trace', traceData);
-    console.log('Trace saved to trace.perfetto-trace');
+    // Save to file (Node.js only)
+    if (typeof process !== 'undefined' && process.versions?.node) {
+      const { writeFileSync } = await import('fs');
+      writeFileSync('trace.perfetto-trace', traceData);
+      console.log('Trace saved to trace.perfetto-trace');
+    }
     // Open in https://ui.perfetto.dev
   }
 }
@@ -110,9 +112,10 @@ async function runWithTracing() {
 
 ### ES Modules
 
+The package exports ESM wrappers that work in both Node and browsers with the same import paths.
+
 ```javascript
 import Musashi from 'musashi-wasm';
-// or
 import { MusashiPerfetto } from 'musashi-wasm/perfetto';
 
 const cpu = new Musashi();
@@ -171,34 +174,22 @@ Extends `Musashi` with additional methods:
 
 ### Enum: M68kRegister
 
-```typescript
-enum M68kRegister {
-  D0 = 0, D1 = 1, D2 = 2, D3 = 3, D4 = 4, D5 = 5, D6 = 6, D7 = 7,
-  A0 = 8, A1 = 9, A2 = 10, A3 = 11, A4 = 12, A5 = 13, A6 = 14, A7 = 15,
-  PC = 16,   // Program Counter
-  SR = 17,   // Status Register
-  SP = 18,   // Stack Pointer
-  USP = 19,  // User Stack Pointer
-  ISP = 20,  // Interrupt Stack Pointer
-  MSP = 21,  // Master Stack Pointer
-  // ... additional registers
-}
-```
+`M68kRegister` is provided by `@m68k/common` and re-exported by this package.
 
 ## Advanced Examples
 
 ### Loading Binary Programs
 
 ```javascript
-const fs = require('fs');
-const Musashi = require('musashi-wasm');
+import Musashi from 'musashi-wasm';
+import { readFileSync } from 'fs';
 
 async function loadAndRun(programPath) {
   const cpu = new Musashi();
   await cpu.init();
   
   // Read program
-  const program = fs.readFileSync(programPath);
+  const program = readFileSync(programPath);
   
   // Allocate memory
   const memSize = 1024 * 1024;
@@ -340,27 +331,23 @@ async function setupMMIO() {
 If you need to build the WASM modules yourself:
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/Musashi.git
-cd Musashi
+# From the repository root
+npm install
 
-# Install Emscripten
-# See: https://emscripten.org/docs/getting_started/downloads.html
+# Build WebAssembly (standard)
+./build.sh
 
-# Build standard version
-./build_wasm_simple.sh
+# Build WebAssembly with Perfetto
+ENABLE_PERFETTO=1 ./build.sh
 
-# Build Perfetto version
-./build_perfetto_wasm_simple.sh
-
-# Generate npm package
+# Generate npm wrapper files
 cd npm-package
-npm run build:lib
+npm run build
 ```
 
 ## Compatibility
 
-- Node.js: 14.0.0 or higher
+- Node.js: 16+ (ESM)
 - Browsers: Modern browsers with WebAssembly support
 - TypeScript: Full type definitions included
 
