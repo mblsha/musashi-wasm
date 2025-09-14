@@ -4,28 +4,39 @@ set -euo pipefail
 
 echo "Running musashi-wasm CI tests..."
 
-# Run @m68k/memory tests (fast)
-echo "Running @m68k/memory tests (30s timeout)..."
-if command -v timeout >/dev/null 2>&1; then
-  if ! timeout 30s npm run test:ci --workspace=@m68k/memory; then
-    rc=$?
+# Ensure `timeout` is available (mandatory)
+if ! command -v timeout >/dev/null 2>&1; then
+  echo "Error: 'timeout' command is required but not found on PATH." >&2
+  echo "Install coreutils (e.g., 'sudo apt-get install coreutils') and retry." >&2
+  exit 2
+fi
+
+# Generic helper to run a workspace's CI tests with a timeout
+run_workspace_ci() {
+  local workspace="$1"   # e.g., @m68k/core
+  local seconds="$2"     # e.g., 30
+  echo "Running ${workspace} tests (${seconds}s timeout)..."
+  if ! timeout "${seconds}s" npm run test:ci --workspace="${workspace}"; then
+    local rc=$?
     if [[ $rc -eq 124 ]]; then
-      echo "@m68k/memory tests timed out after 30s"
+      echo "${workspace} tests timed out after ${seconds}s" >&2
     else
-      echo "@m68k/memory tests failed with exit code $rc"
+      echo "${workspace} tests failed with exit code ${rc}" >&2
     fi
     exit $rc
   fi
-else
-  npm run test:ci --workspace=@m68k/memory
-fi
+}
 
-# Run @m68k/core tests with a hard 30s timeout (fail on timeout)
-echo "Running @m68k/core tests (30s timeout)..."
-if command -v timeout >/dev/null 2>&1; then
-  timeout 30s npm run test:ci --workspace=@m68k/core
-else
-  npm run test:ci --workspace=@m68k/core
-fi
+# Define test matrix as workspace:timeout pairs
+tests=(
+  "@m68k/memory:30"
+  "@m68k/core:30"
+)
+
+for spec in "${tests[@]}"; do
+  IFS=":" read -r ws secs <<<"${spec}"
+  run_workspace_ci "${ws}" "${secs}"
+done
 
 echo "All tests completed"
+
