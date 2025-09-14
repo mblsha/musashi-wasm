@@ -8,6 +8,7 @@ import type {
   SymbolMap,
   MemoryAccessCallback,
   MemoryAccessEvent,
+  HookResult,
 } from './types.js';
 import { M68kRegister } from '@m68k/common';
 import { MusashiWrapper, getModule } from './musashi-wrapper.js';
@@ -21,6 +22,9 @@ export type {
   Tracer,
   TraceConfig,
   SymbolMap,
+  MemoryAccessCallback,
+  MemoryAccessEvent,
+  HookResult,
 };
 export { M68kRegister } from '@m68k/common';
 
@@ -142,6 +146,7 @@ class SystemImpl implements System {
     probes: new Map<number, HookCallback>(),
     overrides: new Map<number, HookCallback>(),
   };
+  private _unifiedHooks = new Map<number, (system: System) => HookResult>();
   private _memReads = new Set<MemoryAccessCallback>();
   private _memWrites = new Set<MemoryAccessCallback>();
   readonly tracer: Tracer;
@@ -168,6 +173,10 @@ class SystemImpl implements System {
   getInstructionSize(pc: number): number {
     const one = this._musashi.disassemble(pc >>> 0);
     return one ? (one.size >>> 0) : 0;
+  }
+  // Detailed disassembly (text + size)
+  disassembleDetailed(address: number): { text: string; size: number } | null {
+    return this._musashi.disassemble(address >>> 0);
   }
   read(address: number, size: 1 | 2 | 4): number {
     return this._musashi.read_memory(address, size);
@@ -247,25 +256,41 @@ class SystemImpl implements System {
     return () => this._hooks.overrides.delete(address);
   }
 
+  addHook(address: number, handler: (system: System) => HookResult): () => void {
+    const pc = address >>> 0;
+    this._unifiedHooks.set(pc, handler);
+    this._musashi.add_pc_hook_addr(pc);
+    return () => this._unifiedHooks.delete(pc);
+  }
+
   // --- Internal methods for the Musashi wrapper ---
   _handlePCHook(pc: number): boolean {
+    // Prefer unified hook if present
+    const unified = this._unifiedHooks.get(pc);
+    if (unified) {
+      const res = unified(this);
+      if (res === 'stop') return true;
+      // fall through to legacy hooks if continue
+    }
     const probe = this._hooks.probes.get(pc);
     if (probe) {
       probe(this);
       return false; // Continue execution
     }
-
     const override = this._hooks.overrides.get(pc);
     if (override) {
       override(this);
       return true; // Stop and execute RTS
     }
-
     return false; // Continue execution
   }
 
   cleanup(): void {
     this._musashi.cleanup();
+  }
+
+  dispose(): void {
+    this.cleanup();
   }
 
   // --- Memory Trace (read/write) ---

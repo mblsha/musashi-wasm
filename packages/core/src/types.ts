@@ -29,6 +29,9 @@ export interface CpuRegisters {
 /** A function to be executed when a specific address is hit during execution. */
 export type HookCallback = (system: System) => void;
 
+/** Unified hook result indicating how execution should proceed. */
+export type HookResult = 'continue' | 'stop';
+
 /** Memory access event payload for JS callbacks. */
 export interface MemoryAccessEvent {
   addr: number;
@@ -197,6 +200,12 @@ export interface System {
    */
   override(address: number, callback: HookCallback): () => void;
 
+  /**
+   * Adds a unified PC hook. The handler returns whether to continue or stop.
+   * This is an additive API; legacy probe/override remain available.
+   */
+  addHook(address: number, handler: (system: System) => HookResult): () => void;
+
   /** Accesses the optional Perfetto tracing functionality. */
   readonly tracer: Tracer;
 
@@ -208,6 +217,9 @@ export interface System {
    * Returns 0 if the disassembler is unavailable or decoding fails.
    */
   getInstructionSize(pc: number): number;
+
+  /** Detailed disassembly including size, when available. */
+  disassembleDetailed(address: number): { text: string; size: number } | null;
 
   /**
    * Register a callback for memory reads performed by the CPU. The callback receives
@@ -228,4 +240,7 @@ export interface System {
    * Should be called when the system is no longer needed to prevent leaks.
    */
   cleanup(): void;
+
+  /** Alias for cleanup(). */
+  dispose(): void;
 }
