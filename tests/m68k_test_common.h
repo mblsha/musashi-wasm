@@ -16,6 +16,7 @@ extern "C" {
     void set_read_mem_func(int (*func)(unsigned int address, int size));
     void set_write_mem_func(void (*func)(unsigned int address, int size, unsigned int value));
     void set_pc_hook_func(int (*func)(unsigned int pc));
+    void clear_pc_hook_func();
     void clear_pc_hook_addrs();
     void reset_myfunc_state();
     void clear_regions();
