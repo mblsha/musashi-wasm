@@ -141,8 +141,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
             // 5. Requirement: Register Access
             // JavaScript may return signed 32-bit value, so use >>> 0 to convert to unsigned
             // Call get_reg with context=0 to match wrapper arity
-            // Prefer direct helper when available
-            expect(Module._get_d_reg(0) >>> 0).toBe(0xDEADBEEF);
+            expect(Module._m68k_get_reg(0, M68K_REG_D0) >>> 0).toBe(0xDEADBEEF);
 
             // 6. Verify Memory Callback was triggered.
             // Musashi may decompose 32-bit stores into 2x16-bit or 4x8-bit writes.
@@ -278,8 +277,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
             regionView[0] = 0x4E;
             regionView[1] = 0x71;
             
-            // Prefer direct helper when available
-            Module._set_pc_reg(REGION_BASE);
+            Module._m68k_set_reg(M68K_REG_PC, REGION_BASE);
             Module._m68k_execute(1);
             
             // The read from the region should not trigger the callback
@@ -348,7 +346,7 @@ describe('Musashi WASM Node.js Integration Test', () => {
             // Test setting and getting a data register
             const testValue = 0x12345678;
             Module._m68k_set_reg(M68K_REG_D0, testValue);
-            expect(Module._get_d_reg(0) >>> 0).toBe(testValue);
+            expect(Module._m68k_get_reg(0, M68K_REG_D0) >>> 0).toBe(testValue);
             
             // Skip PC and SP tests - they don't work before proper reset
             // The CPU needs to be in a specific state to set these registers
