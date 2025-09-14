@@ -48,28 +48,79 @@ fi
 run emmake make -j8 ENABLE_PERFETTO="$ENABLE_PERFETTO_FLAG"
 
 # Exported functions (C symbols must be prefixed with underscore)
+# IMPORTANT: keep this list sorted lexicographically; one symbol per line.
 exported_functions=(
-  _malloc _free _set_entry_point _m68k_set_reg _m68k_get_reg _m68k_init
-  _m68k_execute _m68k_set_context _set_read_mem_func _set_write_mem_func
-  _set_pc_hook_func _add_pc_hook_addr _add_region _clear_regions
-  _clear_pc_hook_addrs _clear_pc_hook_func _set_full_instr_hook_func
-  _clear_instr_hook_func _reset_myfunc_state _register_function_name
-  _register_memory_name _register_memory_range _clear_registered_names
-  _get_function_name _get_memory_name _m68k_pulse_reset _m68k_end_timeslice
-  _m68k_cycles_run _enable_printf_logging _my_initialize _m68k_trace_enable
-  _m68k_trace_is_enabled _m68k_set_trace_flow_callback
-  _m68k_set_trace_mem_callback _m68k_set_trace_instr_callback
-  _m68k_trace_add_mem_region _m68k_trace_clear_mem_regions
-  _m68k_trace_set_flow_enabled _m68k_trace_set_mem_enabled
-  _m68k_trace_set_instr_enabled _m68k_get_total_cycles _m68k_reset_total_cycles
-  _m68k_disassemble _perfetto_init _perfetto_destroy _perfetto_enable_flow
-  _perfetto_enable_memory _perfetto_enable_instructions _perfetto_export_trace
-  _perfetto_free_trace_data _perfetto_save_trace _perfetto_is_initialized
-  _set_read8_callback _set_write8_callback _set_probe_callback _set_d_reg
-  _get_d_reg _set_a_reg _get_a_reg _set_pc_reg _get_pc_reg _set_sr_reg
-  _get_sr_reg _set_isp_reg _set_usp_reg _get_sp_reg _m68k_call_until_js_stop
-  _m68k_get_last_break_reason _m68k_reset_last_break_reason _m68k_step_one
+  _add_pc_hook_addr
+  _add_region
+  _clear_instr_hook_func
+  _clear_pc_hook_addrs
+  _clear_pc_hook_func
+  _clear_registered_names
+  _clear_regions
+  _enable_printf_logging
+  _free
+  _get_a_reg
+  _get_d_reg
+  _get_function_name
+  _get_memory_name
+  _get_pc_reg
+  _get_sp_reg
+  _get_sr_reg
+  _malloc
+  _m68k_call_until_js_stop
+  _m68k_cycles_run
+  _m68k_disassemble
+  _m68k_end_timeslice
+  _m68k_execute
+  _m68k_get_last_break_reason
+  _m68k_get_reg
+  _m68k_get_total_cycles
+  _m68k_init
+  _m68k_pulse_reset
   _m68k_regnum_from_name
+  _m68k_reset_last_break_reason
+  _m68k_reset_total_cycles
+  _m68k_set_context
+  _m68k_set_reg
+  _m68k_set_trace_flow_callback
+  _m68k_set_trace_instr_callback
+  _m68k_set_trace_mem_callback
+  _m68k_step_one
+  _m68k_trace_add_mem_region
+  _m68k_trace_clear_mem_regions
+  _m68k_trace_enable
+  _m68k_trace_is_enabled
+  _m68k_trace_set_flow_enabled
+  _m68k_trace_set_instr_enabled
+  _m68k_trace_set_mem_enabled
+  _my_initialize
+  _perfetto_destroy
+  _perfetto_enable_flow
+  _perfetto_enable_instructions
+  _perfetto_enable_memory
+  _perfetto_export_trace
+  _perfetto_free_trace_data
+  _perfetto_init
+  _perfetto_is_initialized
+  _perfetto_save_trace
+  _register_function_name
+  _register_memory_name
+  _register_memory_range
+  _reset_myfunc_state
+  _set_a_reg
+  _set_d_reg
+  _set_entry_point
+  _set_full_instr_hook_func
+  _set_isp_reg
+  _set_pc_hook_func
+  _set_pc_reg
+  _set_probe_callback
+  _set_read8_callback
+  _set_read_mem_func
+  _set_sr_reg
+  _set_usp_reg
+  _set_write8_callback
+  _set_write_mem_func
 )
 
 # Runtime function includes (need $-prefixed names)
