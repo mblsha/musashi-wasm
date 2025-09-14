@@ -64,9 +64,9 @@ jobs:
             third_party/abseil-wasm-install
             third_party/retrobus-perfetto/cpp/proto/perfetto.pb.cc
             third_party/retrobus-perfetto/cpp/proto/perfetto.pb.h
-          key: proto-${{ runner.os }}-${{ hashFiles('build_protobuf_wasm.sh', 'third_party/retrobus-perfetto/proto/*.proto') }}-v1
+          key: proto-${{ runner.os }}-emsdk-${{ env.EMSDK_VERSION }}-${{ hashFiles('build_protobuf_wasm.sh', 'third_party/retrobus-perfetto/proto/*.proto') }}-v1
           restore-keys: |
-            proto-${{ runner.os }}-
+            proto-${{ runner.os }}-emsdk-${{ env.EMSDK_VERSION }}-
 
       - name: Build Protobuf/Abseil (if cache miss)
         if: matrix.perfetto && steps.cache-protobuf.outputs.cache-hit != 'true'
