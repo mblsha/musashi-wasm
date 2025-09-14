@@ -457,8 +457,6 @@ extern "C" {
       }
     }
 
-    // Normalize PPC to the start of the stepped instruction for stable semantics
-    m68k_set_reg(M68K_REG_PPC, start_pc);
     // Normalize PC to computed next-instruction boundary
     m68k_set_reg(M68K_REG_PC, new_pc);
 
