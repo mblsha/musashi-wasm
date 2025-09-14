@@ -144,7 +144,7 @@ to_ems_list() {
   # Print a JS array literal from positional args
   local first=1 out="["
   for item in "$@"; do
-    if [[ $first -eq 1 ]]; then first=0; else out+=" ,"; fi
+    if [[ $first -eq 1 ]]; then first=0; else out+=", "; fi
     # Quote strings
     out+="'${item}'"
   done
