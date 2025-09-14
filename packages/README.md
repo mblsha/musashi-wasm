@@ -52,6 +52,16 @@ const statusReg = new MemoryRegion(
 const status = statusReg.get();
 ```
 
+### Single-step execution
+
+Execute exactly one instruction and inspect precise PCs and cycles:
+
+```ts
+const { cycles, startPc, endPc, ppc } = await system.step();
+console.log(`Stepped ${cycles} cycles from 0x${startPc.toString(16)} to 0x${endPc.toString(16)}`);
+// ppc is provided by the core and usually equals startPc
+```
+
 ## Perfetto Tracing
 
 If the WASM module is built with Perfetto support (`ENABLE_PERFETTO=1`), you can capture performance traces:
