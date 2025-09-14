@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-die() {
-  echo "Error: $*" >&2
-  exit 1
-}
+die() { echo "Error: $*" >&2; exit 1; }
 
-run() {
-  echo
-  echo ">>> $*"
-  "$@"
-}
+run() { echo; echo ">>> $*"; if ! "$@"; then code=$?; die "FAILED ($code): $*"; fi; }
 
 echo "==== TOOLCHAIN VERIFICATION (bash) ===="
 
@@ -32,14 +25,20 @@ if ! command -v emcc >/dev/null 2>&1; then
 fi
 
 echo "emcc: $(command -v emcc)"
-echo "node: $(command -v node)"
-echo "emcc version:"; emcc --version | head -n 1
-echo "node version:"; node --version
+if command -v node >/dev/null 2>&1; then
+  echo "node: $(command -v node)"
+  echo "emcc version:"; emcc --version | head -n 1
+  echo "node version:"; node --version
+else
+  echo "node: (not found)"
+  echo "emcc version:"; emcc --version | head -n 1
+fi
 echo "================================"
 
 ENABLE_PERFETTO_FLAG="${ENABLE_PERFETTO:-0}"
 if [[ "$ENABLE_PERFETTO_FLAG" == "1" ]]; then
   echo "Building with Perfetto tracing enabled..."
+  export ENABLE_PERFETTO=1
 else
   echo "Building without Perfetto tracing (set ENABLE_PERFETTO=1 to enable)..."
 fi
@@ -123,6 +122,22 @@ exported_functions=(
   _set_write_mem_func
 )
 
+# Add Perfetto-only exports when enabled (parity with Fish)
+if [[ "$ENABLE_PERFETTO_FLAG" == "1" ]]; then
+  exported_functions+=(
+    _m68k_perfetto_cleanup_slices
+    _m68k_perfetto_destroy
+    _m68k_perfetto_enable_flow
+    _m68k_perfetto_enable_instructions
+    _m68k_perfetto_enable_memory
+    _m68k_perfetto_export_trace
+    _m68k_perfetto_free_trace_data
+    _m68k_perfetto_init
+    _m68k_perfetto_is_initialized
+    _m68k_perfetto_save_trace
+  )
+fi
+
 # Runtime function includes (need $-prefixed names)
 default_lib_funcs=(
   '$addFunction' '$removeFunction' '$ccall' '$cwrap' '$getValue'
@@ -135,18 +150,13 @@ runtime_methods=(
   stringToUTF8 writeArrayToMemory
 )
 
-join_list() {
-  local IFS=','
-  echo "$*"
-}
-
 to_ems_list() {
   # Print a JS array literal from positional args
   local first=1 out="["
   for item in "$@"; do
     if [[ $first -eq 1 ]]; then first=0; else out+=", "; fi
-    # Quote strings
-    out+="'${item}'"
+    # Quote strings with double quotes for emcc robustness
+    out+="\"${item}\""
   done
   out+=']'
   echo "$out"
@@ -161,21 +171,23 @@ if [[ "$ENABLE_PERFETTO_FLAG" == "1" ]]; then
   object_files+=(m68k_perfetto.o third_party/retrobus-perfetto/cpp/proto/perfetto.pb.o)
 fi
 
+SOURCE_MAP_BASE="${SOURCE_MAP_BASE:-http://localhost:8080/}"
+
 emcc_opts=(
-  -g3 -gsource-map --source-map-base http://localhost:8080/
+  -g3 -gsource-map --source-map-base "$SOURCE_MAP_BASE"
   "${object_files[@]}"
   -s "EXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS_LIST}"
   -s "DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=${DEFAULT_LIBS_LIST}"
   -s "EXPORTED_RUNTIME_METHODS=${RUNTIME_METHODS_LIST}"
   -s ASSERTIONS=2
-  -s ALLOW_MEMORY_GROWTH
+  -s ALLOW_MEMORY_GROWTH=1
   -s ALLOW_TABLE_GROWTH=1
   -s MODULARIZE=1
   -s EXPORT_ES6=1
   -s WASM_ASYNC_COMPILATION=1
   -s WASM=1
-  -sDISABLE_EXCEPTION_CATCHING=0
-  -sWASM_BIGINT
+  -s DISABLE_EXCEPTION_CATCHING=0
+  -s WASM_BIGINT=1
   -Wl,--gc-sections
 )
 
@@ -187,12 +199,15 @@ if [[ "$ENABLE_PERFETTO_FLAG" == "1" ]]; then
     die "protobuf.pc not found or invalid. Run ./build_protobuf_wasm.sh"
   fi
   # Collect protobuf libs (split on spaces)
-  mapfile -t protobuf_libs < <(pkg-config --static --libs protobuf)
+  read -r -a protobuf_libs <<< "$(pkg-config --static --libs protobuf)"
+  [[ ${#protobuf_libs[@]} -gt 0 ]] || die "No protobuf libs found via pkg-config"
   echo "protobuf libs: ${protobuf_libs[*]}"
   emcc_opts+=("${protobuf_libs[@]}")
 fi
 
 echo "==== BUILDING NODE.JS VERSION (ESM) ===="
+[[ -f post.js ]] || die "post.js not found next to the build script"
+
 run emcc \
   "${emcc_opts[@]}" \
   -s ENVIRONMENT=node \
