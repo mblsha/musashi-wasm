@@ -31,7 +31,7 @@ mkdir -p build_wasm
 cd build_wasm
 
 # Configure with Emscripten
-emcmake cmake ../cmake \
+emcmake cmake -G Ninja ../cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
     -Dprotobuf_BUILD_TESTS=OFF \
@@ -45,11 +45,11 @@ emcmake cmake ../cmake \
 
 # Build
 echo "Building protobuf..."
-emmake make -j$(nproc)
+cmake --build . --parallel $(nproc)
 
 # Install
 echo "Installing protobuf to ${INSTALL_DIR}..."
-emmake make install
+cmake --install .
 
 # Go back to root directory
 cd ../../../..
@@ -78,7 +78,7 @@ echo "Configuring abseil-cpp with Emscripten..."
 mkdir -p build_wasm
 cd build_wasm
 
-emcmake cmake .. \
+emcmake cmake -G Ninja .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=${ABSEIL_INSTALL_DIR} \
     -DABSL_BUILD_TESTING=OFF \
@@ -88,10 +88,10 @@ emcmake cmake .. \
     -DCMAKE_C_FLAGS="-O2 -flto"
 
 echo "Building abseil-cpp..."
-emmake make -j$(nproc)
+cmake --build . --parallel $(nproc)
 
 echo "Installing abseil-cpp to ${ABSEIL_INSTALL_DIR}..."
-emmake make install
+cmake --install .
 
 cd ../../../..
 
@@ -101,12 +101,12 @@ cd ${BUILD_DIR}/protobuf
 mkdir -p build_native
 cd build_native
 
-cmake ../cmake \
+cmake -G Ninja ../cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -Dprotobuf_BUILD_TESTS=OFF \
     -Dprotobuf_BUILD_SHARED_LIBS=OFF
 
-make -j$(nproc) protoc
+cmake --build . --target protoc --parallel $(nproc)
 
 cd ../../../..
 

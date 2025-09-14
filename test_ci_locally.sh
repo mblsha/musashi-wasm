@@ -17,7 +17,7 @@ cd build
 # Configure with all features enabled
 echo ""
 echo "Configuring CMake with all features..."
-cmake .. \
+cmake -G Ninja .. \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTS=ON \
   -DENABLE_PERFETTO=ON
@@ -25,12 +25,12 @@ cmake .. \
 # Build all targets
 echo ""
 echo "Building all targets..."
-cmake --build . -j8
+cmake --build . --parallel $(nproc)
 
 # Build examples
 echo ""
 echo "Building examples target..."
-cmake --build . --target examples -j8 || echo "Warning: Examples target not found"
+cmake --build . --target examples --parallel $(nproc) || echo "Warning: Examples target not found"
 
 # Verify all expected targets exist
 echo ""
@@ -78,7 +78,7 @@ if [ "$ALL_GOOD" = true ]; then
 
   echo ""
   echo "Running ctest to verify tests pass..."
-  ctest --output-on-failure -j8 || echo "Some tests failed - check output above"
+  ctest --output-on-failure -j$(nproc) || echo "Some tests failed - check output above"
 else
   echo ""
   echo "========================================"
