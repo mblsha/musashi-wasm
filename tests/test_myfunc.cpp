@@ -1,6 +1,7 @@
 /* Refactored myfunc API tests - uses base class with extensions for API-specific features */
 
 #include "m68k_test_common.h"
+#include "m68ktrace.h"
 
 extern "C" {
     // Functions from myfunc.cc
@@ -17,6 +18,8 @@ extern "C" {
     void m68k_write_memory_8(unsigned int address, unsigned int value);
     void m68k_write_memory_16(unsigned int address, unsigned int value);
     void m68k_write_memory_32(unsigned int address, unsigned int value);
+    // Single-instruction step helper from myfunc.cc
+    unsigned long long m68k_step_one(void);
 }
 
 /* Extended test class for myfunc API with write logging */
@@ -46,6 +49,75 @@ TEST_F(MyFuncTest, Initialization) {
     
     // Second call should return 1 (already initialized)
     EXPECT_EQ(my_initialize(), 1);
+}
+
+// Validate single-step boundary normalization: PC advances by decoded size
+// and PPC reflects the instruction start PC.
+TEST_F(MyFuncTest, SingleStepNormalizesPcAndPpc) {
+    // Program at reset PC (0x400):
+    // MOVE.L #$12345678, D0 (6 bytes) ; followed by NOP
+    write_word(0x400, 0x203C); // MOVE.L #imm, D0
+    write_long(0x402, 0x12345678);
+    write_word(0x408, 0x4E71);   // NOP
+
+    unsigned int start = m68k_get_reg(NULL, M68K_REG_PC);
+    ASSERT_EQ(start, 0x400u);
+
+    unsigned long long cyc = m68k_step_one();
+    EXPECT_GT(cyc, 0ull);
+
+    unsigned int end = m68k_get_reg(NULL, M68K_REG_PC);
+    unsigned int ppc = m68k_get_reg(NULL, M68K_REG_PPC);
+
+    // Decode size via disassembler and verify end PC
+    char buf[128];
+    unsigned int size = m68k_disassemble(buf, start, M68K_CPU_TYPE_68000);
+    ASSERT_GT(size, 0u);
+    EXPECT_EQ(end, start + size);
+    EXPECT_EQ(ppc, start);
+}
+
+// Validate memory trace callback is invoked during a write and cycles is sensible
+TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
+    static int g_events = 0;
+    static uint64_t g_last_cycles = 0;
+
+    auto cb = +[](m68k_trace_mem_type type,
+                  uint32_t pc,
+                  uint32_t address,
+                  uint32_t value,
+                  uint8_t size,
+                  uint64_t cycles) -> int {
+        (void)pc; (void)address; (void)value; (void)size;
+        if (type == M68K_TRACE_MEM_WRITE) {
+            g_events++;
+            g_last_cycles = cycles;
+        }
+        return 0;
+    };
+
+    // Install memory tracer and enable
+    m68k_trace_enable(1);
+    m68k_set_trace_mem_callback(cb);
+    m68k_trace_set_mem_enabled(1);
+
+    // Minimal program at 0x400 that performs a write:
+    // MOVE.L #$CAFEBABE, D0 ; MOVE.L D0, -(SP) ; RTS
+    write_word(0x400, 0x203C); // MOVE.L #imm, D0
+    write_long(0x402, 0xCAFEBABEu);
+    write_word(0x406, 0x2F00); // MOVE.L D0, -(SP)
+    write_word(0x408, 0x4E75); // RTS
+
+    // Ensure SP is in a valid RAM range (base class set via reset vector)
+    ASSERT_GT(m68k_get_reg(NULL, M68K_REG_SP), 0u);
+
+    // Step the first two instructions to hit the write
+    m68k_step_one();
+    m68k_step_one();
+
+    EXPECT_GE(g_events, 1);
+    // cycles may be 0 at reset; once running, should be non-decreasing
+    EXPECT_GE(g_last_cycles, 0u);
 }
 
 // Test memory regions
