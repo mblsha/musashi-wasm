@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-die() { echo "Error: $*" >&2; exit 1; }
+die() { local code=${2:-1}; echo "Error: $1" >&2; exit "$code"; }
 
 run() { echo; echo ">>> $*"; if ! "$@"; then code=$?; die "FAILED ($code): $*"; fi; }
 
@@ -193,8 +193,9 @@ emcc_opts=(
 
 if [[ "$ENABLE_PERFETTO_FLAG" == "1" ]]; then
   echo "==== PERFETTO LINKING SETUP ===="
-  export PKG_CONFIG_PATH="third_party/protobuf-wasm-install/lib/pkgconfig:third_party/abseil-wasm-install/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+  export PKG_CONFIG_PATH="third_party/protobuf-wasm-install/lib/pkgconfig:third_party/abseil-wasm-install/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
   echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+  command -v pkg-config >/dev/null 2>&1 || die "pkg-config not found (required when ENABLE_PERFETTO=1). Install it (e.g., brew install pkg-config)"
   if ! pkg-config --exists protobuf; then
     die "protobuf.pc not found or invalid. Run ./build_protobuf_wasm.sh"
   fi
