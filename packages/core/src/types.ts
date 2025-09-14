@@ -24,8 +24,8 @@ export interface CpuRegisters {
   ppc: number; // Previous Program Counter
 }
 
-/** A function to be executed when a specific address is hit during execution. */
-export type HookCallback = (system: System) => void;
+/** Unified hook result indicating how execution should proceed. */
+export type HookResult = 'continue' | 'stop';
 
 /** Memory access event payload for JS callbacks. */
 export interface MemoryAccessEvent {
@@ -146,30 +146,17 @@ export interface System {
   reset(): void;
 
   /**
-   * Attaches a "probe" to an address. The callback is executed when the PC
-   * hits this address, after which native execution continues.
-   * @returns A function to remove the hook.
+   * Adds a unified PC hook at an address. The callback returns whether to
+   * continue execution or request a stop (useful for stepping and call()).
+   * This is a more general alternative to probe/override.
    */
-  probe(address: number, callback: HookCallback): () => void;
-
-  /**
-   * Attaches an "override" to an address. The callback is executed instead
-   * of the native code. The emulator executes an RTS immediately after.
-   * @returns A function to remove the hook.
-   */
-  override(address: number, callback: HookCallback): () => void;
+  addHook(address: number, handler: (system: System) => HookResult): () => void;
 
   /** Accesses the optional Perfetto tracing functionality. */
   readonly tracer: Tracer;
 
-  /** Disassembles a single instruction at the given address and returns a formatted string (or null if unavailable). */
-  disassemble(address: number): string | null;
-
-  /**
-   * Returns the size in bytes of the instruction at the given PC.
-   * Returns 0 if the disassembler is unavailable or decoding fails.
-   */
-  getInstructionSize(pc: number): number;
+  /** Disassembles the instruction at the given address. Returns text and size or null if unavailable. */
+  disassemble(address: number): { text: string; size: number } | null;
 
   /**
    * Register a callback for memory reads performed by the CPU. The callback receives
@@ -184,4 +171,10 @@ export interface System {
    * Returns a function to unsubscribe.
    */
   onMemoryWrite(cb: MemoryAccessCallback): () => void;
+
+  /**
+   * Disposes resources held by the underlying WASM bridge (callbacks, regions).
+   * After dispose(), the System should be considered unusable.
+   */
+  dispose(): void;
 }

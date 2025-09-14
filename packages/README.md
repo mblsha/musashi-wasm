@@ -11,7 +11,7 @@ The core M68k emulator package that provides:
 - Memory access (read/write)
 - Register manipulation
 - Execution control (run, call, reset)
-- Hook system (probe and override)
+ - Hook system (`addHook` unified API)
 - Optional Perfetto tracing support
 
 ### @m68k/memory
@@ -97,6 +97,40 @@ if (system.tracer.isAvailable()) {
 ```
 
 View the trace at [ui.perfetto.dev](https://ui.perfetto.dev).
+
+## API Updates
+
+- Unified PC hooks: `system.addHook(address, sys => 'continue' | 'stop')`. Use `'stop'` to halt execution (useful for `call()` and stepping).
+- Disassembly: `system.disassemble(pc)` returns `{ text, size }`.
+- Cleanup: `system.dispose()` to release underlying WASM callbacks/regions when done.
+
+## Migration Guide
+
+This release removes legacy hook helpers and a redundant size helper. Suggested migrations:
+
+- Unified PC hooks
+  - Before: `probe(address, cb)` to continue; `override(address, cb)` to stop and emulate RTS.
+  - After: `addHook(address, sys => 'continue' | 'stop')`.
+    - Equivalent mappings:
+      - `probe(addr, cb)` → `addHook(addr, sys => { cb(sys); return 'continue'; })`
+      - `override(addr, cb)` → `addHook(addr, sys => { cb(sys); return 'stop'; })`
+  - Note: `probe` and `override` have been removed.
+
+- Disassembly helpers
+  - Before: `disassemble(pc)` for text and `getInstructionSize(pc)` for size.
+  - After: `disassemble(pc)` returns `{ text, size }` in one call.
+  - Note: `getInstructionSize(pc)` and the text-only `disassemble(pc)` variant have been removed.
+
+- Lifecycle cleanup
+  - New: `system.dispose()` tears down WASM callbacks/regions. Call it when the system is no longer needed (tests, short‑lived tools).
+
+- npm wrapper enum correction
+  - If you consume `musashi-wasm` directly, the `M68kRegister` enum now matches Musashi headers. `PPC` is `19` (was incorrectly `29`). Update code that depends on raw enum values.
+
+### Compatibility
+
+- This is a breaking change for users of `probe`, `override`, and `getInstructionSize`. See mappings above.
+- We plan to prefer `@m68k/core` as the primary TS API and reduce duplication in the standalone npm wrapper.
 
 ## Building
 
