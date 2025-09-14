@@ -371,7 +371,11 @@ export class MusashiWrapper {
     }
     if (enable && !this._memTraceActive) {
       if (!this._memTraceFunc) {
-        // type(0=read,1=write), pc, addr, value, size, cycles
+        // Signature from m68ktrace.h:
+        // int (*m68k_trace_mem_callback)(m68k_trace_mem_type type,
+        //   uint32_t pc, uint32_t address, uint32_t value, uint8_t size, uint64_t cycles);
+        // Emscripten addFunction signature with WASM_BIGINT enabled: 'iiiiij'
+        // (five i32 parameters followed by one i64/BigInt)
         this._memTraceFunc = this._module.addFunction(
           (
             type: number,
@@ -379,7 +383,7 @@ export class MusashiWrapper {
             addr: number,
             value: number,
             size: number,
-            _cycles: number
+            _cycles: bigint
           ) => {
             const s = (size | 0) as 1 | 2 | 4;
             const a = addr >>> 0;
@@ -392,7 +396,7 @@ export class MusashiWrapper {
             }
             return 0;
           },
-          'iiiiii'
+          'iiiiij'
         );
       }
       // Wire into core and turn on tracing

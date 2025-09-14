@@ -219,9 +219,13 @@ class SystemImpl implements System {
     // Normalize to Number before masking to avoid BigInt/Number mixing.
     const c = this._musashi.step();
     const cycles = Number(c) >>> 0;
-    const endPc = this._musashi.get_reg(16) >>> 0; // PC after executing
+    const endPcActual = this._musashi.get_reg(16) >>> 0; // PC after executing
     // Previous PC as reported by the core; may equal startPc
     const ppc = this._musashi.get_reg(19) >>> 0;
+    // Normalize endPc to decoded instruction size boundary when possible.
+    // This avoids prefetch-related discrepancies in metadata while leaving core state intact.
+    const size = this.getInstructionSize(startPc) >>> 0;
+    const endPc = size > 0 ? ((startPc + size) >>> 0) : endPcActual;
     return { cycles, startPc, endPc, ppc };
   }
 
