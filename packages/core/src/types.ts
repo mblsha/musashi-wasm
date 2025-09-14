@@ -24,6 +24,43 @@ export interface CpuRegisters {
   ppc: number; // Previous Program Counter
 }
 
+// Enum of CPU register indices aligned with Musashi's m68k.h
+// Values must stay in sync with the C enum m68k_register_t
+export enum M68kReg {
+  D0 = 0,
+  D1 = 1,
+  D2 = 2,
+  D3 = 3,
+  D4 = 4,
+  D5 = 5,
+  D6 = 6,
+  D7 = 7,
+  A0 = 8,
+  A1 = 9,
+  A2 = 10,
+  A3 = 11,
+  A4 = 12,
+  A5 = 13,
+  A6 = 14,
+  A7 = 15,
+  PC = 16,
+  SR = 17,
+  SP = 18,
+  PPC = 19,
+  USP = 20,
+  ISP = 21,
+  MSP = 22,
+  SFC = 23,
+  DFC = 24,
+  VBR = 25,
+  CACR = 26,
+  CAAR = 27,
+  PREF_ADDR = 32,
+  PREF_DATA = 33,
+  IR = 36,
+  CPU_TYPE = 37,
+}
+
 /** A function to be executed when a specific address is hit during execution. */
 export type HookCallback = (system: System) => void;
 

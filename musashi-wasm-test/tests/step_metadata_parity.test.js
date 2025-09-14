@@ -60,11 +60,11 @@ describe('Single-step metadata parity against disassembler size', () => {
         Module._free(buf);
         expect(size).toBeGreaterThan(0);
 
-        const start = Module._m68k_get_reg(0, 16) >>> 0;
+        const start = Module._get_pc_reg() >>> 0;
         expect(start >>> 0).toBe(pc >>> 0);
         const cyc = Module._m68k_step_one();
         expect(cyc).toBeGreaterThan(0);
-        const end = Module._m68k_get_reg(0, 16) >>> 0;
+        const end = Module._get_pc_reg() >>> 0;
         expect(end >>> 0).toBe((start + size) >>> 0);
         return end >>> 0;
       };
@@ -82,4 +82,3 @@ describe('Single-step metadata parity against disassembler size', () => {
     }
   });
 });
-

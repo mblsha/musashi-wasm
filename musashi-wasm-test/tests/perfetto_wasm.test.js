@@ -271,7 +271,6 @@ describe('Musashi WASM Perfetto Integration Test', () => {
             }
 
             // Verify execution occurred (the exact result may vary based on execution)
-            const d0Value = Module._m68k_get_reg(16); // M68K_REG_D0
             // Just check that some execution happened
             expect(totalCycles).toBeGreaterThan(0);
 

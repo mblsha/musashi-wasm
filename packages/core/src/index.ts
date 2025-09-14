@@ -9,6 +9,7 @@ import type {
   MemoryAccessCallback,
   MemoryAccessEvent,
 } from './types.js';
+import { M68kReg } from './types.js';
 import { MusashiWrapper, getModule } from './musashi-wrapper.js';
 
 // Re-export types
@@ -21,30 +22,31 @@ export type {
   TraceConfig,
   SymbolMap,
 };
+export { M68kReg } from './types.js';
 
 // --- Private Implementation ---
 
 // A map from register names to their numeric index in Musashi.
-const REGISTER_MAP: { [K in keyof CpuRegisters]: number } = {
-  d0: 0,
-  d1: 1,
-  d2: 2,
-  d3: 3,
-  d4: 4,
-  d5: 5,
-  d6: 6,
-  d7: 7,
-  a0: 8,
-  a1: 9,
-  a2: 10,
-  a3: 11,
-  a4: 12,
-  a5: 13,
-  a6: 14,
-  sp: 15, // a7
-  pc: 16,
-  sr: 17,
-  ppc: 19,
+const REGISTER_MAP: { [K in keyof CpuRegisters]: M68kReg } = {
+  d0: M68kReg.D0,
+  d1: M68kReg.D1,
+  d2: M68kReg.D2,
+  d3: M68kReg.D3,
+  d4: M68kReg.D4,
+  d5: M68kReg.D5,
+  d6: M68kReg.D6,
+  d7: M68kReg.D7,
+  a0: M68kReg.A0,
+  a1: M68kReg.A1,
+  a2: M68kReg.A2,
+  a3: M68kReg.A3,
+  a4: M68kReg.A4,
+  a5: M68kReg.A5,
+  a6: M68kReg.A6,
+  sp: M68kReg.A7, // a7
+  pc: M68kReg.PC,
+  sr: M68kReg.SR,
+  ppc: M68kReg.PPC,
 };
 
 class TracerImpl implements Tracer {
@@ -214,14 +216,14 @@ class SystemImpl implements System {
   }
 
   async step(): Promise<{ cycles: number; startPc: number; endPc: number; ppc?: number }> {
-    const startPc = this._musashi.get_reg(16) >>> 0; // PC before executing
+    const startPc = this._musashi.get_reg(M68kReg.PC) >>> 0; // PC before executing
     // musashi.step() may return an unsigned long long (BigInt with WASM_BIGINT)
     // Normalize to Number before masking to avoid BigInt/Number mixing.
     const c = this._musashi.step();
     const cycles = Number(c) >>> 0;
-    const endPcActual = this._musashi.get_reg(16) >>> 0; // PC after executing
+    const endPcActual = this._musashi.get_reg(M68kReg.PC) >>> 0; // PC after executing
     // Previous PC as reported by the core; may equal startPc
-    const ppc = this._musashi.get_reg(19) >>> 0;
+    const ppc = this._musashi.get_reg(M68kReg.PPC) >>> 0;
     // Normalize endPc to decoded instruction size boundary when possible.
     // This avoids prefetch-related discrepancies in metadata while leaving core state intact.
     const size = this.getInstructionSize(startPc) >>> 0;
