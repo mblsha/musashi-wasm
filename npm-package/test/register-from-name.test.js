@@ -30,22 +30,14 @@ function cString(mod, js) {
 }
 
 describe('m68k_regnum_from_name()', () => {
-  it('matches enum for all known names', async () => {
+  it('matches enum for all register names found in d.ts', async () => {
     const mod = await loadModule();
     const map = parseEnumMap();
-    const names = [
-      'D0','D1','D2','D3','D4','D5','D6','D7',
-      'A0','A1','A2','A3','A4','A5','A6','A7',
-      'PC','SR','SP','PPC','USP','ISP','MSP',
-      'SFC','DFC','VBR','CACR','CAAR','PREF_ADDR','PREF_DATA','IR','CPU_TYPE'
-    ];
-    for (const name of names) {
+    for (const [name, exp] of map.entries()) {
       const ptr = cString(mod, name);
       const got = mod._m68k_regnum_from_name(ptr);
-      const exp = map.get(name);
       expect(got).toBe(exp);
       mod._free(ptr);
     }
   }, 20000);
 });
-
