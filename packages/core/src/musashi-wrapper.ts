@@ -231,7 +231,8 @@ export class MusashiWrapper {
     this.requireExport('_m68k_call_until_js_stop');
     const callUntil = this._module._m68k_call_until_js_stop!;
     // Defer timeslice to C++ default by passing 0
-    return callUntil(address >>> 0, 0) >>> 0;
+    const ret = callUntil(address >>> 0, 0 as unknown as number);
+    return typeof ret === 'bigint' ? Number(ret) >>> 0 : (ret as number) >>> 0;
   }
 
   // Expose break reason helpers for tests
@@ -327,30 +328,32 @@ export class MusashiWrapper {
         // Signature from m68ktrace.h:
         // int (*m68k_trace_mem_callback)(m68k_trace_mem_type type,
         //   uint32_t pc, uint32_t address, uint32_t value, uint8_t size, uint64_t cycles);
-        // Emscripten addFunction signature with WASM_BIGINT enabled: 'iiiiij'
-        // (five i32 parameters followed by one i64/BigInt)
-        this._memTraceFunc = this._module.addFunction(
-          (
-            type: number,
-            pc: number,
-            addr: number,
-            value: number,
-            size: number,
-            _cycles: bigint
-          ) => {
-            const s = (size | 0) as 1 | 2 | 4;
-            const a = addr >>> 0;
-            const v = value >>> 0;
-            const p = pc >>> 0;
-            if (type === 0) {
-              this._system._handleMemoryRead?.(a, s, v, p);
-            } else {
-              this._system._handleMemoryWrite?.(a, s, v, p);
-            }
-            return 0;
-          },
-          'iiiiiij'
-        );
+        // Prefer BigInt signature when available ('iiiiij');
+        // Fallback to number-only builds ('iiiiiii') where cycles is split/lost.
+        const makeCb = () => (
+          type: number,
+          pc: number,
+          addr: number,
+          value: number,
+          size: number,
+          _cycles: unknown
+        ) => {
+          const s = (size | 0) as 1 | 2 | 4;
+          const a = addr >>> 0;
+          const v = value >>> 0;
+          const p = pc >>> 0;
+          if (type === 0) {
+            this._system._handleMemoryRead?.(a, s, v, p);
+          } else {
+            this._system._handleMemoryWrite?.(a, s, v, p);
+          }
+          return 0;
+        };
+        try {
+          this._memTraceFunc = this._module.addFunction(makeCb(), 'iiiiiij');
+        } catch {
+          this._memTraceFunc = this._module.addFunction(makeCb(), 'iiiiiii');
+        }
       }
       // Wire into core and turn on tracing
       this._module._m68k_set_trace_mem_callback(this._memTraceFunc);
