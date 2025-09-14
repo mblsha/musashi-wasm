@@ -5,6 +5,13 @@ function hex(n: number) {
 }
 
 describe('Memory trace for absolute long accesses (read path)', () => {
+  let sys: any;
+
+  afterEach(() => {
+    if (sys && typeof sys.cleanup === 'function') sys.cleanup();
+    sys = undefined;
+  });
+
   it('emits read events with correct addr/size/value/pc for MOVE.L (abs).L', async () => {
     // Build a ROM large enough to place code at 0x416 and 0x41c
     const rom = new Uint8Array(0x200000);
@@ -16,7 +23,7 @@ describe('Memory trace for absolute long accesses (read path)', () => {
     rom.set([0x20, 0x79, 0x00, 0x10, 0x6e, 0x80], 0x416);
     rom.set([0x20, 0x39, 0x00, 0x10, 0x6e, 0x80], 0x41c);
 
-    const sys = await createSystem({ rom, ramSize: 0x100000 });
+    sys = await createSystem({ rom, ramSize: 0x100000 });
     sys.setRegister('sr', 0x2704);
     sys.setRegister('sp', 0x10f300);
     sys.setRegister('a0', 0x100a80);
@@ -64,4 +71,3 @@ describe('Memory trace for absolute long accesses (read path)', () => {
     }
   });
 });
-

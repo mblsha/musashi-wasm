@@ -22,6 +22,10 @@ describe('step() metadata contract', () => {
     system = await createSystem({ rom, ramSize: 0x1000 });
   });
 
+  afterEach(() => {
+    system.cleanup();
+  });
+
   it('endPc equals startPc + getInstructionSize(startPc)', async () => {
     // Step 1
     let start = system.getRegisters().pc >>> 0;
@@ -48,4 +52,3 @@ describe('step() metadata contract', () => {
     expect(s3.endPc >>> 0).toBe((start + size) >>> 0);
   });
 });
-
