@@ -162,6 +162,12 @@ export interface System {
   disassemble(address: number): string | null;
 
   /**
+   * Returns the size in bytes of the instruction at the given PC.
+   * Returns 0 if the disassembler is unavailable or decoding fails.
+   */
+  getInstructionSize(pc: number): number;
+
+  /**
    * Register a callback for memory reads performed by the CPU. The callback receives
    * the accessed address, size (1/2/4), value read, and the PC of the instruction.
    * Returns a function to unsubscribe.
