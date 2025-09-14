@@ -66,17 +66,14 @@ TEST_F(MyFuncTest, SingleStepNormalizesPcAndPpc) {
     EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x406),
               std::make_pair(std::string("nop"), 2));
 
-    unsigned int start = m68k_get_reg(NULL, M68K_REG_PC);
-    ASSERT_EQ(start, 0x400u);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x400u);
 
     unsigned long long cyc = m68k_step_one();
     EXPECT_EQ(cyc, 12ull) << "MOVE.L #imm32, D0 should take 12 cycles on 68000";
 
-    unsigned int end = m68k_get_reg(NULL, M68K_REG_PC);
-    unsigned int ppc = m68k_get_reg(NULL, M68K_REG_PPC);
     // Known encoding: MOVE.L #imm,D0 is 6 bytes, so end should be 0x406
-    EXPECT_EQ(end, 0x406u);
-    EXPECT_EQ(ppc, 0x400u);
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x406u);
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PPC), 0x400u);
     // And D0 should have the immediate value
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D0), 0x12345678u);
 }
@@ -122,31 +119,21 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
     // Ensure SP is in a valid RAM range (base class set via reset vector)
     ASSERT_GT(m68k_get_reg(NULL, M68K_REG_SP), 0u);
 
-    unsigned int pc0 = m68k_get_reg(NULL, M68K_REG_PC);
-    unsigned int ppc0 = m68k_get_reg(NULL, M68K_REG_PPC);
-    unsigned int sp0 = m68k_get_reg(NULL, M68K_REG_SP);
-    ASSERT_EQ(pc0, 0x400u);
-    ASSERT_EQ(ppc0, 0x000000u);
-    ASSERT_EQ(sp0, 0x1000u);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x400u);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_PPC), 0x000000u);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_SP), 0x1000u);
 
     // Step the first two instructions to hit the write (second instruction)
     unsigned long long cyc1 = m68k_step_one(); // MOVE.L #imm, D0
-    unsigned int pc1 = m68k_get_reg(NULL, M68K_REG_PC);
-    unsigned int ppc1 = m68k_get_reg(NULL, M68K_REG_PPC);
-    unsigned int sp1 = m68k_get_reg(NULL, M68K_REG_SP);
-    unsigned int d0_1 = m68k_get_reg(NULL, M68K_REG_D0);
-    ASSERT_EQ(pc1, 0x406u);
-    ASSERT_EQ(ppc1, 0x400u);
-    ASSERT_EQ(sp1, 0x1000u);
-    ASSERT_EQ(d0_1, 0xCAFEBABEu);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x406u);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_PPC), 0x400u);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_SP), 0x1000u);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_D0), 0xCAFEBABEu);
 
     unsigned long long cyc2 = m68k_step_one(); // MOVE.L D0, -(SP)  -> triggers write
-    unsigned int pc2 = m68k_get_reg(NULL, M68K_REG_PC);
-    unsigned int ppc2 = m68k_get_reg(NULL, M68K_REG_PPC);
-    unsigned int sp2 = m68k_get_reg(NULL, M68K_REG_SP);
-    ASSERT_EQ(pc2, 0x408u);
-    ASSERT_EQ(ppc2, 0x406u);
-    ASSERT_EQ(sp2, 0x0FFCu);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x408u);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_PPC), 0x406u);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_SP), 0x0FFCu);
 
     // Minimal assertion: memory trace callback was invoked at least once
     EXPECT_GT(write_calls, 0);
