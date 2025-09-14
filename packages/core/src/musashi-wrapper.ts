@@ -161,8 +161,7 @@ export class MusashiWrapper {
     this._module._m68k_pulse_reset();
 
     // Verify initialization
-    const pc =
-      this._module._get_pc_reg?.() ?? this._module._m68k_get_reg(0, M68kReg.PC);
+    const pc = this._module._m68k_get_reg(0, M68kReg.PC);
     if (pc !== 0x400) {
       throw new Error(
         `CPU not properly initialized, PC=0x${pc.toString(16)} (expected 0x400)`
@@ -262,47 +261,11 @@ export class MusashiWrapper {
   }
 
   get_reg(index: M68kReg): number {
-    // Use new register helpers when available
-    if (index >= M68kReg.D0 && index <= M68kReg.D7 && this._module._get_d_reg) {
-      return this._module._get_d_reg(index) >>> 0; // Ensure unsigned
-    } else if (index >= M68kReg.A0 && index <= M68kReg.A6 && this._module._get_a_reg) {
-      return this._module._get_a_reg(index - M68kReg.A0) >>> 0; // Ensure unsigned
-    } else if (index === M68kReg.A7 && this._module._get_sp_reg) {
-      return this._module._get_sp_reg() >>> 0; // Ensure unsigned
-    } else if (index === M68kReg.PC && this._module._get_pc_reg) {
-      return this._module._get_pc_reg() >>> 0; // Ensure unsigned
-    } else if (index === M68kReg.SR && this._module._get_sr_reg) {
-      return this._module._get_sr_reg() >>> 0; // Ensure unsigned
-    }
-
-    // Fallback to old system
-    return this._module._m68k_get_reg(0, index) >>> 0; // Ensure unsigned
+    return this._module._m68k_get_reg(0, index) >>> 0;
   }
 
   set_reg(index: M68kReg, value: number) {
-    // Use new register helpers when available
-    if (index >= M68kReg.D0 && index <= M68kReg.D7 && this._module._set_d_reg) {
-      this._module._set_d_reg(index, value);
-    } else if (index >= M68kReg.A0 && index <= M68kReg.A6 && this._module._set_a_reg) {
-      this._module._set_a_reg(index - M68kReg.A0, value);
-    } else if (index === M68kReg.A7) {
-      // SP - need to check supervisor mode and set appropriate stack
-      const sr = this.get_reg(M68kReg.SR);
-      if ((sr & 0x2000) !== 0 && this._module._set_isp_reg) {
-        this._module._set_isp_reg(value); // Supervisor mode: set ISP
-      } else if (this._module._set_usp_reg) {
-        this._module._set_usp_reg(value); // User mode: set USP
-      } else {
-        this._module._m68k_set_reg(index, value);
-      }
-    } else if (index === M68kReg.PC && this._module._set_pc_reg) {
-      this._module._set_pc_reg(value);
-    } else if (index === M68kReg.SR && this._module._set_sr_reg) {
-      this._module._set_sr_reg(value);
-    } else {
-      // Fallback to old system
-      this._module._m68k_set_reg(index, value);
-    }
+    this._module._m68k_set_reg(index, value);
   }
 
   add_pc_hook_addr(addr: number) {
