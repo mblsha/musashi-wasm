@@ -31,12 +31,13 @@ struct m68k_trace_state {
     bool mem_enabled = false;
     bool instr_enabled = false;
     
-    /* Callbacks using std::function for flexibility */
-    std::optional<std::function<int(m68k_trace_flow_type, uint32_t, uint32_t, uint32_t,
-                                    const uint32_t*, const uint32_t*, uint64_t)>> flow_callback;
-    std::optional<std::function<int(m68k_trace_mem_type, uint32_t, uint32_t, uint32_t,
-                                    uint8_t, uint64_t)>> mem_callback;
-    std::optional<std::function<int(uint32_t, uint16_t, uint64_t, int)>> instr_callback;
+    /* Raw C function pointers for callbacks (preserve exact ABI/signatures).
+     * Using raw pointers instead of std::function ensures Emscripten
+     * generates the correct wasm table signature, including i64 (BigInt)
+     * for the cycles parameter when WASM_BIGINT is enabled. */
+    m68k_trace_flow_callback  flow_callback = nullptr;
+    m68k_trace_mem_callback   mem_callback = nullptr;
+    m68k_trace_instr_callback instr_callback = nullptr;
     
     /* Memory regions to trace - no arbitrary limit */
     std::vector<m68k_trace_region> mem_regions;
@@ -85,29 +86,17 @@ int m68k_trace_is_enabled(void)
 
 void m68k_set_trace_flow_callback(m68k_trace_flow_callback callback)
 {
-    if (callback) {
-        g_trace.flow_callback = callback;
-    } else {
-        g_trace.flow_callback.reset();
-    }
+    g_trace.flow_callback = callback;
 }
 
 void m68k_set_trace_mem_callback(m68k_trace_mem_callback callback)
 {
-    if (callback) {
-        g_trace.mem_callback = callback;
-    } else {
-        g_trace.mem_callback.reset();
-    }
+    g_trace.mem_callback = callback;
 }
 
 void m68k_set_trace_instr_callback(m68k_trace_instr_callback callback)
 {
-    if (callback) {
-        g_trace.instr_callback = callback;
-    } else {
-        g_trace.instr_callback.reset();
-    }
+    g_trace.instr_callback = callback;
 }
 
 int m68k_trace_add_mem_region(uint32_t start, uint32_t end)
@@ -178,7 +167,7 @@ int m68k_trace_instruction_hook(unsigned int pc, uint16_t opcode, int cycles_exe
     /* Check all conditions before calling callback */
     if (g_trace.enabled && g_trace.instr_enabled && g_trace.instr_callback) {
         /* Call callback with protection against exceptions */
-        result = (*g_trace.instr_callback)(pc, opcode, g_trace.total_cycles, cycles_executed);
+        result = g_trace.instr_callback(pc, opcode, g_trace.total_cycles, cycles_executed);
         
         /* Sanitize return value */
         if (result < 0) result = 0;
@@ -210,8 +199,8 @@ int m68k_trace_flow_hook(m68k_trace_flow_type type, uint32_t source_pc,
         }
         
         /* Call callback with protection */
-        result = (*g_trace.flow_callback)(type, source_pc, dest_pc, return_addr,
-                                          d_regs.data(), a_regs.data(), g_trace.total_cycles);
+        result = g_trace.flow_callback(type, source_pc, dest_pc, return_addr,
+                                       d_regs.data(), a_regs.data(), g_trace.total_cycles);
         
         /* Sanitize return value */
         if (result < 0) result = 0;
@@ -238,8 +227,8 @@ int m68k_trace_mem_hook(m68k_trace_mem_type type, uint32_t pc,
     if (g_trace.enabled && g_trace.mem_enabled && g_trace.mem_callback) {
         if (is_address_traced(address)) {
             /* Call callback with protection */
-            result = (*g_trace.mem_callback)(type, pc, address, value, size,
-                                            g_trace.total_cycles);
+            result = g_trace.mem_callback(type, pc, address, value, size,
+                                          g_trace.total_cycles);
             
             /* Sanitize return value */
             if (result < 0) result = 0;

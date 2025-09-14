@@ -420,11 +420,26 @@ extern "C" {
 
   // Execute exactly one instruction and return the cycles consumed.
   unsigned long long m68k_step_one(void) {
+    // Capture start PC for accurate endPc normalization
+    unsigned int start_pc = m68k_get_reg(nullptr, M68K_REG_PC);
     _step_state = StepState::Arm;
     unsigned long long cycles = m68k_execute(kDefaultTimeslice);
     // If CPU became stopped before next hook (e.g., STOP), ensure clean state
     if (_step_state != StepState::Idle) {
       _step_state = StepState::Idle;
+    }
+    // Normalize PC to the post-instruction boundary based on disassembler size.
+    // This avoids prefetch-related off-by-2 when the hook breaks after IR fetch.
+    {
+      // m68k_disassemble prints to a buffer; we only need the returned size.
+      char tmp[1];
+      unsigned int size = m68k_disassemble(tmp, start_pc, M68K_CPU_TYPE_68000);
+      if (size > 0) {
+        unsigned int normalized_end = start_pc + size;
+        m68k_set_reg(M68K_REG_PC, normalized_end);
+        // Keep PPC consistent: previous PC should reflect the instruction start
+        m68k_set_reg(M68K_REG_PPC, start_pc);
+      }
     }
     return cycles;
   }
