@@ -51,8 +51,8 @@ TEST_F(MyFuncTest, Initialization) {
     EXPECT_EQ(my_initialize(), 1);
 }
 
-// Validate single-step boundary normalization: PC advances by decoded size
-// and PPC reflects the instruction start PC.
+// Validate single-step boundary normalization: PC advances by the known
+// instruction size and PPC reflects the instruction start PC.
 TEST_F(MyFuncTest, SingleStepNormalizesPcAndPpc) {
     // Program at reset PC (0x400):
     // MOVE.L #$12345678, D0 (6 bytes) ; followed by NOP
@@ -68,19 +68,23 @@ TEST_F(MyFuncTest, SingleStepNormalizesPcAndPpc) {
 
     unsigned int end = m68k_get_reg(NULL, M68K_REG_PC);
     unsigned int ppc = m68k_get_reg(NULL, M68K_REG_PPC);
-
-    // Decode size via disassembler and verify end PC
-    char buf[128];
-    unsigned int size = m68k_disassemble(buf, start, M68K_CPU_TYPE_68000);
-    ASSERT_GT(size, 0u);
-    EXPECT_EQ(end, start + size);
-    EXPECT_EQ(ppc, start);
+    // Known encoding: MOVE.L #imm,D0 is 6 bytes, so end should be 0x406
+    EXPECT_EQ(end, 0x406u);
+    EXPECT_EQ(ppc, 0x400u);
+    // And D0 should have the immediate value
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D0), 0x12345678u);
 }
 
-// Validate memory trace callback is invoked during a write and cycles is sensible
+// Validate memory trace callback is invoked during a write and the event
+// matches expected {type, pc, addr, size, value} for MOVE.L D0, -(SP).
 TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
     static int g_events = 0;
     static uint64_t g_last_cycles = 0;
+    static m68k_trace_mem_type g_last_type = M68K_TRACE_MEM_READ;
+    static uint32_t g_last_pc = 0;
+    static uint32_t g_last_addr = 0;
+    static uint32_t g_last_value = 0;
+    static uint8_t g_last_size = 0;
 
     auto cb = +[](m68k_trace_mem_type type,
                   uint32_t pc,
@@ -88,10 +92,14 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
                   uint32_t value,
                   uint8_t size,
                   uint64_t cycles) -> int {
-        (void)pc; (void)address; (void)value; (void)size;
         if (type == M68K_TRACE_MEM_WRITE) {
             g_events++;
             g_last_cycles = cycles;
+            g_last_type = type;
+            g_last_pc = pc;
+            g_last_addr = address;
+            g_last_value = value;
+            g_last_size = size;
         }
         return 0;
     };
@@ -111,12 +119,21 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
     // Ensure SP is in a valid RAM range (base class set via reset vector)
     ASSERT_GT(m68k_get_reg(NULL, M68K_REG_SP), 0u);
 
-    // Step the first two instructions to hit the write
-    m68k_step_one();
-    m68k_step_one();
+    // Step the first two instructions to hit the write (second instruction)
+    m68k_step_one(); // MOVE.L #imm, D0
+    m68k_step_one(); // MOVE.L D0, -(SP)  -> triggers write
 
-    EXPECT_GE(g_events, 1);
-    // cycles may be 0 at reset; once running, should be non-decreasing
+    ASSERT_GE(g_events, 1);
+    // Expected write details:
+    // - Instruction PC for the write is 0x406 (after 6-byte immediate move)
+    // - SP starts at 0x1000; pre-decrement write occurs at 0x0FFC
+    // - Size is 4 (long), value is 0xCAFEBABE
+    EXPECT_EQ(g_last_type, M68K_TRACE_MEM_WRITE);
+    EXPECT_EQ(g_last_pc, 0x406u);
+    EXPECT_EQ(g_last_addr, 0x0FFCu);
+    EXPECT_EQ(g_last_size, 4u);
+    EXPECT_EQ(g_last_value, 0xCAFEBABEu);
+    // Cycles should be non-decreasing and represent total cycles executed
     EXPECT_GE(g_last_cycles, 0u);
 }
 
