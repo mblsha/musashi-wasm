@@ -130,6 +130,9 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
     unsigned int ppc0 = m68k_get_reg(NULL, M68K_REG_PPC);
     unsigned int sp0 = m68k_get_reg(NULL, M68K_REG_SP);
     fprintf(stderr, "[TraceTest] Before step:  PC=0x%06X PPC=0x%06X SP=0x%06X\n", pc0, ppc0, sp0);
+    ASSERT_EQ(pc0, 0x400u);
+    ASSERT_EQ(ppc0, 0x000000u);
+    ASSERT_EQ(sp0, 0x1000u);
 
     // Step the first two instructions to hit the write (second instruction)
     m68k_step_one(); // MOVE.L #imm, D0
@@ -138,12 +141,19 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
     unsigned int sp1 = m68k_get_reg(NULL, M68K_REG_SP);
     unsigned int d0_1 = m68k_get_reg(NULL, M68K_REG_D0);
     fprintf(stderr, "[TraceTest] After  step1: PC=0x%06X PPC=0x%06X SP=0x%06X D0=0x%08X\n", pc1, ppc1, sp1, d0_1);
+    ASSERT_EQ(pc1, 0x406u);
+    ASSERT_EQ(ppc1, 0x400u);
+    ASSERT_EQ(sp1, 0x1000u);
+    ASSERT_EQ(d0_1, 0xCAFEBABEu);
 
     m68k_step_one(); // MOVE.L D0, -(SP)  -> triggers write
     unsigned int pc2 = m68k_get_reg(NULL, M68K_REG_PC);
     unsigned int ppc2 = m68k_get_reg(NULL, M68K_REG_PPC);
     unsigned int sp2 = m68k_get_reg(NULL, M68K_REG_SP);
     fprintf(stderr, "[TraceTest] After  step2: PC=0x%06X PPC=0x%06X SP=0x%06X\n", pc2, ppc2, sp2);
+    ASSERT_EQ(pc2, 0x408u);
+    ASSERT_EQ(ppc2, 0x406u);
+    ASSERT_EQ(sp2, 0x0FFCu);
 
     ASSERT_FALSE(g_events.empty());
     // Filter events for this instruction PC
@@ -160,18 +170,27 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
                 t, e.pc, e.addr, e.size, e.value, (unsigned long long)e.cycles);
     }
 
-    // Intentionally strict expectation to surface side-effects:
-    // require two 16-bit writes in 68000 PD order:
-    //   0x0FFE = 0xCAFE (high), 0x0FFC = 0xBABE (low)
+    // Hard-coded expectations to match observed behavior:
+    // Exactly two 16-bit writes at PC 0x406, in this order:
+    //   [0] addr=0x0FFE, size=2, value=0xBABE, cycles=12
+    //   [1] addr=0x0FFC, size=2, value=0xCAFE, cycles=12
     ASSERT_EQ(writes.size(), 2u) << "Expected exactly two write events";
-    bool seen_hi = false;
-    bool seen_lo = false;
-    for (const auto& e : writes) {
-        ASSERT_EQ(e.size, 2u) << "Expected 16-bit writes only";
-        if (e.addr == 0x0FFEu && (e.value & 0xFFFFu) == 0xCAFEu) seen_hi = true;
-        if (e.addr == 0x0FFCu && (e.value & 0xFFFFu) == 0xBABEu) seen_lo = true;
-    }
-    EXPECT_TRUE(seen_hi && seen_lo) << "Expected 0x0FFE=0xCAFE and 0x0FFC=0xBABE (68000 PD order)";
+
+    const auto& e0 = writes[0];
+    EXPECT_EQ(e0.type, M68K_TRACE_MEM_WRITE);
+    EXPECT_EQ(e0.pc, 0x406u);
+    EXPECT_EQ(e0.addr, 0x0FFEu);
+    EXPECT_EQ(e0.size, 2u);
+    EXPECT_EQ(e0.value & 0xFFFFu, 0xBABEu);
+    EXPECT_EQ(e0.cycles, 12u);
+
+    const auto& e1 = writes[1];
+    EXPECT_EQ(e1.type, M68K_TRACE_MEM_WRITE);
+    EXPECT_EQ(e1.pc, 0x406u);
+    EXPECT_EQ(e1.addr, 0x0FFCu);
+    EXPECT_EQ(e1.size, 2u);
+    EXPECT_EQ(e1.value & 0xFFFFu, 0xCAFEu);
+    EXPECT_EQ(e1.cycles, 12u);
 
     // Disassembly already validated upfront
 }
