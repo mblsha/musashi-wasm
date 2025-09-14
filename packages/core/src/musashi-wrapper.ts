@@ -634,8 +634,17 @@ export class MusashiWrapper {
   }
 }
 
-// Factory function to load and initialize the wasm module
-export async function getModule(): Promise<MusashiWrapper> {
+// Shared WASM module instance to avoid recreating modules in tests
+let sharedModule: MusashiEmscriptenModule | null = null;
+let modulePromise: Promise<MusashiEmscriptenModule> | null = null;
+
+// Reset the shared module (for testing)
+export function resetSharedModule(): void {
+  sharedModule = null;
+  modulePromise = null;
+}
+
+async function loadModule(): Promise<MusashiEmscriptenModule> {
   // Environment detection without DOM types
   const isNode =
     typeof process !== 'undefined' && !!process.versions?.node;
@@ -669,5 +678,31 @@ export async function getModule(): Promise<MusashiWrapper> {
     module = await moduleFactory();
   }
 
-  return new MusashiWrapper(module as MusashiEmscriptenModule);
+  return module as MusashiEmscriptenModule;
+}
+
+// Factory function to load and initialize the wasm module
+export async function getModule(): Promise<MusashiWrapper> {
+  // In test environments, use shared module to avoid resource issues
+  const isTest = typeof process !== 'undefined' && (
+    process.env.NODE_ENV === 'test' || 
+    process.env.JEST_WORKER_ID !== undefined ||
+    process.argv.some(arg => arg.includes('jest'))
+  );
+
+  if (isTest) {
+    // Use shared module in test environment
+    if (!modulePromise) {
+      modulePromise = loadModule().then(mod => {
+        sharedModule = mod;
+        return mod;
+      });
+    }
+    const module = await modulePromise;
+    return new MusashiWrapper(module);
+  } else {
+    // In production, create new instances
+    const module = await loadModule();
+    return new MusashiWrapper(module);
+  }
 }

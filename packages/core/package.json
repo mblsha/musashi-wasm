@@ -42,7 +42,7 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "testTimeout": 15000,
+    "testTimeout": 10000,
     "extensionsToTreatAsEsm": [".ts"],
     "transform": {
       "^.+\\.ts$": [
