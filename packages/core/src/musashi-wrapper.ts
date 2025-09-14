@@ -349,7 +349,7 @@ export class MusashiWrapper {
             }
             return 0;
           },
-          'iiiiij'
+          'iiiiiij'
         );
       }
       // Wire into core and turn on tracing

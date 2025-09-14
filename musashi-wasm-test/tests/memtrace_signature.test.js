@@ -57,7 +57,7 @@ describe('Memory trace callback signature (iiiiij) works in Node', () => {
       // cycles is a BigInt when WASM_BIGINT=1; ignore it but ensure call succeeds
       events.push({ type, pc, addr, value, size });
       return 0;
-    }, 'iiiiij');
+    }, 'iiiiiij');
 
     try {
       Module._m68k_set_trace_mem_callback(cbPtr);
@@ -86,4 +86,3 @@ describe('Memory trace callback signature (iiiiij) works in Node', () => {
     }
   });
 });
-
