@@ -51,6 +51,11 @@ jobs:
           version: ${{ env.EMSDK_VERSION }}
           actions-cache-folder: ${{ env.EM_CACHE_FOLDER }}
 
+      - name: Install Ninja and pkg-config
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config
+
       # Fish no longer required; building via bash script
 
       # Cache Protobuf/Abseil only for Perfetto builds (cache installed outputs + generated PBs)
