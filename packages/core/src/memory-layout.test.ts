@@ -13,9 +13,16 @@ function makeRom(size: number): Uint8Array {
 describe('Unified memory layout (regions + mirrors)', () => {
   let system: System;
 
+  afterEach(() => {
+    // Clean up system resources to prevent Jest from hanging
+    if (system) {
+      system.cleanup();
+    }
+  });
+
   it('maps regions, applies mirrors, ensures capacity, and reflects RAM writes', async () => {
     const rom = makeRom(0x300000);
-    const ramSize = 0x4000;
+    const ramSize = 0x12000; // must cover sourceOffset + length for RAM region
 
     const layout: MemoryLayout = {
       regions: [
@@ -23,7 +30,7 @@ describe('Unified memory layout (regions + mirrors)', () => {
         { start: 0x080000, length: 0x1000, source: 'rom', sourceOffset: 0x10000 },
         // Map 0x8000 bytes of ROM at 0x200000 from ROM offset 0x18000
         { start: 0x200000, length: 0x8000, source: 'rom', sourceOffset: 0x18000 },
-        // Map 0x10000 bytes of RAM at 0x300000 from RAM offset 0x2000
+        // Map 0x10000 bytes of RAM at 0x300000 from RAM offset 0x2000 (fits within 0x12000 RAM)
         { start: 0x300000, length: 0x10000, source: 'ram', sourceOffset: 0x2000 },
       ],
       mirrors: [

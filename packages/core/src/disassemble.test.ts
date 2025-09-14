@@ -1,9 +1,19 @@
 import { createSystem } from './index';
 
 describe('disassembly helpers', () => {
+  let sys: any;
+
+  afterEach(() => {
+    // Clean up system resources to prevent Jest from hanging
+    if (sys) {
+      sys.cleanup();
+      sys = undefined;
+    }
+  });
+
   it('disassembles a NOP at 0x400', async () => {
     const rom = new Uint8Array(0x2000);
-    const sys = await createSystem({ rom, ramSize: 0x10000 });
+    sys = await createSystem({ rom, ramSize: 0x10000 });
 
     // Place a NOP (0x4E71) at the reset PC (0x00000400)
     sys.write(0x400, 1, 0x4e);
@@ -15,7 +25,7 @@ describe('disassembly helpers', () => {
 
   it('disassembles a short sequence', async () => {
     const rom = new Uint8Array(0x2000);
-    const sys = await createSystem({ rom, ramSize: 0x10000 });
+    sys = await createSystem({ rom, ramSize: 0x10000 });
 
     // Sequence: NOP (0x4E71), RTS (0x4E75)
     sys.write(0x600, 1, 0x4e);
@@ -29,7 +39,7 @@ describe('disassembly helpers', () => {
 
   it('disassembles complex instructions and formats text lines', async () => {
     const rom = new Uint8Array(0x4000);
-    const sys = await createSystem({ rom, ramSize: 0x20000 });
+    sys = await createSystem({ rom, ramSize: 0x20000 });
 
     const cases: Array<{ addr: number; bytes: number[]; expect: string }> = [
       // MOVEQ #$7f,D3 encoding: 0x767f (0111 ddd 0 iiiiiiii)

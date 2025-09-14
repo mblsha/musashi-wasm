@@ -1,9 +1,19 @@
 import { createSystem } from './index';
 
 describe('getInstructionSize', () => {
+  let sys: any;
+
+  afterEach(() => {
+    // Clean up system resources to prevent Jest from hanging
+    if (sys) {
+      sys.cleanup();
+      sys = undefined;
+    }
+  });
+
   it('returns correct sizes for common instructions', async () => {
     const rom = new Uint8Array(0x4000);
-    const sys = await createSystem({ rom, ramSize: 0x20000 });
+    sys = await createSystem({ rom, ramSize: 0x20000 });
 
     // NOP at 0x0600 (0x4E71) -> 2 bytes
     sys.write(0x600, 1, 0x4e);

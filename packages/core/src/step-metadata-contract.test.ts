@@ -22,6 +22,11 @@ describe('step() metadata contract', () => {
     system = await createSystem({ rom, ramSize: 0x1000 });
   });
 
+  afterEach(() => {
+    // Clean up system resources to prevent Jest from hanging
+    system.cleanup();
+  });
+
   it('endPc equals startPc + getInstructionSize(startPc)', async () => {
     // Step 1
     let start = system.getRegisters().pc >>> 0;

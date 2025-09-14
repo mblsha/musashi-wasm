@@ -222,4 +222,10 @@ export interface System {
    * Returns a function to unsubscribe.
    */
   onMemoryWrite(cb: MemoryAccessCallback): () => void;
+
+  /**
+   * Releases resources associated with the system. Should be called when the system
+   * is no longer needed to prevent memory leaks and ensure proper cleanup.
+   */
+  cleanup(): void;
 }
