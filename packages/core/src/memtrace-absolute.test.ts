@@ -45,15 +45,19 @@ describe('Memory trace for absolute long accesses (read path)', () => {
       return a >= ABS && a < (ABS + 4) && (r.size === 1 || r.size === 2 || r.size === 4);
     });
     // We expect the two executed instructions (by their actual start PCs) to read 4 bytes each
-    const byPc = new Map<number, number>();
-    for (const r of absReads) {
-      const pc = r.pc >>> 0;
-      byPc.set(pc, (byPc.get(pc) || 0) + r.size);
-    }
-    const pc1 = s1.startPc >>> 0;
-    const pc2 = s2.startPc >>> 0;
-    expect(byPc.get(pc1) || 0).toBe(4);
-    expect(byPc.get(pc2) || 0).toBe(4);
+    // Sum bytes within each instruction's PC window [startPc, endPc)
+    const sumBytesFor = (startPc: number, endPc: number) => {
+      let sum = 0;
+      for (const r of absReads) {
+        const pc = r.pc >>> 0;
+        if (pc >= (startPc >>> 0) && pc < (endPc >>> 0)) sum += r.size;
+      }
+      return sum;
+    };
+    const b1 = sumBytesFor(s1.startPc, s1.endPc);
+    const b2 = sumBytesFor(s2.startPc, s2.endPc);
+    expect(b1).toBe(4);
+    expect(b2).toBe(4);
 
     // Sanity print on failure
     if (reads.length < 2) {
