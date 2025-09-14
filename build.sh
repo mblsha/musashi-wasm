@@ -125,8 +125,8 @@ exported_functions=(
 
 # Runtime function includes (need $-prefixed names)
 default_lib_funcs=(
-  '\$addFunction' '\$removeFunction' '\$ccall' '\$cwrap' '\$getValue'
-  '\$setValue' '\$UTF8ToString' '\$stringToUTF8' '\$writeArrayToMemory'
+  '$addFunction' '$removeFunction' '$ccall' '$cwrap' '$getValue'
+  '$setValue' '$UTF8ToString' '$stringToUTF8' '$writeArrayToMemory'
 )
 
 runtime_methods=(
