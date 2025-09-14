@@ -70,7 +70,7 @@ TEST_F(MyFuncTest, SingleStepNormalizesPcAndPpc) {
     ASSERT_EQ(start, 0x400u);
 
     unsigned long long cyc = m68k_step_one();
-    EXPECT_GT(cyc, 0ull);
+    EXPECT_EQ(cyc, 12ull) << "MOVE.L #imm32, D0 should take 12 cycles on 68000";
 
     unsigned int end = m68k_get_reg(NULL, M68K_REG_PC);
     unsigned int ppc = m68k_get_reg(NULL, M68K_REG_PPC);
@@ -130,7 +130,7 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
     ASSERT_EQ(sp0, 0x1000u);
 
     // Step the first two instructions to hit the write (second instruction)
-    m68k_step_one(); // MOVE.L #imm, D0
+    unsigned long long cyc1 = m68k_step_one(); // MOVE.L #imm, D0
     unsigned int pc1 = m68k_get_reg(NULL, M68K_REG_PC);
     unsigned int ppc1 = m68k_get_reg(NULL, M68K_REG_PPC);
     unsigned int sp1 = m68k_get_reg(NULL, M68K_REG_SP);
@@ -140,7 +140,7 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
     ASSERT_EQ(sp1, 0x1000u);
     ASSERT_EQ(d0_1, 0xCAFEBABEu);
 
-    m68k_step_one(); // MOVE.L D0, -(SP)  -> triggers write
+    unsigned long long cyc2 = m68k_step_one(); // MOVE.L D0, -(SP)  -> triggers write
     unsigned int pc2 = m68k_get_reg(NULL, M68K_REG_PC);
     unsigned int ppc2 = m68k_get_reg(NULL, M68K_REG_PPC);
     unsigned int sp2 = m68k_get_reg(NULL, M68K_REG_SP);
@@ -150,6 +150,10 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
 
     // Minimal assertion: memory trace callback was invoked at least once
     EXPECT_GT(write_calls, 0);
+    
+    // Exact cycle counts for each step on 68000
+    EXPECT_EQ(cyc1, 12ull) << "MOVE.L #imm32, D0 should take 12 cycles on 68000";
+    EXPECT_EQ(cyc2, 12ull) << "MOVE.L D0, -(SP) should take 12 cycles on 68000";
 
     // Disassembly already validated upfront
 }
