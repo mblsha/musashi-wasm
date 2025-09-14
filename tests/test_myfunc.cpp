@@ -192,24 +192,18 @@ TEST_F(MyFuncTest, StepOneJsrSkipsOverFollowingInstructions) {
               std::make_pair(std::string("rts"), 2));
 
     // Sanity: initial registers
-    unsigned int sp0 = m68k_get_reg(NULL, M68K_REG_SP);
-    unsigned int pc0 = m68k_get_reg(NULL, M68K_REG_PC);
-    ASSERT_EQ(sp0, 0x1000u);
-    ASSERT_EQ(pc0, 0x400u);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_SP), 0x1000u);
+    ASSERT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x400u);
 
     // Step the JSR
     (void)m68k_step_one();
 
-    unsigned int sp1 = m68k_get_reg(NULL, M68K_REG_SP);
-    unsigned int pc1 = m68k_get_reg(NULL, M68K_REG_PC);
-    unsigned int ppc1 = m68k_get_reg(NULL, M68K_REG_PPC);
-
     // After JSR abs.l: PC points to target, PPC points to call site,
     // SP is decremented by 4 and contains the return address (0x406).
-    EXPECT_EQ(pc1, 0x414u);
-    EXPECT_EQ(ppc1, 0x400u);
-    EXPECT_EQ(sp1, 0x0FFCu);
-    EXPECT_EQ(read_long(sp1), 0x00000406u);
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x414u);
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PPC), 0x400u);
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_SP), 0x0FFCu);
+    EXPECT_EQ(read_long(m68k_get_reg(NULL, M68K_REG_SP)), 0x00000406u);
 
     // And the skipped instruction at 0x406 did not execute yet
     EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_D0), 0u);
