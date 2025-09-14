@@ -383,6 +383,133 @@ TEST_F(MyFuncTest, ClearPcHookDisablesCallback) {
     EXPECT_TRUE(pc_hooks.empty());
 }
 
+// Branch not taken: BNE.B (Z=1) should fall through to the next instruction.
+TEST_F(MyFuncTest, StepOneBneNotTaken_Fallthrough) {
+    // BNE.B +4 at 0x400, followed by NOP
+    write_word(0x400, 0x6604); // BNE.B $+4 -> target 0x406 (but not taken)
+    write_word(0x402, 0x4E71); // NOP
+
+    // Disassembly checks
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x400),
+              std::make_pair(std::string("bne     $406"), 2));
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x402),
+              std::make_pair(std::string("nop"), 2));
+
+    // Set Z=1 so BNE is not taken
+    unsigned int sr = m68k_get_reg(NULL, M68K_REG_SR);
+    m68k_set_reg(M68K_REG_SR, sr | 0x0004);
+
+    // Step once: should land at fall-through (0x402)
+    unsigned long long cyc = m68k_step_one();
+    (void)cyc;
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x402u);
+}
+
+// Branch taken with 16-bit extension: BEQ.W (disp16) should jump to target.
+TEST_F(MyFuncTest, StepOneBeqWordTaken_Taken) {
+    // BEQ with 8-bit disp=0 -> 16-bit extension follows
+    // Target = (PC after opcode = 0x402) + 0x0010 = 0x412
+    write_word(0x400, 0x6700); // BEQ.B disp=0 -> extension
+    write_word(0x402, 0x0010); // +0x10
+    write_word(0x412, 0x4E71); // NOP at target for clarity
+
+    // Disassembly checks
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x400),
+              std::make_pair(std::string("beq     $412"), 4));
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x412),
+              std::make_pair(std::string("nop"), 2));
+
+    // Set Z=1 so BEQ is taken
+    unsigned int sr = m68k_get_reg(NULL, M68K_REG_SR);
+    m68k_set_reg(M68K_REG_SR, sr | 0x0004);
+
+    // Step once: should land at 0x412 (target)
+    (void)m68k_step_one();
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x412u);
+}
+
+// BSR.W pushes return address and jumps to PC-relative target.
+TEST_F(MyFuncTest, StepOneBsrWordPushesReturnAddress) {
+    // BSR.W with disp16 = +0x10 from 0x402 -> target 0x412
+    write_word(0x400, 0x6100); // BSR.B disp=0 -> extension
+    write_word(0x402, 0x0010);
+    write_word(0x412, 0x4E71); // NOP at target for clarity
+
+    // Disassembly
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x400),
+              std::make_pair(std::string("bsr     $412"), 4));
+
+    unsigned int sp_before = m68k_get_reg(NULL, M68K_REG_SP);
+    ASSERT_EQ(sp_before, 0x1000u);
+
+    (void)m68k_step_one();
+
+    // After BSR.W, PC at 0x412 and SP decremented by 4 with RA=0x404
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x412u);
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_SP), 0x0FFCu);
+    EXPECT_EQ(read_long(m68k_get_reg(NULL, M68K_REG_SP)), 0x00000404u);
+}
+
+// JMP absolute long: jump to target, no stack change.
+TEST_F(MyFuncTest, StepOneJmpAbsLong) {
+    write_word(0x400, 0x4EF9);           // JMP abs.l
+    write_long(0x402, 0x00000414u);      // -> 0x414
+    write_word(0x414, 0x4E71);           // NOP at target
+
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x400),
+              std::make_pair(std::string("jmp     $414.l"), 6));
+
+    unsigned int sp_before = m68k_get_reg(NULL, M68K_REG_SP);
+    (void)m68k_step_one();
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x414u);
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_SP), sp_before);
+}
+
+// RTS pops return address from the stack.
+TEST_F(MyFuncTest, StepOneRtsPopsReturnAddress) {
+    // Prepare return address at SP
+    m68k_set_reg(M68K_REG_SP, 0x0FFCu);
+    write_long(0x0FFC, 0x00000406u);
+
+    // RTS at 0x400
+    write_word(0x400, 0x4E75);
+
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x400),
+              std::make_pair(std::string("rts"), 2));
+
+    (void)m68k_step_one();
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x406u);
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_SP), 0x1000u);
+}
+
+// ILLEGAL should vector via vector #4 (offset 0x10) to its handler.
+TEST_F(MyFuncTest, StepOneIllegalVectorsToHandler) {
+    // Set vector #4 (ILLEGAL) to 0x500
+    write_long(0x10, 0x00000500u);
+    // ILLEGAL at 0x400
+    write_word(0x400, 0x4AFC);
+
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x400),
+              std::make_pair(std::string("dc.w $4afc; ILLEGAL"), 2));
+
+    (void)m68k_step_one();
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x500u);
+}
+
+// TRAP #2 should vector via vector #34 (offset 0x88) to its handler.
+TEST_F(MyFuncTest, StepOneTrap2VectorsToHandler) {
+    // Vector #34 * 4 = 0x88
+    write_long(0x88, 0x00000520u); // handler at 0x520
+    // TRAP #2 at 0x400
+    write_word(0x400, 0x4E42);
+
+    EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x400),
+              std::make_pair(std::string("trap    #$2"), 2));
+
+    (void)m68k_step_one();
+    EXPECT_EQ(m68k_get_reg(NULL, M68K_REG_PC), 0x520u);
+}
+
 // Test execution with regions
 TEST_F(MyFuncTest, ExecutionWithRegions) {
     // Create a code region
