@@ -471,8 +471,10 @@ extern "C" {
      *   - If decoding were to fail (size == 0), we leave PC as-is to avoid guessing.
      */
     {
-      // m68k_disassemble prints to a buffer; we only need the returned size.
-      char tmp[1];
+      // m68k_disassemble writes a human-readable string into the provided
+      // buffer and returns the instruction size. Provide a sufficiently
+      // large buffer to avoid overwriting (sanitizers would flag too-small).
+      char tmp[256];
       unsigned int size = m68k_disassemble(tmp, start_pc, M68K_CPU_TYPE_68000);
       if (size > 0) {
         unsigned int normalized_end = start_pc + size;
