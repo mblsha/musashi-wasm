@@ -66,6 +66,7 @@ jobs:
         run: cmake --build build --parallel $(nproc)
 
       - name: Run tests
+        timeout-minutes: 1
         working-directory: build
         run: ctest --output-on-failure -C ${{ matrix.build_type }}
 
@@ -106,6 +107,7 @@ jobs:
         run: cmake --build build-${{ matrix.sanitizer }} --parallel $(nproc)
 
       - name: Run tests
+        timeout-minutes: 1
         working-directory: build-${{ matrix.sanitizer }}
         env:
           ASAN_OPTIONS: detect_leaks=1:check_initialization_order=1

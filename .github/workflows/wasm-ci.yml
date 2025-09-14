@@ -131,6 +131,7 @@ jobs:
 
       # Run Node integration tests (repo's musashi-wasm-test)
       - name: Run Node.js integration tests
+        timeout-minutes: 1
         run: |
           cd musashi-wasm-test
           npm ci
@@ -138,6 +139,7 @@ jobs:
 
       # Run TypeScript tests (once per matrix entry, toggled by PERFETTO_ENABLED)
       - name: Run TypeScript tests
+        timeout-minutes: 1
         env:
           PERFETTO_ENABLED: ${{ matrix.perfetto && '1' || '0' }}
         run: |
