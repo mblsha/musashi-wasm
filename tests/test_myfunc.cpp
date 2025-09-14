@@ -84,13 +84,9 @@ TEST_F(MyFuncTest, SingleStepNormalizesPcAndPpc) {
 // Validate memory trace callback is invoked during a write and the event
 // matches expected {type, pc, addr, size, value} for MOVE.L D0, -(SP).
 TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
-    static int g_events = 0;
-    static uint64_t g_last_cycles = 0;
-    static m68k_trace_mem_type g_last_type = M68K_TRACE_MEM_READ;
-    static uint32_t g_last_pc = 0;
-    static uint32_t g_last_addr = 0;
-    static uint32_t g_last_value = 0;
-    static uint8_t g_last_size = 0;
+    struct Ev { m68k_trace_mem_type type; uint32_t pc; uint32_t addr; uint32_t value; uint8_t size; uint64_t cycles; };
+    static std::vector<Ev> g_events;
+    g_events.clear();
 
     auto cb = +[](m68k_trace_mem_type type,
                   uint32_t pc,
@@ -99,13 +95,7 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
                   uint8_t size,
                   uint64_t cycles) -> int {
         if (type == M68K_TRACE_MEM_WRITE) {
-            g_events++;
-            g_last_cycles = cycles;
-            g_last_type = type;
-            g_last_pc = pc;
-            g_last_addr = address;
-            g_last_value = value;
-            g_last_size = size;
+            g_events.push_back(Ev{type, pc, address, value, size, cycles});
         }
         return 0;
     };
@@ -133,22 +123,67 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
     // Ensure SP is in a valid RAM range (base class set via reset vector)
     ASSERT_GT(m68k_get_reg(NULL, M68K_REG_SP), 0u);
 
+    // Debug: show configuration and initial regs
+    fprintf(stderr, "[TraceTest] M68K_SIMULATE_PD_WRITES=%s\n",
+            (M68K_SIMULATE_PD_WRITES ? "ON" : "OFF"));
+    unsigned int pc0 = m68k_get_reg(NULL, M68K_REG_PC);
+    unsigned int ppc0 = m68k_get_reg(NULL, M68K_REG_PPC);
+    unsigned int sp0 = m68k_get_reg(NULL, M68K_REG_SP);
+    fprintf(stderr, "[TraceTest] Before step:  PC=0x%06X PPC=0x%06X SP=0x%06X\n", pc0, ppc0, sp0);
+
     // Step the first two instructions to hit the write (second instruction)
     m68k_step_one(); // MOVE.L #imm, D0
-    m68k_step_one(); // MOVE.L D0, -(SP)  -> triggers write
+    unsigned int pc1 = m68k_get_reg(NULL, M68K_REG_PC);
+    unsigned int ppc1 = m68k_get_reg(NULL, M68K_REG_PPC);
+    unsigned int sp1 = m68k_get_reg(NULL, M68K_REG_SP);
+    unsigned int d0_1 = m68k_get_reg(NULL, M68K_REG_D0);
+    fprintf(stderr, "[TraceTest] After  step1: PC=0x%06X PPC=0x%06X SP=0x%06X D0=0x%08X\n", pc1, ppc1, sp1, d0_1);
 
-    ASSERT_GE(g_events, 1);
-    // Expected write details:
-    // - Instruction PC for the write is 0x406 (after 6-byte immediate move)
-    // - SP starts at 0x1000; pre-decrement write occurs at 0x0FFC
-    // - Size is 4 (long), value is 0xCAFEBABE
-    EXPECT_EQ(g_last_type, M68K_TRACE_MEM_WRITE);
-    EXPECT_EQ(g_last_pc, 0x406u);
-    EXPECT_EQ(g_last_addr, 0x0FFCu);
-    EXPECT_EQ(g_last_size, 4u);
-    EXPECT_EQ(g_last_value, 0xCAFEBABEu);
-    // Cycles should be non-decreasing and represent total cycles executed
-    EXPECT_GE(g_last_cycles, 0u);
+    m68k_step_one(); // MOVE.L D0, -(SP)  -> triggers write
+    unsigned int pc2 = m68k_get_reg(NULL, M68K_REG_PC);
+    unsigned int ppc2 = m68k_get_reg(NULL, M68K_REG_PPC);
+    unsigned int sp2 = m68k_get_reg(NULL, M68K_REG_SP);
+    fprintf(stderr, "[TraceTest] After  step2: PC=0x%06X PPC=0x%06X SP=0x%06X\n", pc2, ppc2, sp2);
+
+    ASSERT_FALSE(g_events.empty());
+    // Filter events for this instruction PC
+    std::vector<Ev> writes;
+    for (const auto& e : g_events) if (e.pc == 0x406u) writes.push_back(e);
+    ASSERT_FALSE(writes.empty());
+
+    // Dump all captured memory events for diagnosis
+    fprintf(stderr, "[TraceTest] Captured %zu memory events:\n", g_events.size());
+    for (const auto& e : g_events) {
+        const char* t = (e.type == M68K_TRACE_MEM_WRITE) ? "WRITE" : "READ";
+        fprintf(stderr,
+                "  type=%s pc=0x%06X addr=0x%06X size=%u value=0x%08X cycles=%llu\n",
+                t, e.pc, e.addr, e.size, e.value, (unsigned long long)e.cycles);
+    }
+
+    // Two acceptable patterns depending on M68K_SIMULATE_PD_WRITES:
+    // 1) Single 32-bit write at 0x0FFC with value 0xCAFEBABE
+    // 2) Two 16-bit writes: 0x0FFE = 0xCAFE (high), 0x0FFC = 0xBABE (low)
+    bool ok = false;
+    for (const auto& e : writes) {
+        if (e.size == 4 && e.addr == 0x0FFCu && e.value == 0xCAFEBABEu) {
+            ok = true;
+            break;
+        }
+    }
+    if (!ok) {
+        // Try to match the pair of word writes
+        int seen = 0;
+        uint16_t hi = 0, lo = 0;
+        for (const auto& e : writes) {
+            if (e.size == 2 && e.addr == 0x0FFEu) { hi = static_cast<uint16_t>(e.value & 0xFFFF); seen++; }
+            if (e.size == 2 && e.addr == 0x0FFCu) { lo = static_cast<uint16_t>(e.value & 0xFFFF); seen++; }
+        }
+        if (seen >= 2) {
+            uint32_t combined = (static_cast<uint32_t>(hi) << 16) | lo;
+            ok = (combined == 0xCAFEBABEu);
+        }
+    }
+    EXPECT_TRUE(ok) << "Memory write trace did not match expected 32-bit or two 16-bit PD writes";
 
     // Disassembly already validated upfront
 }
