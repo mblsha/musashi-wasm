@@ -124,7 +124,7 @@ TEST_F(MyFuncTest, MemoryTraceCallbackInvokedOnWrite) {
 
     // Validate disassembly immediately after writing each instruction
     EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x400),
-              std::make_pair(std::string("move.l  #$CAFEBABE, D0"), 6));
+              std::make_pair(std::string("move.l  #$cafebabe, D0"), 6));
     EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x406),
               std::make_pair(std::string("move.l  D0, -(A7)"), 2));
     EXPECT_EQ(M68kTestUtils::m68k_disassembly(0x408),
