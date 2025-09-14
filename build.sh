@@ -101,9 +101,9 @@ to_ems_list() {
   echo "$out"
 }
 
-EXPORTED_FUNCTIONS_FLAG="-s EXPORTED_FUNCTIONS=$(to_ems_list "${exported_functions[@]}")"
-DEFAULT_LIBS_FLAG="-s DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$(to_ems_list "${default_lib_funcs[@]}")"
-RUNTIME_METHODS_FLAG="-s EXPORTED_RUNTIME_METHODS=$(to_ems_list "${runtime_methods[@]}")"
+EXPORTED_FUNCTIONS_LIST=$(to_ems_list "${exported_functions[@]}")
+DEFAULT_LIBS_LIST=$(to_ems_list "${default_lib_funcs[@]}")
+RUNTIME_METHODS_LIST=$(to_ems_list "${runtime_methods[@]}")
 
 object_files=(m68kcpu.o m68kops.o myfunc.o m68k_memory_bridge.o m68ktrace.o m68kdasm.o)
 if [[ "$ENABLE_PERFETTO_FLAG" == "1" ]]; then
@@ -113,9 +113,9 @@ fi
 emcc_opts=(
   -g3 -gsource-map --source-map-base http://localhost:8080/
   "${object_files[@]}"
-  $EXPORTED_FUNCTIONS_FLAG
-  $DEFAULT_LIBS_FLAG
-  $RUNTIME_METHODS_FLAG
+  -s "EXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS_LIST}"
+  -s "DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=${DEFAULT_LIBS_LIST}"
+  -s "EXPORTED_RUNTIME_METHODS=${RUNTIME_METHODS_LIST}"
   -s ASSERTIONS=2
   -s ALLOW_MEMORY_GROWTH
   -s ALLOW_TABLE_GROWTH=1
@@ -167,4 +167,3 @@ run emcc \
 
 echo "Build complete:"
 ls -lh *.out.mjs *.out.wasm || true
-
