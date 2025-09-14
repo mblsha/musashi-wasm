@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+die() {
+  echo "Error: $*" >&2
+  exit 1
+}
+
+run() {
+  echo
+  echo ">>> $*"
+  "$@"
+}
+
+echo "==== TOOLCHAIN VERIFICATION (bash) ===="
+
+# Ensure emcc is available. Prefer EMSDK if provided, else rely on PATH.
+if [[ -n "${EMSDK:-}" ]]; then
+  echo "Found EMSDK: $EMSDK"
+  if [[ -x "$EMSDK/upstream/emscripten/emcc" ]]; then
+    export PATH="$EMSDK/upstream/emscripten:$EMSDK:$PATH"
+  elif [[ -x "$EMSDK/emcc" ]]; then
+    # Homebrew layout
+    export PATH="$EMSDK:$PATH"
+  fi
+else
+  echo "EMSDK not set; will use emcc from PATH if available"
+fi
+
+if ! command -v emcc >/dev/null 2>&1; then
+  die "emcc not found. Install Emscripten SDK or place emcc in PATH"
+fi
+
+echo "emcc: $(command -v emcc)"
+echo "node: $(command -v node)"
+echo "emcc version:"; emcc --version | head -n 1
+echo "node version:"; node --version
+echo "================================"
+
+ENABLE_PERFETTO_FLAG="${ENABLE_PERFETTO:-0}"
+if [[ "$ENABLE_PERFETTO_FLAG" == "1" ]]; then
+  echo "Building with Perfetto tracing enabled..."
+else
+  echo "Building without Perfetto tracing (set ENABLE_PERFETTO=1 to enable)..."
+fi
+
+# Build C/C++ object files first (uses Makefile)
+run emmake make -j8 ENABLE_PERFETTO="$ENABLE_PERFETTO_FLAG"
+
+# Exported functions (C symbols must be prefixed with underscore)
+exported_functions=(
+  _malloc _free _set_entry_point _m68k_set_reg _m68k_get_reg _m68k_init
+  _m68k_execute _m68k_set_context _set_read_mem_func _set_write_mem_func
+  _set_pc_hook_func _add_pc_hook_addr _add_region _clear_regions
+  _clear_pc_hook_addrs _clear_pc_hook_func _set_full_instr_hook_func
+  _clear_instr_hook_func _reset_myfunc_state _register_function_name
+  _register_memory_name _register_memory_range _clear_registered_names
+  _get_function_name _get_memory_name _m68k_pulse_reset _m68k_end_timeslice
+  _m68k_cycles_run _enable_printf_logging _my_initialize _m68k_trace_enable
+  _m68k_trace_is_enabled _m68k_set_trace_flow_callback
+  _m68k_set_trace_mem_callback _m68k_set_trace_instr_callback
+  _m68k_trace_add_mem_region _m68k_trace_clear_mem_regions
+  _m68k_trace_set_flow_enabled _m68k_trace_set_mem_enabled
+  _m68k_trace_set_instr_enabled _m68k_get_total_cycles _m68k_reset_total_cycles
+  _m68k_disassemble _perfetto_init _perfetto_destroy _perfetto_enable_flow
+  _perfetto_enable_memory _perfetto_enable_instructions _perfetto_export_trace
+  _perfetto_free_trace_data _perfetto_save_trace _perfetto_is_initialized
+  _set_read8_callback _set_write8_callback _set_probe_callback _set_d_reg
+  _get_d_reg _set_a_reg _get_a_reg _set_pc_reg _get_pc_reg _set_sr_reg
+  _get_sr_reg _set_isp_reg _set_usp_reg _get_sp_reg _m68k_call_until_js_stop
+  _m68k_get_last_break_reason _m68k_reset_last_break_reason _m68k_step_one
+  _m68k_regnum_from_name
+)
+
+# Runtime function includes (need $-prefixed names)
+default_lib_funcs=(
+  '\$addFunction' '\$removeFunction' '\$ccall' '\$cwrap' '\$getValue'
+  '\$setValue' '\$UTF8ToString' '\$stringToUTF8' '\$writeArrayToMemory'
+)
+
+runtime_methods=(
+  HEAP8 HEAPU8 HEAP16 HEAPU16 HEAP32 HEAPU32 HEAPF32 HEAPF64
+  addFunction removeFunction ccall cwrap getValue setValue UTF8ToString
+  stringToUTF8 writeArrayToMemory
+)
+
+join_list() {
+  local IFS=','
+  echo "$*"
+}
+
+to_ems_list() {
+  # Print a JS array literal from positional args
+  local first=1 out="["
+  for item in "$@"; do
+    if [[ $first -eq 1 ]]; then first=0; else out+=" ,"; fi
+    # Quote strings
+    out+="'${item}'"
+  done
+  out+=']'
+  echo "$out"
+}
+
+EXPORTED_FUNCTIONS_FLAG="-s EXPORTED_FUNCTIONS=$(to_ems_list "${exported_functions[@]}")"
+DEFAULT_LIBS_FLAG="-s DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$(to_ems_list "${default_lib_funcs[@]}")"
+RUNTIME_METHODS_FLAG="-s EXPORTED_RUNTIME_METHODS=$(to_ems_list "${runtime_methods[@]}")"
+
+object_files=(m68kcpu.o m68kops.o myfunc.o m68k_memory_bridge.o m68ktrace.o m68kdasm.o)
+if [[ "$ENABLE_PERFETTO_FLAG" == "1" ]]; then
+  object_files+=(m68k_perfetto.o third_party/retrobus-perfetto/cpp/proto/perfetto.pb.o)
+fi
+
+emcc_opts=(
+  -g3 -gsource-map --source-map-base http://localhost:8080/
+  "${object_files[@]}"
+  $EXPORTED_FUNCTIONS_FLAG
+  $DEFAULT_LIBS_FLAG
+  $RUNTIME_METHODS_FLAG
+  -s ASSERTIONS=2
+  -s ALLOW_MEMORY_GROWTH
+  -s ALLOW_TABLE_GROWTH=1
+  -s MODULARIZE=1
+  -s EXPORT_ES6=1
+  -s WASM_ASYNC_COMPILATION=1
+  -s WASM=1
+  -sDISABLE_EXCEPTION_CATCHING=0
+  -sWASM_BIGINT
+  -Wl,--gc-sections
+)
+
+if [[ "$ENABLE_PERFETTO_FLAG" == "1" ]]; then
+  echo "==== PERFETTO LINKING SETUP ===="
+  export PKG_CONFIG_PATH="third_party/protobuf-wasm-install/lib/pkgconfig:third_party/abseil-wasm-install/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+  echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+  if ! pkg-config --exists protobuf; then
+    die "protobuf.pc not found or invalid. Run ./build_protobuf_wasm.sh"
+  fi
+  # Collect protobuf libs (split on spaces)
+  mapfile -t protobuf_libs < <(pkg-config --static --libs protobuf)
+  echo "protobuf libs: ${protobuf_libs[*]}"
+  emcc_opts+=("${protobuf_libs[@]}")
+fi
+
+echo "==== BUILDING NODE.JS VERSION (ESM) ===="
+run emcc \
+  "${emcc_opts[@]}" \
+  -s ENVIRONMENT=node \
+  -s EXPORT_NAME=createMusashi \
+  --post-js post.js \
+  -o musashi-node.out.mjs
+
+echo "==== BUILDING WEB VERSION (ESM) ===="
+run emcc \
+  "${emcc_opts[@]}" \
+  -s ENVIRONMENT=web \
+  -s EXPORT_NAME=createMusashi \
+  --post-js post.js \
+  -o musashi.out.mjs
+
+echo "==== BUILDING UNIVERSAL VERSION (ESM) ===="
+run emcc \
+  "${emcc_opts[@]}" \
+  -s ENVIRONMENT=web,webview,worker,node \
+  -s EXPORT_NAME=createMusashi \
+  --post-js post.js \
+  -o musashi-universal.out.mjs
+
+echo "Build complete:"
+ls -lh *.out.mjs *.out.wasm || true
+

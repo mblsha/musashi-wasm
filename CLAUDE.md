@@ -13,18 +13,18 @@ Musashi is a Motorola M68000 CPU emulator (v4.10) modified to compile to WebAsse
 make
 
 # Build WebAssembly modules for both web and Node.js (ESM-only)
-./build.fish  # Recommended - handles Emscripten detection automatically
+./build.sh  # Recommended - handles Emscripten detection automatically
 
 # Alternative: use make wasm (less robust Emscripten detection)
 make wasm
 ```
 
 ### Enhanced Build Script
-The `build.fish` script provides robust Emscripten detection and configuration:
+The `build.sh` script provides robust Emscripten detection and configuration:
 - **Automatic EMSDK Detection**: Supports both standard EMSDK installations and Homebrew
-- **PATH Management**: Handles Fish shell PATH inheritance issues
+- **PATH Management**: Handles Emscripten PATH detection
 - **Toolchain Verification**: Validates emcc, em++, emmake availability before building
-- **Perfetto Support**: Enable with `ENABLE_PERFETTO=1 ./build.fish`
+- **Perfetto Support**: Enable with `ENABLE_PERFETTO=1 ./build.sh`
 - **ESM Output**: Generates `.mjs` files for modern JavaScript module systems
 
 ### Build with Perfetto Tracing
@@ -33,13 +33,13 @@ The `build.fish` script provides robust Emscripten detection and configuration:
 ./build_protobuf_wasm.sh
 
 # Build with Perfetto tracing enabled
-ENABLE_PERFETTO=1 ./build.fish
+ENABLE_PERFETTO=1 ./build.sh
 ```
 
 ### Clean Build
 ```bash
 make clean
-./build.fish  # Rebuilds WASM modules with enhanced detection
+./build.sh  # Rebuilds WASM modules with enhanced detection
 ```
 
 ## Architecture
@@ -97,9 +97,8 @@ The WebAssembly build creates two versions:
 Both use optimization level -O2 and export all functions prefixed with underscore.
 
 **Critical Emscripten Insights**:
-- **Enhanced Detection**: `build.fish` automatically detects EMSDK or emcc in PATH
+- **Enhanced Detection**: `build.sh` automatically detects EMSDK or emcc in PATH
 - **Multi-Platform Support**: Works with standard EMSDK and Homebrew installations
-- **Fish Shell Compatibility**: Handles Fish shell PATH inheritance issues automatically
 - **Toolchain Validation**: Verifies emcc/emmake availability before building
 - **ESM-First**: Generates `.mjs` files for modern JavaScript environments
 - **Symbol Export**: Extensive function export list includes new hook and utility functions
@@ -222,10 +221,10 @@ This C++ wrapper provides the WebAssembly interface:
 - **m68kconf.h**: Configures CPU features and hooks - changes here affect entire emulation
 - **m68kcpu.c**: Includes m68kfpu.c directly (not compiled separately)
 - **myfunc.cc**: C++ API layer with STL containers for regions and callbacks
-- **build.fish**: Authoritative WASM build script with all Emscripten flags
+- **build.sh**: Authoritative WASM build script with all Emscripten flags
 
 ### WebAssembly Build Specifics
-The Fish script build process:
+The build process:
 1. Runs `emmake make -j20` to build object files with Emscripten
 2. Links with extensive exported functions list for JavaScript access
 3. Generates two outputs: web version and Node.js version
@@ -251,7 +250,7 @@ To enable Perfetto tracing in WebAssembly builds:
 2. **Build with Perfetto enabled**:
    ```bash
    # Use the enhanced build script (recommended)
-   ENABLE_PERFETTO=1 ./build.fish
+   ENABLE_PERFETTO=1 ./build.sh
    
    # Or manually with emmake
    emmake make -j8 ENABLE_PERFETTO=1
@@ -296,7 +295,7 @@ To enable Perfetto tracing in WebAssembly builds:
 
 ### GitHub Actions CI
 - **native-ci.yml**: Tests CMake build on Ubuntu/macOS with sanitizer tests as critical (no continue-on-error)
-- **wasm-ci.yml**: Tests Fish script WASM build and uploads artifacts
+- **wasm-ci.yml**: Tests bash build script and uploads artifacts
 - **typescript-ci.yml**: Tests TypeScript wrapper and integration
 - All M68k CPU tests are now enabled and passing (previously 7 of 9 were disabled)
 - Sanitizer builds catch memory issues like alloc-dealloc mismatches and uninitialized reads
@@ -431,18 +430,16 @@ Module._set_write8_callback(Module.addFunction(writeMem, 'vii'));
 **Problem**: `emcc not found` or `EMSDK not set` errors.
 
 **Solutions**:
-1. **Use build.fish**: The enhanced script auto-detects Emscripten installations
+1. **Use build.sh**: The enhanced script auto-detects Emscripten installations
 2. **Check EMSDK**: Ensure environment variable points to correct directory
 3. **Homebrew users**: Script automatically detects Homebrew Emscripten installations
 4. **Manual PATH**: Add Emscripten tools to PATH before running make
 
-#### Fish Shell PATH Issues
-**Problem**: PATH not inherited correctly in Fish shell.
-
-**Solution**: Use `build.fish` which handles PATH management automatically:
+#### PATH Issues
+If PATH is not set correctly for emcc:
 ```bash
-# Handles both standard and Homebrew EMSDK installations
-./build.fish
+# Ensure EMSDK is activated and emcc is in PATH, then:
+./build.sh
 ```
 
 ### Test Issues

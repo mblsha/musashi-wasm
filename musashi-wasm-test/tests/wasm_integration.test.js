@@ -18,7 +18,7 @@ if (!fs.existsSync(modulePath)) {
     console.error(`To build the WASM module, you need:`);
     console.error(`1. Emscripten SDK installed and configured`);
     console.error(`2. Run one of the following commands from the Musashi root directory:`);
-    console.error(`   - fish build.fish (if Fish shell is available)`);
+    console.error(`   - ./build.sh`);
     console.error(`   - emmake make -j8 && emcc [options] (manual build)`);
     console.error(`\nFor detailed instructions, see the README.md file.`);
     console.error(`\n============================================\n`);

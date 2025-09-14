@@ -48,7 +48,7 @@ console.log(`Stepped ${c1} cycles from 0x${startPc.toString(16)} to 0x${endPc.to
 make wasm
 
 # Or with Perfetto tracing support
-ENABLE_PERFETTO=1 ./build.fish
+ENABLE_PERFETTO=1 ./build.sh
 
 # Build and test TypeScript packages
 npm install
@@ -157,7 +157,7 @@ Both hook functions should return 0 to continue execution, or non-zero to break 
 ├── myfunc.cc           # WebAssembly API layer
 ├── m68ktrace.cc        # Tracing infrastructure
 ├── m68k_perfetto.cc    # Perfetto integration
-├── build.fish          # WebAssembly build script
+├── build.sh            # WebAssembly build script (bash)
 ├── packages/           # TypeScript packages
 │   ├── core/          # @m68k/core package
 │   └── memory/        # @m68k/memory package
@@ -171,7 +171,7 @@ Both hook functions should return 0 to continue execution, or non-zero to break 
 - Emscripten SDK (for WebAssembly builds)
 - Node.js 16+ and npm
 - CMake (for native builds)
-- Fish shell (for build script)
+  (No Fish shell required; uses bash)
 
 ### CI/CD
 
