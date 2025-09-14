@@ -92,9 +92,13 @@ static inline HookResult processHooks(const HookContext& ctx, bool allow_break) 
     // We are at the start of the next instruction; stop now
     _step_state = StepState::Idle;
     _last_break_reason = BreakReason::Step;
-    if (allow_break) {
-      m68k_end_timeslice();
-    }
+    // Important: do NOT call m68k_end_timeslice() here. That API rewrites
+    // m68ki_initial_cycles to the current remaining cycle count and zeros
+    // the remaining pool, which causes m68k_execute() to return the leftover
+    // timeslice rather than the cycles actually consumed by the previous
+    // instruction. For single-step semantics, we want m68k_execute() to
+    // return the exact cycles used by the stepped instruction, so we simply
+    // request a break and let the execute loop exit naturally.
     return HookResult::Break;
   }
   if (_step_state == StepState::Arm) {
