@@ -68,8 +68,8 @@ jobs:
           restore-keys: |
             proto-${{ runner.os }}-emsdk-${{ env.EMSDK_VERSION }}-
 
-      - name: Build Protobuf/Abseil (if cache miss)
-        if: matrix.perfetto && steps.cache-protobuf.outputs.cache-hit != 'true'
+      - name: Build Protobuf/Abseil
+        if: matrix.perfetto
         run: |
           chmod +x build_protobuf_wasm.sh
           ./build_protobuf_wasm.sh
