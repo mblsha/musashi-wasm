@@ -105,6 +105,35 @@ View the trace at [ui.perfetto.dev](https://ui.perfetto.dev).
 - Rich disassembly: `system.disassembleDetailed(pc)` returns `{ text, size }` in one call while `disassemble(pc)` keeps returning the formatted text.
 - Cleanup: `system.dispose()` to release underlying WASM callbacks/regions when done.
 
+## Migration Guide
+
+This release adds a few ergonomic APIs while keeping backwards compatibility. Suggested migrations:
+
+- Unified PC hooks
+  - Before: `probe(address, cb)` to continue; `override(address, cb)` to stop and emulate RTS.
+  - After: `addHook(address, sys => 'continue' | 'stop')`.
+    - Equivalent mappings:
+      - `probe(addr, cb)` → `addHook(addr, sys => { cb(sys); return 'continue'; })`
+      - `override(addr, cb)` → `addHook(addr, sys => { cb(sys); return 'stop'; })`
+    - `probe`/`override` remain and will be deprecated in a future minor release.
+
+- Disassembly helpers
+  - Before: `disassemble(pc)` for text and `getInstructionSize(pc)` for size.
+  - After: `disassembleDetailed(pc)` returns `{ text, size }` in one call.
+    - You can keep `disassemble(pc)` if you only need text; `getInstructionSize(pc)` stays for compatibility.
+
+- Lifecycle cleanup
+  - New: `system.dispose()` tears down WASM callbacks/regions. Call it when the system is no longer needed (tests, short‑lived tools).
+
+- npm wrapper enum correction
+  - If you consume `musashi-wasm` directly, the `M68kRegister` enum now matches Musashi headers. `PPC` is `19` (was incorrectly `29`). Update code that depends on raw enum values.
+
+### Backwards compatibility and timeline
+
+- These changes are additive. Existing code continues to work.
+- In a future minor, `probe`/`override` will be marked `@deprecated` in types and docs.
+- In a future major, we plan to prefer `@m68k/core` as the primary API and reduce duplication in the standalone npm wrapper.
+
 ## Building
 
 From the repository root:
