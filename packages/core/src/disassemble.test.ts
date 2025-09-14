@@ -38,7 +38,8 @@ describe('disassembly helpers', () => {
       { addr: 0x0820, bytes: [0x4e, 0x5e], expect: 'unlk    A6' },
       { addr: 0x0830, bytes: [0x41, 0xf9, 0x00, 0x12, 0x34, 0x56], expect: 'lea     $123456.l, A0' },
       { addr: 0x0840, bytes: [0x4e, 0x91], expect: 'jsr     (A1)' },
-      { addr: 0x0850, bytes: [0x61, 0x06], expect: 'bsr     $856' },
+      // BSR disp8 is relative to PC+2, so from 0x0850 with +6 -> 0x0858
+      { addr: 0x0850, bytes: [0x61, 0x06], expect: 'bsr     $858' },
       { addr: 0x0860, bytes: [0x06, 0x81, 0x00, 0x00, 0x00, 0x01], expect: 'addi.l  #$1, D1' },
       { addr: 0x0870, bytes: [0x48, 0x57], expect: 'pea     (A7)' },
       { addr: 0x0880, bytes: [0x51, 0xc8, 0xff, 0xfe], expect: 'dbra    D0, $87e' },

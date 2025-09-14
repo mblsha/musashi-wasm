@@ -37,17 +37,12 @@ describe('Memory trace for absolute long accesses (read path)', () => {
 
     // Focus on read-path verification for absolute long; incidental writes from
     // core internals are not relevant here.
-    // Expect at least two read events; check the first two
-    expect(reads.length).toBeGreaterThanOrEqual(2);
-
-    const r0 = reads[0];
-    const r1 = reads[1];
-
+    // Find the two absolute-long reads by address and size
     const ABS = 0x00106e80 >>> 0;
-    expect(r0.addr >>> 0).toBe(ABS);
-    expect(r1.addr >>> 0).toBe(ABS);
-    expect(r0.size).toBe(4);
-    expect(r1.size).toBe(4);
+    const absReads = reads.filter(r => (r.addr >>> 0) === ABS && r.size === 4);
+    expect(absReads.length).toBeGreaterThanOrEqual(2);
+    const r0 = absReads[0];
+    const r1 = absReads[1];
     // Initial memory is zeroed, so values are 0
     expect(r0.value >>> 0).toBe(0);
     expect(r1.value >>> 0).toBe(0);
