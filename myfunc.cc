@@ -428,8 +428,48 @@ extern "C" {
     if (_step_state != StepState::Idle) {
       _step_state = StepState::Idle;
     }
-    // Normalize PC to the post-instruction boundary based on disassembler size.
-    // This avoids prefetch-related off-by-2 when the hook breaks after IR fetch.
+    /*
+     * Why we normalize PC/PPC here (detailed rationale):
+     *
+     * The Musashi main loop (m68kcpu.c) performs these steps each iteration:
+     *   1) Set REG_PPC = REG_PC (record previous PC at top of iteration)
+     *   2) Fetch next instruction word: REG_IR = m68ki_read_imm_16();
+     *      This fetch advances REG_PC by 2 bytes (prefetch)
+     *   3) Invoke the instruction hook: m68ki_instr_hook(REG_PPC, REG_IR, executed_cycles)
+     *   4) Execute the instruction body
+     *   5) At the end of the iteration, the loop may set REG_PPC = REG_PC again for the next entry
+     *
+     * Our single-step mechanism (this function) arms a state machine that says:
+     *   - On the first instruction hook we see, "arm" a break for the NEXT hook, and
+     *     allow the current instruction to run to completion.
+     *   - On the following iteration's hook, request an immediate timeslice end.
+     *
+     * Subtle effect without normalization:
+     *   After finishing instruction #1, the loop begins iteration for instruction #2.
+     *   At the TOP of that iteration, the core:
+     *     - sets REG_PPC = REG_PC (which now reflects the PC after instruction #1), and
+     *     - fetches the first word of instruction #2, advancing REG_PC by 2 (prefetch).
+     *   Then the hook for instruction #2 fires and our step state requests a stop. As a result,
+     *   when m68k_execute() returns, REG_PC has already been advanced by the prefetch of the NEXT
+     *   instruction, and REG_PPC reflects the post-instruction-1 PC (not the start of instruction #1).
+     *
+     * Concrete example (what the failing test observed before this fix):
+     *   - Program at 0x400: MOVE.L #imm,D0 (6 bytes), then NOP
+     *   - True post-instruction boundary is 0x406. However, because the next iteration prefetches
+     *     before we stop, REG_PC ends up at 0x408 (0x406 + 2); REG_PPC no longer equals 0x400.
+     *   - Tests that assert endPc == startPc + decodedSize (and PPC == startPc) fail by 2 bytes.
+     *
+     * To provide a stable "execute exactly one instruction" contract, we normalize the architectural
+     * state here to the post-instruction boundary based on the disassembler’s size:
+     *   - Decode at the original start_pc to obtain the instruction size
+     *   - Force REG_PC = start_pc + size (undoing the prefetch drift)
+     *   - Force REG_PPC = start_pc so metadata/consumers see the correct previous PC
+     *
+     * Notes:
+     *   - We only adjust PC/PPC (metadata-visible architectural state). We do not modify cycles; the
+     *     returned cycle count remains whatever the core executed.
+     *   - If decoding were to fail (size == 0), we leave PC as-is to avoid guessing.
+     */
     {
       // m68k_disassemble prints to a buffer; we only need the returned size.
       char tmp[1];
