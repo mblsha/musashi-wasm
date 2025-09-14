@@ -424,69 +424,44 @@ extern "C" {
 
   // Execute exactly one instruction and return the cycles consumed.
   unsigned long long m68k_step_one(void) {
-    // Capture start PC for accurate endPc normalization
-    unsigned int start_pc = m68k_get_reg(nullptr, M68K_REG_PC);
+    // Capture start PC for accurate boundary normalization
+    const unsigned int start_pc = m68k_get_reg(nullptr, M68K_REG_PC);
     _step_state = StepState::Arm;
     unsigned long long cycles = m68k_execute(kDefaultTimeslice);
     // If CPU became stopped before next hook (e.g., STOP), ensure clean state
     if (_step_state != StepState::Idle) {
       _step_state = StepState::Idle;
     }
-    /*
-     * Why we normalize PC/PPC here (detailed rationale):
-     *
-     * The Musashi main loop (m68kcpu.c) performs these steps each iteration:
-     *   1) Set REG_PPC = REG_PC (record previous PC at top of iteration)
-     *   2) Fetch next instruction word: REG_IR = m68ki_read_imm_16();
-     *      This fetch advances REG_PC by 2 bytes (prefetch)
-     *   3) Invoke the instruction hook: m68ki_instr_hook(REG_PPC, REG_IR, executed_cycles)
-     *   4) Execute the instruction body
-     *   5) At the end of the iteration, the loop may set REG_PPC = REG_PC again for the next entry
-     *
-     * Our single-step mechanism (this function) arms a state machine that says:
-     *   - On the first instruction hook we see, "arm" a break for the NEXT hook, and
-     *     allow the current instruction to run to completion.
-     *   - On the following iteration's hook, request an immediate timeslice end.
-     *
-     * Subtle effect without normalization:
-     *   After finishing instruction #1, the loop begins iteration for instruction #2.
-     *   At the TOP of that iteration, the core:
-     *     - sets REG_PPC = REG_PC (which now reflects the PC after instruction #1), and
-     *     - fetches the first word of instruction #2, advancing REG_PC by 2 (prefetch).
-     *   Then the hook for instruction #2 fires and our step state requests a stop. As a result,
-     *   when m68k_execute() returns, REG_PC has already been advanced by the prefetch of the NEXT
-     *   instruction, and REG_PPC reflects the post-instruction-1 PC (not the start of instruction #1).
-     *
-     * Concrete example (what the failing test observed before this fix):
-     *   - Program at 0x400: MOVE.L #imm,D0 (6 bytes), then NOP
-     *   - True post-instruction boundary is 0x406. However, because the next iteration prefetches
-     *     before we stop, REG_PC ends up at 0x408 (0x406 + 2); REG_PPC no longer equals 0x400.
-     *   - Tests that assert endPc == startPc + decodedSize (and PPC == startPc) fail by 2 bytes.
-     *
-     * To provide a stable "execute exactly one instruction" contract, we normalize the architectural
-     * state here to the post-instruction boundary based on the disassembler’s size:
-     *   - Decode at the original start_pc to obtain the instruction size
-     *   - Force REG_PC = start_pc + size (undoing the prefetch drift)
-     *   - Force REG_PPC = start_pc so metadata/consumers see the correct previous PC
-     *
-     * Notes:
-     *   - We only adjust PC/PPC (metadata-visible architectural state). We do not modify cycles; the
-     *     returned cycle count remains whatever the core executed.
-     *   - If decoding were to fail (size == 0), we leave PC as-is to avoid guessing.
-     */
+
+    // Determine normalized end-of-instruction PC.
+    // Default to the start_pc plus decoded size (fall-through), but if
+    // core PC indicates a control-flow change, base normalization on that.
+    unsigned int new_pc = m68k_get_reg(nullptr, M68K_REG_PC);
     {
-      // m68k_disassemble writes a human-readable string into the provided
-      // buffer and returns the instruction size. Provide a sufficiently
-      // large buffer to avoid overwriting (sanitizers would flag too-small).
       char tmp[256];
-      unsigned int size = m68k_disassemble(tmp, start_pc, M68K_CPU_TYPE_68000);
+      const unsigned int size = m68k_disassemble(tmp, start_pc, M68K_CPU_TYPE_68000);
       if (size > 0) {
-        unsigned int normalized_end = start_pc + size;
-        m68k_set_reg(M68K_REG_PC, normalized_end);
-        // Keep PPC consistent: previous PC should reflect the instruction start
-        m68k_set_reg(M68K_REG_PPC, start_pc);
+        const unsigned int fallthrough_end = start_pc + size;
+        if (new_pc == fallthrough_end || new_pc == fallthrough_end + 2) {
+          // No control-flow change; fix prefetch drift to the exact boundary
+          new_pc = fallthrough_end;
+        } else {
+          // Control-flow changed (branch/jsr/jmp/exception). m68k_execute() returned
+          // after fetching the first word of the NEXT instruction, so PC advanced by 2.
+          // Normalize by undoing the one-word prefetch so PC reflects the true next PC.
+          if (new_pc >= 2) new_pc -= 2;
+        }
+      } else {
+        // If disassembly fails, still try to undo one-word prefetch drift safely.
+        if (new_pc >= 2) new_pc -= 2;
       }
     }
+
+    // Normalize PPC to the start of the stepped instruction for stable semantics
+    m68k_set_reg(M68K_REG_PPC, start_pc);
+    // Normalize PC to computed next-instruction boundary
+    m68k_set_reg(M68K_REG_PC, new_pc);
+
     return cycles;
   }
   
