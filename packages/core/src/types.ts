@@ -46,6 +46,8 @@ export interface SystemConfig {
   rom: Uint8Array;
   /** The size of the system's RAM in bytes. */
   ramSize: number;
+  /** Optional memory layout describing regions and mirrors. */
+  memoryLayout?: MemoryLayout;
 }
 
 /** Configuration for a Perfetto tracing session. */
@@ -60,6 +62,40 @@ export interface TraceConfig {
 
 /** A map of memory addresses to human-readable names. */
 export type SymbolMap = Record<number, string>;
+
+// --- Unified Memory Layout Types ---
+
+/** Describes a directly populated region in unified memory. */
+export type MemoryRegion = {
+  /** Absolute start address of the region in unified memory. */
+  start: number;
+  /** Length of the region in bytes. */
+  length: number;
+  /** Source of initial bytes. */
+  source: 'rom' | 'ram' | 'zero';
+  /** Optional byte offset within the source array. Defaults to 0. */
+  sourceOffset?: number;
+};
+
+/** Describes a mirrored region copied from an already initialized span. */
+export type MirrorRegion = {
+  /** Destination start address of the mirror. */
+  start: number;
+  /** Length of the mirror region in bytes. */
+  length: number;
+  /** Source start address within unified memory (must be initialized). */
+  mirrorFrom: number;
+};
+
+/** Optional memory layout configuration for unified memory and mirrors. */
+export type MemoryLayout = {
+  /** Direct regions copied from ROM/RAM/zero. */
+  regions?: MemoryRegion[];
+  /** Mirrors that duplicate an initialized span into another address range. */
+  mirrors?: MirrorRegion[];
+  /** Optional minimum capacity for the unified memory buffer. */
+  minimumCapacity?: number;
+};
 
 /**
  * Interface for controlling and capturing Perfetto performance traces.

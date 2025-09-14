@@ -4,6 +4,7 @@
 type EmscriptenBuffer = number;
 type EmscriptenFunction = number;
 import { M68kRegister } from '@m68k/common';
+import type { MemoryLayout } from './types.js';
 
 export interface MusashiEmscriptenModule {
   _my_initialize(): boolean;
@@ -91,7 +92,8 @@ interface SystemBridge {
 export class MusashiWrapper {
   private _module: MusashiEmscriptenModule;
   private _system!: SystemBridge; // Reference to SystemImpl
-  private _memory: Uint8Array = new Uint8Array(2 * 1024 * 1024); // 2MB memory
+  private _memory: Uint8Array = new Uint8Array(0); // allocated in init()
+  private _ramWindows: Array<{ start: number; length: number; offset: number }> = [];
   private _readFunc: EmscriptenFunction = 0;
   private _writeFunc: EmscriptenFunction = 0;
   private _probeFunc: EmscriptenFunction = 0;
@@ -105,8 +107,83 @@ export class MusashiWrapper {
     this._module = module;
   }
 
-  init(system: SystemBridge, rom: Uint8Array, ram: Uint8Array) {
+  init(system: SystemBridge, rom: Uint8Array, ram: Uint8Array, memoryLayout?: MemoryLayout) {
     this._system = system;
+
+    // --- Allocate unified memory based on layout or defaults ---
+    const DEFAULT_CAPACITY = 2 * 1024 * 1024; // 2MB
+    let capacity = DEFAULT_CAPACITY >>> 0;
+    this._ramWindows = [];
+
+    if (memoryLayout && ((memoryLayout.regions && memoryLayout.regions.length) || (memoryLayout.mirrors && memoryLayout.mirrors.length))) {
+      let maxEnd = 0;
+      for (const r of memoryLayout.regions ?? []) {
+        const start = r.start >>> 0;
+        const length = r.length >>> 0;
+        if (length === 0) continue;
+        const end = (start + length) >>> 0;
+        if (end > maxEnd) maxEnd = end;
+      }
+      for (const m of memoryLayout.mirrors ?? []) {
+        const destStart = m.start >>> 0;
+        const destEnd = (destStart + (m.length >>> 0)) >>> 0;
+        if (destEnd > maxEnd) maxEnd = destEnd;
+        const srcStart = m.mirrorFrom >>> 0;
+        const srcEnd = (srcStart + (m.length >>> 0)) >>> 0;
+        if (srcEnd > maxEnd) maxEnd = srcEnd;
+      }
+      const minCap = (memoryLayout.minimumCapacity ?? 0) >>> 0;
+      capacity = Math.max(maxEnd, minCap, 0) >>> 0;
+    }
+
+    this._memory = new Uint8Array(capacity);
+
+    // --- Initialize regions ---
+    if (memoryLayout && ((memoryLayout.regions && memoryLayout.regions.length) || (memoryLayout.mirrors && memoryLayout.mirrors.length))) {
+      // Base regions
+      for (const r of memoryLayout.regions ?? []) {
+        const start = r.start >>> 0;
+        const length = r.length >>> 0;
+        const srcOff = (r.sourceOffset ?? 0) >>> 0;
+        if (length === 0) continue;
+        // Bounds validation
+        if (start + length > this._memory.length) {
+          throw new Error(`Region out of bounds: start=0x${start.toString(16)}, len=0x${length.toString(16)}, cap=0x${this._memory.length.toString(16)}`);
+        }
+        if (r.source === 'rom') {
+          if (srcOff + length > rom.length) {
+            throw new Error(`ROM source out of range: off=0x${srcOff.toString(16)}, len=0x${length.toString(16)}, rom=0x${rom.length.toString(16)}`);
+          }
+          this._memory.set(rom.subarray(srcOff, srcOff + length), start);
+        } else if (r.source === 'ram') {
+          if (srcOff + length > ram.length) {
+            throw new Error(`RAM source out of range: off=0x${srcOff.toString(16)}, len=0x${length.toString(16)}, ram=0x${ram.length.toString(16)}`);
+          }
+          this._memory.set(ram.subarray(srcOff, srcOff + length), start);
+          // Record window for write-back to RAM buffer
+          this._ramWindows.push({ start, length, offset: srcOff });
+        } else if (r.source === 'zero') {
+          this._memory.fill(0, start, start + length);
+        }
+      }
+      // Mirrors
+      for (const m of memoryLayout.mirrors ?? []) {
+        const start = m.start >>> 0;
+        const length = m.length >>> 0;
+        const from = m.mirrorFrom >>> 0;
+        if (length === 0) continue;
+        if (from + length > this._memory.length || start + length > this._memory.length) {
+          throw new Error(`Mirror out of bounds: from=0x${from.toString(16)}, start=0x${start.toString(16)}, len=0x${length.toString(16)}, cap=0x${this._memory.length.toString(16)}`);
+        }
+        const src = this._memory.subarray(from, from + length);
+        this._memory.set(src, start);
+      }
+    } else {
+      // Backward-compatible default mapping
+      this._memory.set(rom, 0x000000);
+      this._memory.set(ram, 0x100000);
+      this._ramWindows.push({ start: 0x100000, length: ram.length >>> 0, offset: 0 });
+    }
 
     // Setup callbacks FIRST (critical for expert's fix)
     this._readFunc = this._module.addFunction((addr: number) => {
@@ -266,6 +343,13 @@ export class MusashiWrapper {
     // Read from our unified memory (big-endian composition)
     if (address >= this._memory.length) return 0;
     if (address + size > this._memory.length) return 0;
+    // If the access starts in a RAM window, ensure it does not cross that window's end
+    for (const w of this._ramWindows) {
+      if (address >= w.start && address < (w.start + w.length)) {
+        if (address + size > (w.start + w.length)) return 0;
+        break;
+      }
+    }
 
     if (size === 1) {
       return this._memory[address];
@@ -282,36 +366,42 @@ export class MusashiWrapper {
   }
 
   write_memory(address: number, size: 1 | 2 | 4, value: number) {
-    // Write to our unified memory (big-endian decomposition)
-    if (address >= this._memory.length) return;
-    if (address + size > this._memory.length) return;
-
+    const addr = address >>> 0;
+    // Respect bounds strictly: ignore cross-boundary writes
+    if (addr >= this._memory.length) return;
+    if (addr + size > this._memory.length) return;
+    // If the write starts in a RAM window, ensure it does not cross that window's end
+    for (const w of this._ramWindows) {
+      if (addr >= w.start && addr < (w.start + w.length)) {
+        if (addr + size > (w.start + w.length)) return;
+        break;
+      }
+    }
+    const bytes: number[] = [];
     if (size === 1) {
-      this._memory[address] = value & 0xff;
+      bytes.push(value & 0xff);
     } else if (size === 2) {
-      this._memory[address] = (value >> 8) & 0xff;
-      this._memory[address + 1] = value & 0xff;
+      bytes.push((value >> 8) & 0xff, value & 0xff);
     } else {
-      this._memory[address] = (value >> 24) & 0xff;
-      this._memory[address + 1] = (value >> 16) & 0xff;
-      this._memory[address + 2] = (value >> 8) & 0xff;
-      this._memory[address + 3] = value & 0xff;
+      bytes.push(
+        (value >> 24) & 0xff,
+        (value >> 16) & 0xff,
+        (value >> 8) & 0xff,
+        value & 0xff
+      );
     }
 
-    // Update the JS-side RAM copy if this is in RAM space
-    const ramStart = 0x100000;
-    if (address >= ramStart && address < ramStart + this._system.ram.length) {
-      const offset = address - ramStart;
-      if (size === 1) {
-        this._system.ram[offset] = value & 0xff;
-      } else if (size === 2) {
-        this._system.ram[offset] = (value >> 8) & 0xff;
-        this._system.ram[offset + 1] = value & 0xff;
-      } else {
-        this._system.ram[offset] = (value >> 24) & 0xff;
-        this._system.ram[offset + 1] = (value >> 16) & 0xff;
-        this._system.ram[offset + 2] = (value >> 8) & 0xff;
-        this._system.ram[offset + 3] = value & 0xff;
+    for (let i = 0; i < bytes.length; i++) {
+      const a = (addr + i) >>> 0;
+      this._memory[a] = bytes[i] & 0xff;
+      // Reflect into RAM windows
+      for (const w of this._ramWindows) {
+        if (a >= w.start && a < (w.start + w.length)) {
+          const ramIndex = (w.offset + (a - w.start)) >>> 0;
+          if (ramIndex < this._system.ram.length) {
+            this._system.ram[ramIndex] = bytes[i] & 0xff;
+          }
+        }
       }
     }
   }
