@@ -90,6 +90,15 @@ describe('@m68k/core', () => {
     expect(system.read(ramBase + 6, 2)).toBe(0xcdef);
   });
 
+  it('handles unsigned 32-bit values correctly', () => {
+    const ramBase = 0x100000;
+    const value = 0xf2345678;
+
+    system.write(ramBase, 4, value);
+    const readBack = system.read(ramBase, 4);
+    expect(readBack).toBe(value >>> 0);
+  });
+
   it('respects memory bounds for multi-byte access', () => {
     const ramBase = 0x100000;
     const ramSize = 0x1000;

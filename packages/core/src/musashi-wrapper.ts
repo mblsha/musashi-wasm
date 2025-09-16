@@ -294,7 +294,7 @@ export class MusashiWrapper {
         (this._memory[address + 1] << 16) |
         (this._memory[address + 2] << 8) |
         this._memory[address + 3]
-      );
+      ) >>> 0;
     }
   }
 
