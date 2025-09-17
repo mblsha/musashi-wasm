@@ -272,6 +272,8 @@ export class Musashi {
 }
 
 export default Musashi;
+
+export { createSystem } from '@m68k/core';
 `;
 
 // Generate Perfetto-enabled CommonJS wrapper

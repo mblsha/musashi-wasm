@@ -4,8 +4,26 @@ import type {
   WriteMemoryCallback as CommonWriteMemoryCallback,
   PCHookCallback as CommonPCHookCallback,
 } from '@m68k/common';
+import type {
+  System as CoreSystem,
+  SystemConfig as CoreSystemConfig,
+  CpuRegisters as CoreCpuRegisters,
+  HookCallback as CoreHookCallback,
+  Tracer as CoreTracer,
+  TraceConfig as CoreTraceConfig,
+  SymbolMap as CoreSymbolMap,
+} from '@m68k/core';
 
 declare module 'musashi-wasm' {
+  export { createSystem, M68kRegister } from '@m68k/core';
+  export type System = CoreSystem;
+  export type SystemConfig = CoreSystemConfig;
+  export type CpuRegisters = CoreCpuRegisters;
+  export type HookCallback = CoreHookCallback;
+  export type Tracer = CoreTracer;
+  export type TraceConfig = CoreTraceConfig;
+  export type SymbolMap = CoreSymbolMap;
+
   export interface MusashiModule {
     _m68k_init(): void;
     _m68k_execute(cycles: number): number;
