@@ -107,24 +107,37 @@ export class MusashiWrapper {
     this._module = module;
   }
 
+  private getActiveMemoryLayout(memoryLayout?: MemoryLayout): MemoryLayout | undefined {
+    if (!memoryLayout) {
+      return undefined;
+    }
+
+    const hasRegions = (memoryLayout.regions?.length ?? 0) > 0;
+    const hasMirrors = (memoryLayout.mirrors?.length ?? 0) > 0;
+
+    return hasRegions || hasMirrors ? memoryLayout : undefined;
+  }
+
   init(system: SystemBridge, rom: Uint8Array, ram: Uint8Array, memoryLayout?: MemoryLayout) {
     this._system = system;
+
+    const layout = this.getActiveMemoryLayout(memoryLayout);
 
     // --- Allocate unified memory based on layout or defaults ---
     const DEFAULT_CAPACITY = 2 * 1024 * 1024; // 2MB
     let capacity = DEFAULT_CAPACITY >>> 0;
     this._ramWindows = [];
 
-    if (memoryLayout && ((memoryLayout.regions && memoryLayout.regions.length) || (memoryLayout.mirrors && memoryLayout.mirrors.length))) {
+    if (layout) {
       let maxEnd = 0;
-      for (const r of memoryLayout.regions ?? []) {
+      for (const r of layout.regions ?? []) {
         const start = r.start >>> 0;
         const length = r.length >>> 0;
         if (length === 0) continue;
         const end = (start + length) >>> 0;
         if (end > maxEnd) maxEnd = end;
       }
-      for (const m of memoryLayout.mirrors ?? []) {
+      for (const m of layout.mirrors ?? []) {
         const destStart = m.start >>> 0;
         const destEnd = (destStart + (m.length >>> 0)) >>> 0;
         if (destEnd > maxEnd) maxEnd = destEnd;
@@ -132,16 +145,16 @@ export class MusashiWrapper {
         const srcEnd = (srcStart + (m.length >>> 0)) >>> 0;
         if (srcEnd > maxEnd) maxEnd = srcEnd;
       }
-      const minCap = (memoryLayout.minimumCapacity ?? 0) >>> 0;
+      const minCap = (layout.minimumCapacity ?? 0) >>> 0;
       capacity = Math.max(maxEnd, minCap, 0) >>> 0;
     }
 
     this._memory = new Uint8Array(capacity);
 
     // --- Initialize regions ---
-    if (memoryLayout && ((memoryLayout.regions && memoryLayout.regions.length) || (memoryLayout.mirrors && memoryLayout.mirrors.length))) {
+    if (layout) {
       // Base regions
-      for (const r of memoryLayout.regions ?? []) {
+      for (const r of layout.regions ?? []) {
         const start = r.start >>> 0;
         const length = r.length >>> 0;
         const srcOff = (r.sourceOffset ?? 0) >>> 0;
@@ -167,7 +180,7 @@ export class MusashiWrapper {
         }
       }
       // Mirrors
-      for (const m of memoryLayout.mirrors ?? []) {
+      for (const m of layout.mirrors ?? []) {
         const start = m.start >>> 0;
         const length = m.length >>> 0;
         const from = m.mirrorFrom >>> 0;
