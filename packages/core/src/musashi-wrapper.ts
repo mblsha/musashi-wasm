@@ -509,17 +509,9 @@ export class MusashiWrapper {
 
   perfettoInit(processName: string): number {
     if (!this._module._m68k_perfetto_init) return -1;
-    const namePtr = this._module._malloc(processName.length + 1);
-    // Write string to WASM heap manually
-    for (let i = 0; i < processName.length; i++) {
-      this._module.HEAPU8[namePtr + i] = processName.charCodeAt(i);
-    }
-    this._module.HEAPU8[namePtr + processName.length] = 0; // null terminator
-    try {
-      return this._module._m68k_perfetto_init(namePtr);
-    } finally {
-      this._module._free(namePtr);
-    }
+    return this._withHeapCString(processName, (namePtr) =>
+      this._module._m68k_perfetto_init!(namePtr)
+    );
   }
 
   perfettoDestroy() {
@@ -551,22 +543,38 @@ export class MusashiWrapper {
     return this._module._m68k_perfetto_is_initialized() !== 0;
   }
 
+  private _withHeapCString<T>(
+    text: string,
+    fn: (ptr: EmscriptenBuffer) => T
+  ): T {
+    const { _malloc, _free, HEAPU8 } = this._module;
+    if (typeof _malloc !== 'function' || typeof _free !== 'function') {
+      throw new Error('Module does not provide memory allocation helpers.');
+    }
+    const ptr = _malloc(text.length + 1);
+    if (!HEAPU8) {
+      _free(ptr);
+      throw new Error('Module HEAPU8 view is unavailable.');
+    }
+    try {
+      for (let i = 0; i < text.length; i++) {
+        HEAPU8[ptr + i] = text.charCodeAt(i) & 0xff;
+      }
+      HEAPU8[ptr + text.length] = 0;
+      return fn(ptr);
+    } finally {
+      _free(ptr);
+    }
+  }
+
   private _registerSymbol(
     func: (address: number, name: EmscriptenBuffer) => void,
     address: number,
     name: string
   ) {
-    const namePtr = this._module._malloc(name.length + 1);
-    // Write string to WASM heap manually
-    for (let i = 0; i < name.length; i++) {
-      this._module.HEAPU8[namePtr + i] = name.charCodeAt(i);
-    }
-    this._module.HEAPU8[namePtr + name.length] = 0; // null terminator
-    try {
-      func.call(this._module, address, namePtr);
-    } finally {
-      this._module._free(namePtr);
-    }
+    this._withHeapCString(name, (namePtr) => {
+      func(address, namePtr);
+    });
   }
 
   registerFunctionName(address: number, name: string) {
