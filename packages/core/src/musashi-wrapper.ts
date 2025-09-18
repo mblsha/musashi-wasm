@@ -101,7 +101,7 @@ export class MusashiWrapper {
   private _memTraceActive = false;
   // No JS sentinel state; C++ session owns sentinel behavior.
   // CPU type for disassembler (68000)
-  private readonly CPU_68000 = 0;
+  private readonly CPU_68000 = 0x00000001;
 
   constructor(module: MusashiEmscriptenModule) {
     this._module = module;

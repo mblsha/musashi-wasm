@@ -217,18 +217,52 @@ class SystemImpl implements System {
 
   async step(): Promise<{ cycles: number; startPc: number; endPc: number; ppc?: number }> {
     const startPc = this._musashi.get_reg(M68kRegister.PC) >>> 0; // PC before executing
-    // musashi.step() may return an unsigned long long (BigInt with WASM_BIGINT)
-    // Normalize to Number before masking to avoid BigInt/Number mixing.
-    const c = this._musashi.step();
-    const cycles = Number(c) >>> 0;
-    const endPcActual = this._musashi.get_reg(M68kRegister.PC) >>> 0; // PC after executing
-    // Previous PC as reported by the core; may equal startPc
-    const ppc = this._musashi.get_reg(M68kRegister.PPC) >>> 0;
-    // Normalize endPc to decoded instruction size boundary when possible.
-    // This avoids prefetch-related discrepancies in metadata while leaving core state intact.
-    const size = this.getInstructionSize(startPc) >>> 0;
-    const endPc = size > 0 ? ((startPc + size) >>> 0) : endPcActual;
-    return { cycles, startPc, endPc, ppc };
+    const initialSp = this._musashi.get_reg(M68kRegister.A7) >>> 0;
+
+    let totalCycles = 0;
+    let currentStartPc = startPc;
+    let previousSp = initialSp;
+    let endPc = startPc;
+    let ppc = this._musashi.get_reg(M68kRegister.PPC) >>> 0;
+
+    for (let iteration = 0; iteration < 2; iteration++) {
+      // musashi.step() may return an unsigned long long (BigInt with WASM_BIGINT)
+      // Normalize to Number before masking to avoid BigInt/Number mixing.
+      const cyclesRaw = this._musashi.step();
+      totalCycles += Number(cyclesRaw) >>> 0;
+
+      const afterPc = this._musashi.get_reg(M68kRegister.PC) >>> 0;
+      ppc = this._musashi.get_reg(M68kRegister.PPC) >>> 0;
+      const size = this.getInstructionSize(currentStartPc) >>> 0;
+      endPc = size > 0 ? ((currentStartPc + size) >>> 0) : afterPc;
+
+      const spNow = this._musashi.get_reg(M68kRegister.A7) >>> 0;
+      const spDelta = previousSp >= spNow ? (previousSp - spNow) >>> 0 : 0;
+
+      const exceptionDetected =
+        iteration === 0 &&
+        spNow < previousSp &&
+        spDelta >= 6 &&
+        afterPc < startPc;
+
+      if (exceptionDetected) {
+        // Prefetch advances PC past the vector entry; rewind so we execute the handler
+        const handlerPc = afterPc >= 2 ? (afterPc - 2) >>> 0 : afterPc;
+        this._musashi.set_reg(M68kRegister.PC, handlerPc);
+        currentStartPc = handlerPc;
+        previousSp = spNow;
+        // Execute exactly one instruction from the handler on the next loop iteration
+        continue;
+      }
+
+      break;
+    }
+
+    // Normalize core state so subsequent reads see the final instruction boundary.
+    this._musashi.set_reg(M68kRegister.PPC, currentStartPc >>> 0);
+    this._musashi.set_reg(M68kRegister.PC, endPc >>> 0);
+
+    return { cycles: totalCycles >>> 0, startPc, endPc, ppc };
   }
 
   reset(): void {
