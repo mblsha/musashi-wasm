@@ -17,7 +17,7 @@
 ## Build, Test, and Development Commands
 - Install deps: `npm install`.
 - Build TS workspaces: `npm run build`.
-- Test TS: `npm test` (e.g., `npm test --workspace=@m68k/core`).
+- Test TS: `timeout 60 npm test` (e.g., `timeout 60 npm test --workspace=@m68k/core`).
 - Type check: `npm run typecheck` (runs `tsc --noEmit`).
 - Build WASM: `./build.sh`.
 - Build WASM with Perfetto: `ENABLE_PERFETTO=1 ./build.sh`.

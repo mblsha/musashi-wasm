@@ -1,4 +1,5 @@
 import { createSystem } from './index.js';
+import type { MemoryAccessEvent } from './types.js';
 
 function hex(n: number) {
   return '0x' + (n >>> 0).toString(16).padStart(8, '0');
@@ -29,11 +30,11 @@ describe('Memory trace for absolute long accesses (read path)', () => {
     sys.setRegister('a0', 0x100a80);
     sys.setRegister('pc', 0x416);
 
-    const reads: Array<{ addr: number; size: number; value: number; pc: number }> = [];
-    const writes: Array<{ addr: number; size: number; value: number; pc: number }> = [];
+    const reads: MemoryAccessEvent[] = [];
+    const writes: MemoryAccessEvent[] = [];
 
-    const offR = sys.onMemoryRead((e) => reads.push(e));
-    const offW = sys.onMemoryWrite((e) => writes.push(e));
+    const offR = sys.onMemoryRead((e: MemoryAccessEvent) => reads.push(e));
+    const offW = sys.onMemoryWrite((e: MemoryAccessEvent) => writes.push(e));
 
     // Execute two instructions
     await sys.step(); // @ 0x416
