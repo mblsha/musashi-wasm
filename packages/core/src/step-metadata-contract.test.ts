@@ -26,10 +26,10 @@ describe('step() metadata contract', () => {
     system.cleanup();
   });
 
-  it('endPc equals startPc + getInstructionSize(startPc)', async () => {
+  it('endPc equals startPc + disassemble(startPc).size', async () => {
     // Step 1
     let start = system.getRegisters().pc >>> 0;
-    let size = system.getInstructionSize(start) >>> 0;
+    let size = system.disassemble(start)?.size! >>> 0;
     const s1 = await system.step();
     expect(s1.startPc >>> 0).toBe(start);
     expect(s1.endPc >>> 0).toBe((start + size) >>> 0);
@@ -39,14 +39,14 @@ describe('step() metadata contract', () => {
 
     // Step 2
     start = system.getRegisters().pc >>> 0;
-    size = system.getInstructionSize(start) >>> 0;
+    size = system.disassemble(start)?.size! >>> 0;
     const s2 = await system.step();
     expect(s2.startPc >>> 0).toBe(start);
     expect(s2.endPc >>> 0).toBe((start + size) >>> 0);
 
     // Step 3
     start = system.getRegisters().pc >>> 0;
-    size = system.getInstructionSize(start) >>> 0;
+    size = system.disassemble(start)?.size! >>> 0;
     const s3 = await system.step();
     expect(s3.startPc >>> 0).toBe(start);
     expect(s3.endPc >>> 0).toBe((start + size) >>> 0);
