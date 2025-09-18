@@ -329,28 +329,35 @@ export class MusashiWrapper {
     this._module._add_pc_hook_addr(addr);
   }
 
-  read_memory(address: number, size: 1 | 2 | 4): number {
-    // Read from our unified memory (big-endian composition)
-    if (address >= this._memory.length) return 0;
-    if (address + size > this._memory.length) return 0;
-    // If the access starts in a RAM window, ensure it does not cross that window's end
+  private isAccessWithinMemory(address: number, size: 1 | 2 | 4): boolean {
+    const addr = address >>> 0;
+    if (addr >= this._memory.length) return false;
+    if (addr + size > this._memory.length) return false;
     for (const w of this._ramWindows) {
-      if (address >= w.start && address < (w.start + w.length)) {
-        if (address + size > (w.start + w.length)) return 0;
+      if (addr >= w.start && addr < w.start + w.length) {
+        if (addr + size > w.start + w.length) {
+          return false;
+        }
         break;
       }
     }
+    return true;
+  }
 
+  read_memory(address: number, size: 1 | 2 | 4): number {
+    const addr = address >>> 0;
+    // Read from our unified memory (big-endian composition)
+    if (!this.isAccessWithinMemory(addr, size)) return 0;
     if (size === 1) {
-      return this._memory[address];
+      return this._memory[addr];
     } else if (size === 2) {
-      return (this._memory[address] << 8) | this._memory[address + 1];
+      return (this._memory[addr] << 8) | this._memory[addr + 1];
     } else {
       return (
-        (this._memory[address] << 24) |
-        (this._memory[address + 1] << 16) |
-        (this._memory[address + 2] << 8) |
-        this._memory[address + 3]
+        (this._memory[addr] << 24) |
+        (this._memory[addr + 1] << 16) |
+        (this._memory[addr + 2] << 8) |
+        this._memory[addr + 3]
       ) >>> 0;
     }
   }
@@ -358,15 +365,7 @@ export class MusashiWrapper {
   write_memory(address: number, size: 1 | 2 | 4, value: number) {
     const addr = address >>> 0;
     // Respect bounds strictly: ignore cross-boundary writes
-    if (addr >= this._memory.length) return;
-    if (addr + size > this._memory.length) return;
-    // If the write starts in a RAM window, ensure it does not cross that window's end
-    for (const w of this._ramWindows) {
-      if (addr >= w.start && addr < (w.start + w.length)) {
-        if (addr + size > (w.start + w.length)) return;
-        break;
-      }
-    }
+    if (!this.isAccessWithinMemory(addr, size)) return;
     const bytes: number[] = [];
     if (size === 1) {
       bytes.push(value & 0xff);
