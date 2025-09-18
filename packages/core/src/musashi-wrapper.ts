@@ -507,19 +507,33 @@ export class MusashiWrapper {
     return typeof this._module._m68k_perfetto_init === 'function';
   }
 
-  perfettoInit(processName: string): number {
-    if (!this._module._m68k_perfetto_init) return -1;
-    const namePtr = this._module._malloc(processName.length + 1);
-    // Write string to WASM heap manually
-    for (let i = 0; i < processName.length; i++) {
-      this._module.HEAPU8[namePtr + i] = processName.charCodeAt(i);
+  private withHeapString<T>(value: string, fn: (ptr: number) => T): T {
+    const malloc = this._module._malloc;
+    const free = this._module._free;
+    const heap = this._module.HEAPU8;
+    if (
+      typeof malloc !== 'function' ||
+      typeof free !== 'function' ||
+      !(heap instanceof Uint8Array)
+    ) {
+      throw new Error('Musashi module does not expose heap string helpers.');
     }
-    this._module.HEAPU8[namePtr + processName.length] = 0; // null terminator
+    const ptr = malloc(value.length + 1);
+    for (let i = 0; i < value.length; i++) {
+      heap[ptr + i] = value.charCodeAt(i) & 0xff;
+    }
+    heap[ptr + value.length] = 0;
     try {
-      return this._module._m68k_perfetto_init(namePtr);
+      return fn(ptr);
     } finally {
-      this._module._free(namePtr);
+      free(ptr);
     }
+  }
+
+  perfettoInit(processName: string): number {
+    const init = this._module._m68k_perfetto_init;
+    if (!init) return -1;
+    return this.withHeapString(processName, (namePtr) => init(namePtr));
   }
 
   perfettoDestroy() {
@@ -556,17 +570,9 @@ export class MusashiWrapper {
     address: number,
     name: string
   ) {
-    const namePtr = this._module._malloc(name.length + 1);
-    // Write string to WASM heap manually
-    for (let i = 0; i < name.length; i++) {
-      this._module.HEAPU8[namePtr + i] = name.charCodeAt(i);
-    }
-    this._module.HEAPU8[namePtr + name.length] = 0; // null terminator
-    try {
+    this.withHeapString(name, (namePtr) => {
       func.call(this._module, address, namePtr);
-    } finally {
-      this._module._free(namePtr);
-    }
+    });
   }
 
   registerFunctionName(address: number, name: string) {
