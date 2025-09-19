@@ -162,13 +162,13 @@ export interface System {
    * when the subroutine returns (e.g., via an RTS instruction).
    * @returns The number of CPU cycles executed.
    */
-  call(address: number): Promise<number>;
+  call(address: number): number;
 
   /**
    * Runs the emulator for a specified number of CPU cycles.
    * @returns The number of CPU cycles actually executed.
    */
-  run(cycles: number): Promise<number>;
+  run(cycles: number): number;
 
   /**
    * Executes exactly one instruction and stops before the next one.

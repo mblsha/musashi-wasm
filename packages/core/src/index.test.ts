@@ -132,7 +132,7 @@ describe('@m68k/core', () => {
 
   it('should execute simple instructions', async () => {
     // Execute a few cycles
-    const cycles = await system.run(100);
+    const cycles = system.run(100);
 
     // Should have executed something
     expect(cycles).toBeGreaterThan(0);
@@ -177,7 +177,7 @@ describe('@m68k/core', () => {
     });
 
     // Execute some instructions
-    await system.run(50);
+    system.run(50);
 
     // Should have called the hook for the probe address
     expect(addresses.length).toBeGreaterThan(0);
@@ -199,7 +199,7 @@ describe('@m68k/core', () => {
       sys.setRegister('pc', 0x40e); // Address of RTS instruction
     });
 
-    await system.run(100);
+    system.run(100);
 
     expect(calls.length).toBe(1);
     expect(system.getRegisters().d1).toBe(0x42);
@@ -225,7 +225,7 @@ describe('@m68k/core', () => {
       // Returning true triggers C++ sentinel redirection
     });
 
-    const cycles = await system.call(subAddr);
+    const cycles = system.call(subAddr);
     expect(cycles).toBeGreaterThan(0);
     expect(system.getRegisters().d2 >>> 0).toBe(0xcafebabe);
 
@@ -267,7 +267,7 @@ describe('@m68k/core', () => {
       // no-op, just trigger stop
     });
 
-    const cycles = await system.call(0x500);
+    const cycles = system.call(0x500);
     expect(cycles).toBeGreaterThan(0);
     // D2 should be DEADBEEF + 1 from ADD.L
     expect(system.getRegisters().d2 >>> 0).toBe(0xdeadbeef + 1 >>> 0);
@@ -355,7 +355,7 @@ describe('@m68k/core', () => {
       reads.push({ addr, size, value, pc });
     });
 
-    const cycles = await system.call(subAddr);
+    const cycles = system.call(subAddr);
     expect(cycles).toBeGreaterThan(0);
 
     // Validate write event from MOVE.L D0, -(SP)

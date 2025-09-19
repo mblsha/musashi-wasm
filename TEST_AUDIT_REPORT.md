@@ -260,7 +260,7 @@ const machineCode = new Uint8Array([
 **Recommendation:** Add timeouts to prevent hanging tests:
 ```typescript
 test('should execute simple instructions', async () => {
-  const cycles = await system.run(100);
+  const cycles = system.run(100);
   expect(cycles).toBeGreaterThan(0);
 }, 5000); // 5 second timeout
 ```

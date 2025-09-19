@@ -138,7 +138,7 @@ async function main() {
   console.log('\nExecuting program...');
   system.reset();
   
-  const cycles = await system.run(10000);
+  const cycles = system.run(10000);
   console.log(`\nExecution completed in ${cycles} cycles`);
   
   // Read the result from RAM
