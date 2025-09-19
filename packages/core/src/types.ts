@@ -120,7 +120,7 @@ export interface Tracer {
    * Throws an error if no session is active.
    * @returns A promise that resolves to the trace data as a `Uint8Array`.
    */
-  stop(): Promise<Uint8Array>;
+    stop(): Uint8Array;
 
   /**
    * Registers a map of addresses to function names. These names will appear

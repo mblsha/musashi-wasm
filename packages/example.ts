@@ -165,7 +165,7 @@ async function main() {
   if (system.tracer.isAvailable() && traceData === null) {
     try {
       console.log('\nStopping trace...');
-      traceData = await system.tracer.stop();
+      traceData = system.tracer.stop();
       
       const traceFile = path.join(__dirname, 'example.perfetto-trace');
       fs.writeFileSync(traceFile, traceData);

@@ -106,7 +106,7 @@ if (system.tracer.isAvailable()) {
   system.run(100000);
 
   // Export trace
-  const traceData = await system.tracer.stop();
+  const traceData = system.tracer.stop();
   fs.writeFileSync('trace.perfetto-trace', traceData);
 }
 ```
