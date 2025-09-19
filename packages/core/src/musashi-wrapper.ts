@@ -379,29 +379,23 @@ export class MusashiWrapper {
     const addr = address >>> 0;
     // Respect bounds strictly: ignore cross-boundary writes
     if (!this.isAccessWithinMemory(addr, size)) return;
-    const bytes: number[] = [];
-    if (size === 1) {
-      bytes.push(value & 0xff);
-    } else if (size === 2) {
-      bytes.push((value >> 8) & 0xff, value & 0xff);
-    } else {
-      bytes.push(
-        (value >> 24) & 0xff,
-        (value >> 16) & 0xff,
-        (value >> 8) & 0xff,
-        value & 0xff
-      );
-    }
+    const maskedValue = value >>> 0;
+    const hasWindows = this._ramWindows.length > 0;
+    const ram = this._system.ram;
 
-    for (let i = 0; i < bytes.length; i++) {
+    for (let i = 0; i < size; i++) {
+      const shift = (size - 1 - i) * 8;
+      const byte = (maskedValue >> shift) & 0xff;
       const a = (addr + i) >>> 0;
-      this._memory[a] = bytes[i] & 0xff;
-      // Reflect into RAM windows
+      this._memory[a] = byte;
+
+      if (!hasWindows) continue;
       for (const w of this._ramWindows) {
-        if (a >= w.start && a < (w.start + w.length)) {
+        const windowEnd = w.start + w.length;
+        if (a >= w.start && a < windowEnd) {
           const ramIndex = (w.offset + (a - w.start)) >>> 0;
-          if (ramIndex < this._system.ram.length) {
-            this._system.ram[ramIndex] = bytes[i] & 0xff;
+          if (ramIndex < ram.length) {
+            ram[ramIndex] = byte;
           }
         }
       }
