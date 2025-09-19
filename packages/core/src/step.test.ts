@@ -42,7 +42,7 @@ describe('@m68k/core step()', () => {
     const regs0 = system.getRegisters();
     expect(regs0.pc >>> 0).toBe(0x400);
 
-    const s1 = await system.step();
+    const s1 = system.step();
     expect(s1.cycles).toBeGreaterThan(0);
     expect(s1.startPc >>> 0).toBe(0x400);
     expect(s1.endPc >>> 0).toBe(0x406);
@@ -52,7 +52,7 @@ describe('@m68k/core step()', () => {
 
     // Ensure next step advances by 2 bytes for MOVE.L D0,(A0)
     system.setRegister('a0', 0x100000);
-    const s2 = await system.step();
+    const s2 = system.step();
     expect(s2.cycles).toBeGreaterThan(0);
     expect(s2.startPc >>> 0).toBe(0x406);
     expect(s2.endPc >>> 0).toBe(0x408);
@@ -60,7 +60,7 @@ describe('@m68k/core step()', () => {
     expect(regs2.pc >>> 0).toBe(0x408);
 
     // Next step should skip 6-byte ADD.L #1,D1
-    const s3 = await system.step();
+    const s3 = system.step();
     expect(s3.cycles).toBeGreaterThan(0);
     expect(s3.startPc >>> 0).toBe(0x408);
     expect(s3.endPc >>> 0).toBe(0x40e);
