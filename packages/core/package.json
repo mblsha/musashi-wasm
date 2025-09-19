@@ -1,6 +1,6 @@
 {
   "name": "@m68k/core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "M68k CPU emulator core with WebAssembly backend",
   "type": "module",
   "main": "dist/index.js",
@@ -43,11 +43,13 @@
   "jest": {
     "testEnvironment": "node",
     "testTimeout": 10000,
-    "extensionsToTreatAsEsm": [".ts"],
+    "extensionsToTreatAsEsm": [
+      ".ts"
+    ],
     "transform": {
       "^.+\\.ts$": [
         "ts-jest",
-        { 
+        {
           "useESM": true,
           "tsconfig": {
             "target": "ES2022",
@@ -64,7 +66,11 @@
       "^\\./index\\.js$": "<rootDir>/src/index.ts",
       "^\\./test-utils\\.js$": "<rootDir>/src/test-utils.ts"
     },
-    "roots": ["<rootDir>/src"],
-    "testMatch": ["**/*.test.ts"]
+    "roots": [
+      "<rootDir>/src"
+    ],
+    "testMatch": [
+      "**/*.test.ts"
+    ]
   }
 }

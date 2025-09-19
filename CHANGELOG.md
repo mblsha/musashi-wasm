@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2025-09-19
+
+### 🚀 Improvements
+
+- **Synchronous APIs**: `System.step`, `System.call`, `System.run`, and `tracer.stop` are now synchronous, simplifying integrations that were previously `await`-heavy.
+- **Runtime robustness**: Refactored memory layout detection and Perfetto string helpers for clearer error handling and smaller WASM glue.
+
+### 🐛 Bug Fixes
+
+- **Call-session stability**: Install and restore sentinel stack frames so `system.call()` returns promptly even when memory tracing or JS hooks are active.
+- **Memory accuracy**: Fix unsigned 32-bit reads and tighten memory bounds checks when forwarding events from the WASM core.
+- **Documentation/tests**: Added detailed analysis of the F-line trap regression and updated tests to reflect the new execution semantics.
+
 ## [0.1.7] - 2025-09-16
 
 ### 🐛 Bug Fixes
