@@ -86,7 +86,7 @@ class TracerImpl implements Tracer {
     this._active = true;
   }
 
-  async stop(): Promise<Uint8Array> {
+  stop(): Uint8Array {
     if (!this._active) {
       throw new Error('No active tracing session to stop.');
     }

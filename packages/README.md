@@ -89,7 +89,7 @@ if (system.tracer.isAvailable()) {
   system.run(100000);
 
   // Stop and export trace
-  const traceData = await system.tracer.stop();
+  const traceData = system.tracer.stop();
   
   // Save to file (Node.js)
   fs.writeFileSync('trace.perfetto-trace', traceData);
