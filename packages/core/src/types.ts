@@ -178,7 +178,7 @@ export interface System {
    * - endPc: PC after instruction completes
    * - ppc: optional previous PC reported by the core (usually equals startPc)
    */
-  step(): Promise<{ cycles: number; startPc: number; endPc: number; ppc?: number }>;
+  step(): { cycles: number; startPc: number; endPc: number; ppc?: number };
 
   /** Resets the CPU to its initial state. */
   reset(): void;

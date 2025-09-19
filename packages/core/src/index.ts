@@ -215,7 +215,7 @@ class SystemImpl implements System {
     return this._musashi.execute(cycles);
   }
 
-  async step(): Promise<{ cycles: number; startPc: number; endPc: number; ppc?: number }> {
+  step(): { cycles: number; startPc: number; endPc: number; ppc?: number } {
     const startPc = this._musashi.get_reg(M68kRegister.PC) >>> 0; // PC before executing
     const initialSp = this._musashi.get_reg(M68kRegister.A7) >>> 0;
 

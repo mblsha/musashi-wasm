@@ -57,7 +57,7 @@ const status = statusReg.get();
 Execute exactly one instruction and inspect precise PCs and cycles:
 
 ```ts
-const { cycles, startPc, endPc, ppc } = await system.step();
+const { cycles, startPc, endPc, ppc } = system.step();
 console.log(`Stepped ${cycles} cycles from 0x${startPc.toString(16)} to 0x${endPc.toString(16)}`);
 // ppc is provided by the core and usually equals startPc
 ```

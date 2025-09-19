@@ -35,7 +35,7 @@ describe('system.step exception handling', () => {
 
     const expectedHandlerSize = system.getInstructionSize(handlerAddr);
 
-    const { startPc, endPc } = await system.step();
+    const { startPc, endPc } = system.step();
 
     const trapWrite = memoryWrites.find(
       (w) => w.addr === 0x00100B1C && w.size === 4 && w.value === 0xFFFFFFFF
