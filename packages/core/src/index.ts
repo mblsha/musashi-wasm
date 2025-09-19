@@ -222,7 +222,7 @@ class SystemImpl implements System {
     let totalCycles = 0;
     let currentStartPc = startPc;
     let previousSp = initialSp;
-    let endPc = startPc;
+    let finalPc = startPc;
     let ppc = this._musashi.get_reg(M68kRegister.PPC) >>> 0;
 
     for (let iteration = 0; iteration < 2; iteration++) {
@@ -232,9 +232,8 @@ class SystemImpl implements System {
       totalCycles += Number(cyclesRaw) >>> 0;
 
       const afterPc = this._musashi.get_reg(M68kRegister.PC) >>> 0;
+      finalPc = afterPc;
       ppc = this._musashi.get_reg(M68kRegister.PPC) >>> 0;
-      const size = this.getInstructionSize(currentStartPc) >>> 0;
-      endPc = size > 0 ? ((currentStartPc + size) >>> 0) : afterPc;
 
       const spNow = this._musashi.get_reg(M68kRegister.A7) >>> 0;
       const spDelta = previousSp >= spNow ? (previousSp - spNow) >>> 0 : 0;
@@ -265,9 +264,9 @@ class SystemImpl implements System {
 
     // Normalize core state so subsequent reads see the final instruction boundary.
     this._musashi.set_reg(M68kRegister.PPC, currentStartPc >>> 0);
-    this._musashi.set_reg(M68kRegister.PC, endPc >>> 0);
+    this._musashi.set_reg(M68kRegister.PC, finalPc >>> 0);
 
-    return { cycles: totalCycles >>> 0, startPc, endPc, ppc };
+    return { cycles: totalCycles >>> 0, startPc, endPc: finalPc >>> 0, ppc };
   }
 
   reset(): void {
