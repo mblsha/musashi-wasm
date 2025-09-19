@@ -1,6 +1,6 @@
 {
   "name": "@m68k/core",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "M68k CPU emulator core with WebAssembly backend",
   "type": "module",
   "main": "dist/index.js",
