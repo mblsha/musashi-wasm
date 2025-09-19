@@ -122,7 +122,49 @@ export class MusashiWrapper {
     this._system = system;
 
     const layout = this.getActiveMemoryLayout(memoryLayout);
+    this.configureUnifiedMemory(rom, ram, layout);
 
+    // Setup callbacks (size-aware read/write; PC hook)
+    const readSizedPtr = this._module.addFunction((addr: number, size: number) =>
+      this.readHandler(addr >>> 0, (size | 0) as 1 | 2 | 4), 'iii');
+    const writeSizedPtr = this._module.addFunction((addr: number, size: number, val: number) =>
+      this.writeHandler(addr >>> 0, (size | 0) as 1 | 2 | 4, val >>> 0), 'viii');
+    this._probeFunc = this._module.addFunction((addr: number) =>
+      (this._system._handlePCHook(addr >>> 0) ? 1 : 0), 'ii');
+
+    this._readFunc = readSizedPtr;
+    this._writeFunc = writeSizedPtr;
+
+    // Register callbacks with C
+    this._module._set_read_mem_func(readSizedPtr);
+    this._module._set_write_mem_func(writeSizedPtr);
+    this._module._set_pc_hook_func(this._probeFunc);
+
+    // CRITICAL: Write reset vectors BEFORE init/reset
+    this.write32BE(0x00000000, 0x00108000); // Initial SSP (in RAM)
+    this.write32BE(0x00000004, 0x00000400); // Initial PC (in ROM)
+
+    // Initialize CPU
+    this._module._m68k_init();
+    this._module._m68k_set_context?.(0);
+
+    // Reset CPU (will read vectors we just wrote)
+    this._module._m68k_pulse_reset();
+
+    // Verify initialization
+    const pc = this._module._m68k_get_reg(0, M68kRegister.PC);
+    if (pc !== 0x400) {
+      throw new Error(
+        `CPU not properly initialized, PC=0x${pc.toString(16)} (expected 0x400)`
+      );
+    }
+  }
+
+  private configureUnifiedMemory(
+    rom: Uint8Array,
+    ram: Uint8Array,
+    layout?: MemoryLayout
+  ): void {
     // --- Allocate unified memory based on layout or defaults ---
     const DEFAULT_CAPACITY = 2 * 1024 * 1024; // 2MB
     let capacity = DEFAULT_CAPACITY >>> 0;
@@ -161,16 +203,22 @@ export class MusashiWrapper {
         if (length === 0) continue;
         // Bounds validation
         if (start + length > this._memory.length) {
-          throw new Error(`Region out of bounds: start=0x${start.toString(16)}, len=0x${length.toString(16)}, cap=0x${this._memory.length.toString(16)}`);
+          throw new Error(
+            `Region out of bounds: start=0x${start.toString(16)}, len=0x${length.toString(16)}, cap=0x${this._memory.length.toString(16)}`
+          );
         }
         if (r.source === 'rom') {
           if (srcOff + length > rom.length) {
-            throw new Error(`ROM source out of range: off=0x${srcOff.toString(16)}, len=0x${length.toString(16)}, rom=0x${rom.length.toString(16)}`);
+            throw new Error(
+              `ROM source out of range: off=0x${srcOff.toString(16)}, len=0x${length.toString(16)}, rom=0x${rom.length.toString(16)}`
+            );
           }
           this._memory.set(rom.subarray(srcOff, srcOff + length), start);
         } else if (r.source === 'ram') {
           if (srcOff + length > ram.length) {
-            throw new Error(`RAM source out of range: off=0x${srcOff.toString(16)}, len=0x${length.toString(16)}, ram=0x${ram.length.toString(16)}`);
+            throw new Error(
+              `RAM source out of range: off=0x${srcOff.toString(16)}, len=0x${length.toString(16)}, ram=0x${ram.length.toString(16)}`
+            );
           }
           this._memory.set(ram.subarray(srcOff, srcOff + length), start);
           // Record window for write-back to RAM buffer
@@ -186,7 +234,9 @@ export class MusashiWrapper {
         const from = m.mirrorFrom >>> 0;
         if (length === 0) continue;
         if (from + length > this._memory.length || start + length > this._memory.length) {
-          throw new Error(`Mirror out of bounds: from=0x${from.toString(16)}, start=0x${start.toString(16)}, len=0x${length.toString(16)}, cap=0x${this._memory.length.toString(16)}`);
+          throw new Error(
+            `Mirror out of bounds: from=0x${from.toString(16)}, start=0x${start.toString(16)}, len=0x${length.toString(16)}, cap=0x${this._memory.length.toString(16)}`
+          );
         }
         const src = this._memory.subarray(from, from + length);
         this._memory.set(src, start);
@@ -196,45 +246,6 @@ export class MusashiWrapper {
       this._memory.set(rom, 0x000000);
       this._memory.set(ram, 0x100000);
       this._ramWindows.push({ start: 0x100000, length: ram.length >>> 0, offset: 0 });
-    }
-
-    // Setup callbacks (size-aware read/write; PC hook)
-    const readSizedPtr = this._module.addFunction((addr: number, size: number) =>
-      this.readHandler(addr >>> 0, (size | 0) as 1 | 2 | 4), 'iii');
-    const writeSizedPtr = this._module.addFunction((addr: number, size: number, val: number) =>
-      this.writeHandler(addr >>> 0, (size | 0) as 1 | 2 | 4, val >>> 0), 'viii');
-    this._probeFunc = this._module.addFunction((addr: number) =>
-      (this._system._handlePCHook(addr >>> 0) ? 1 : 0), 'ii');
-
-    this._readFunc = readSizedPtr;
-    this._writeFunc = writeSizedPtr;
-
-    // Register callbacks with C
-    this._module._set_read_mem_func(readSizedPtr);
-    this._module._set_write_mem_func(writeSizedPtr);
-    this._module._set_pc_hook_func(this._probeFunc);
-
-    // Copy ROM and RAM into our memory
-    this._memory.set(rom, 0x000000);
-    this._memory.set(ram, 0x100000);
-
-    // CRITICAL: Write reset vectors BEFORE init/reset
-    this.write32BE(0x00000000, 0x00108000); // Initial SSP (in RAM)
-    this.write32BE(0x00000004, 0x00000400); // Initial PC (in ROM)
-
-    // Initialize CPU
-    this._module._m68k_init();
-    this._module._m68k_set_context?.(0);
-
-    // Reset CPU (will read vectors we just wrote)
-    this._module._m68k_pulse_reset();
-
-    // Verify initialization
-    const pc = this._module._m68k_get_reg(0, M68kRegister.PC);
-    if (pc !== 0x400) {
-      throw new Error(
-        `CPU not properly initialized, PC=0x${pc.toString(16)} (expected 0x400)`
-      );
     }
   }
 
