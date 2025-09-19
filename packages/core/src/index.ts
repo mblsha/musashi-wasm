@@ -207,11 +207,11 @@ class SystemImpl implements System {
     }
   }
 
-  async call(address: number): Promise<number> {
+  call(address: number): number {
     return this._musashi.call(address);
   }
 
-  async run(cycles: number): Promise<number> {
+  run(cycles: number): number {
     return this._musashi.execute(cycles);
   }
 

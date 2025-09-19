@@ -31,7 +31,7 @@ sys.setRegister('sp', 0x100004);
 const writes = [], reads = [];
 sys.onMemoryWrite(ev => writes.push(ev));
 sys.onMemoryRead(ev => reads.push(ev));
-await sys.call(0x600);
+sys.call(0x600);
 console.log({ writes, reads, pc: sys.getRegisters().pc.toString(16) });
 NODE
 ```

@@ -35,7 +35,7 @@ const system = await createSystem({
 
 // Execute code
 system.reset();
-const cycles = await system.run(1000);
+const cycles = system.run(1000);
 
 // Access registers
 const regs = system.getRegisters();
@@ -86,7 +86,7 @@ if (system.tracer.isAvailable()) {
   });
 
   // Run your code
-  await system.run(100000);
+  system.run(100000);
 
   // Stop and export trace
   const traceData = await system.tracer.stop();
