@@ -138,79 +138,7 @@ export class MusashiWrapper {
     const layout = this.getActiveMemoryLayout(memoryLayout);
     const requestedMinCapacity = (memoryLayout?.minimumCapacity ?? 0) >>> 0;
 
-    // --- Allocate unified memory based on layout or defaults ---
-    const DEFAULT_CAPACITY = 2 * 1024 * 1024; // 2MB
-    let capacity = DEFAULT_CAPACITY >>> 0;
-    this._ramWindows = [];
-
-    if (layout) {
-      let maxEnd = 0;
-      for (const r of layout.regions ?? []) {
-        const start = r.start >>> 0;
-        const length = r.length >>> 0;
-        if (length === 0) continue;
-        const end = (start + length) >>> 0;
-        if (end > maxEnd) maxEnd = end;
-      }
-      for (const m of layout.mirrors ?? []) {
-        const destStart = m.start >>> 0;
-        const destEnd = (destStart + (m.length >>> 0)) >>> 0;
-        if (destEnd > maxEnd) maxEnd = destEnd;
-        const srcStart = m.mirrorFrom >>> 0;
-        const srcEnd = (srcStart + (m.length >>> 0)) >>> 0;
-        if (srcEnd > maxEnd) maxEnd = srcEnd;
-      }
-      capacity = Math.max(maxEnd, requestedMinCapacity) >>> 0;
-    }
-
-    capacity = Math.max(capacity, requestedMinCapacity) >>> 0;
-
-    this._memory = new Uint8Array(capacity);
-
-    // --- Initialize regions ---
-    if (layout) {
-      // Base regions
-      for (const r of layout.regions ?? []) {
-        const start = r.start >>> 0;
-        const length = r.length >>> 0;
-        const srcOff = (r.sourceOffset ?? 0) >>> 0;
-        if (length === 0) continue;
-        // Bounds validation
-        if (start + length > this._memory.length) {
-          throw new Error(`Region out of bounds: start=0x${start.toString(16)}, len=0x${length.toString(16)}, cap=0x${this._memory.length.toString(16)}`);
-        }
-        if (r.source === 'rom') {
-          if (srcOff + length > rom.length) {
-            throw new Error(`ROM source out of range: off=0x${srcOff.toString(16)}, len=0x${length.toString(16)}, rom=0x${rom.length.toString(16)}`);
-          }
-          this._memory.set(rom.subarray(srcOff, srcOff + length), start);
-        } else if (r.source === 'ram') {
-          if (srcOff + length > ram.length) {
-            throw new Error(`RAM source out of range: off=0x${srcOff.toString(16)}, len=0x${length.toString(16)}, ram=0x${ram.length.toString(16)}`);
-          }
-          this._memory.set(ram.subarray(srcOff, srcOff + length), start);
-          // Record window for write-back to RAM buffer
-          this._ramWindows.push({ start, length, offset: srcOff });
-        } else if (r.source === 'zero') {
-          this._memory.fill(0, start, start + length);
-        }
-      }
-      // Mirrors
-      for (const m of layout.mirrors ?? []) {
-        const start = m.start >>> 0;
-        const length = m.length >>> 0;
-        const from = m.mirrorFrom >>> 0;
-        if (length === 0) continue;
-        if (from + length > this._memory.length || start + length > this._memory.length) {
-          throw new Error(`Mirror out of bounds: from=0x${from.toString(16)}, start=0x${start.toString(16)}, len=0x${length.toString(16)}, cap=0x${this._memory.length.toString(16)}`);
-        }
-        const src = this._memory.subarray(from, from + length);
-        this._memory.set(src, start);
-      }
-    } else {
-      // Backward-compatible default mapping
-      this.applyDefaultMemoryMapping(rom, ram);
-    }
+    this.configureUnifiedMemory(rom, ram, layout, requestedMinCapacity);
 
     // Setup callbacks (size-aware read/write; PC hook)
     const readSizedPtr = this._module.addFunction((addr: number, size: number) =>
@@ -269,6 +197,87 @@ export class MusashiWrapper {
     }
   }
 
+  private configureUnifiedMemory(
+    rom: Uint8Array,
+    ram: Uint8Array,
+    layout: MemoryLayout | undefined,
+    requestedMinCapacity: number
+  ): void {
+    const DEFAULT_CAPACITY = 2 * 1024 * 1024; // 2MB
+    let capacity = DEFAULT_CAPACITY >>> 0;
+    this._ramWindows = [];
+
+    if (layout) {
+      let maxEnd = 0;
+      for (const r of layout.regions ?? []) {
+        const start = r.start >>> 0;
+        const length = r.length >>> 0;
+        if (length === 0) continue;
+        const end = (start + length) >>> 0;
+        if (end > maxEnd) maxEnd = end;
+      }
+      for (const m of layout.mirrors ?? []) {
+        const destStart = m.start >>> 0;
+        const destEnd = (destStart + (m.length >>> 0)) >>> 0;
+        if (destEnd > maxEnd) maxEnd = destEnd;
+        const srcStart = m.mirrorFrom >>> 0;
+        const srcEnd = (srcStart + (m.length >>> 0)) >>> 0;
+        if (srcEnd > maxEnd) maxEnd = srcEnd;
+      }
+      capacity = Math.max(maxEnd, requestedMinCapacity) >>> 0;
+    }
+
+    capacity = Math.max(capacity, requestedMinCapacity) >>> 0;
+
+    this._memory = new Uint8Array(capacity);
+
+    if (layout) {
+      for (const r of layout.regions ?? []) {
+        const start = r.start >>> 0;
+        const length = r.length >>> 0;
+        const srcOff = (r.sourceOffset ?? 0) >>> 0;
+        if (length === 0) continue;
+        if (start + length > this._memory.length) {
+          throw new Error(
+            `Region out of bounds: start=0x${start.toString(16)}, len=0x${length.toString(16)}, cap=0x${this._memory.length.toString(16)}`
+          );
+        }
+        if (r.source === 'rom') {
+          if (srcOff + length > rom.length) {
+            throw new Error(
+              `ROM source out of range: off=0x${srcOff.toString(16)}, len=0x${length.toString(16)}, rom=0x${rom.length.toString(16)}`
+            );
+          }
+          this._memory.set(rom.subarray(srcOff, srcOff + length), start);
+        } else if (r.source === 'ram') {
+          if (srcOff + length > ram.length) {
+            throw new Error(
+              `RAM source out of range: off=0x${srcOff.toString(16)}, len=0x${length.toString(16)}, ram=0x${ram.length.toString(16)}`
+            );
+          }
+          this._memory.set(ram.subarray(srcOff, srcOff + length), start);
+          this._ramWindows.push({ start, length, offset: srcOff });
+        } else if (r.source === 'zero') {
+          this._memory.fill(0, start, start + length);
+        }
+      }
+      for (const m of layout.mirrors ?? []) {
+        const start = m.start >>> 0;
+        const length = m.length >>> 0;
+        const from = m.mirrorFrom >>> 0;
+        if (length === 0) continue;
+        if (from + length > this._memory.length || start + length > this._memory.length) {
+          throw new Error(
+            `Mirror out of bounds: from=0x${from.toString(16)}, start=0x${start.toString(16)}, len=0x${length.toString(16)}, cap=0x${this._memory.length.toString(16)}`
+          );
+        }
+        const src = this._memory.subarray(from, from + length);
+        this._memory.set(src, start);
+      }
+    } else {
+      this.applyDefaultMemoryMapping(rom, ram);
+    }
+  }
   private write32BE(addr: number, value: number): void {
     this._memory[addr + 0] = (value >>> 24) & 0xff;
     this._memory[addr + 1] = (value >>> 16) & 0xff;
