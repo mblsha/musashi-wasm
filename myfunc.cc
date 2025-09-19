@@ -9,6 +9,8 @@
 #include <optional>
 #include <vector>
 #include <string>
+#include <sstream>
+#include <iomanip>
 
 extern "C" {
 typedef int (*read_mem_t)(unsigned int address, int size);
@@ -297,6 +299,16 @@ static std::vector<Region> _regions;
 static std::unordered_map<unsigned int, std::string> _function_names;
 static std::unordered_map<unsigned int, std::string> _memory_names;
 
+struct MemoryRangeName {
+  unsigned int start;
+  unsigned int end;  // inclusive end address within address space bounds
+  std::string base_name;
+  std::string decorated_label;
+};
+
+static std::vector<MemoryRangeName> _memory_ranges;
+static std::unordered_map<unsigned int, std::string> _memory_range_cache;
+
 extern "C" {
   int my_initialize() {
     int result = _initialized;
@@ -408,6 +420,8 @@ extern "C" {
     _regions.clear();
     _function_names.clear();
     _memory_names.clear();
+    _memory_ranges.clear();
+    _memory_range_cache.clear();
     _exec_session = SentinelSession{};
   }
   
@@ -432,19 +446,68 @@ extern "C" {
   }
   
   void register_memory_range(unsigned int start, unsigned int size, const char* name) {
-    if (name) {
-      /* Register the base address and optionally key addresses within the range */
-      _memory_names[start] = name;
-      /* Also register the range name with size suffix for clarity */
-      _memory_names[start] = std::string(name) + "[" + std::to_string(size) + "]";
-      if (_enable_printf_logging)
-        printf("register_memory_range: 0x%08X-0x%08X = '%s'\n", start, start + size - 1, name);
+    if (!name || size == 0) {
+      return;
     }
+
+    const uint64_t start64 = start;
+    const uint64_t size64 = size;
+    uint64_t end64 = start64 + size64 - 1;
+    if (end64 > static_cast<uint64_t>(kAddressSpaceMax)) {
+      end64 = static_cast<uint64_t>(kAddressSpaceMax);
+    }
+
+    MemoryRangeName range{
+      start,
+      static_cast<unsigned int>(end64),
+      std::string(name),
+      std::string(name) + "[" + std::to_string(size) + "]",
+    };
+
+    bool replaced = false;
+    for (auto& existing : _memory_ranges) {
+      if (existing.start == range.start) {
+        for (auto it = _memory_range_cache.begin(); it != _memory_range_cache.end();) {
+          const unsigned int addr = it->first;
+          if (addr >= existing.start && addr <= existing.end) {
+            it = _memory_range_cache.erase(it);
+          } else {
+            ++it;
+          }
+        }
+        existing = range;
+        replaced = true;
+        break;
+      }
+    }
+    if (!replaced) {
+      _memory_ranges.push_back(range);
+    }
+
+    for (auto it = _memory_range_cache.begin(); it != _memory_range_cache.end();) {
+      const unsigned int addr = it->first;
+      if (addr >= range.start && addr <= range.end) {
+        it = _memory_range_cache.erase(it);
+      } else {
+        ++it;
+      }
+    }
+
+    _memory_names[range.start] = range.decorated_label;
+
+    if (_enable_printf_logging)
+      printf(
+        "register_memory_range: 0x%08X-0x%08X = '%s'\n",
+        range.start,
+        range.end,
+        range.decorated_label.c_str());
   }
-  
+
   void clear_registered_names() {
     _function_names.clear();
     _memory_names.clear();
+    _memory_ranges.clear();
+    _memory_range_cache.clear();
     if (_enable_printf_logging)
       printf("clear_registered_names: cleared all names\n");
   }
@@ -455,8 +518,38 @@ extern "C" {
   }
   
   const char* get_memory_name(unsigned int address) {
-    auto it = _memory_names.find(address);
-    return (it != _memory_names.end()) ? it->second.c_str() : nullptr;
+    auto direct = _memory_names.find(address);
+    if (direct != _memory_names.end()) {
+      return direct->second.c_str();
+    }
+
+    auto cached = _memory_range_cache.find(address);
+    if (cached != _memory_range_cache.end()) {
+      return cached->second.c_str();
+    }
+
+    for (const auto& range : _memory_ranges) {
+      if (address < range.start || address > range.end) {
+        continue;
+      }
+
+      if (address == range.start) {
+        auto base = _memory_names.find(range.start);
+        if (base != _memory_names.end()) {
+          return base->second.c_str();
+        }
+        return range.decorated_label.c_str();
+      }
+
+      const unsigned int offset = address - range.start;
+      std::ostringstream label;
+      label << range.base_name << "+0x" << std::uppercase << std::hex << offset;
+      auto& stored = _memory_range_cache[address];
+      stored = label.str();
+      return stored.c_str();
+    }
+
+    return nullptr;
   }
 
   // Break reason helpers (for tests / debugging)
