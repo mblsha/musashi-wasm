@@ -479,8 +479,16 @@ extern "C" {
              entry_pc, sp_start, timeslice);
     }
     unsigned long long total_cycles = 0;
+    unsigned int iter = 0;
     while (!_exec_session.done) {
       total_cycles += m68k_execute(timeslice);
+      if (_enable_printf_logging && iter < 16) {
+        const unsigned int loop_pc = m68k_get_reg(nullptr, M68K_REG_PC);
+        const unsigned int loop_sp = m68k_get_reg(nullptr, M68K_REG_SP);
+        printf("call_until_js_stop: iter=%u pc=0x%08X sp=0x%08X done=%d\n",
+               iter, loop_pc, loop_sp, _exec_session.done ? 1 : 0);
+      }
+      ++iter;
     }
     _exec_session.finalize();
     if (_enable_printf_logging) {
