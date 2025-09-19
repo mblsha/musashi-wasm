@@ -246,8 +246,13 @@ class SystemImpl implements System {
         afterPc < startPc;
 
       if (exceptionDetected) {
-        // Prefetch advances PC past the vector entry; rewind so we execute the handler
-        const handlerPc = afterPc >= 2 ? (afterPc - 2) >>> 0 : afterPc;
+        // Execute the handler from its true start. If the core already
+        // normalized PC to the handler entry, use it directly; otherwise fall
+        // back to compensating for the prefetch word.
+        let handlerPc = afterPc >>> 0;
+        if (this.getInstructionSize(handlerPc) === 0 && handlerPc >= 2) {
+          handlerPc = (handlerPc - 2) >>> 0;
+        }
         this._musashi.set_reg(M68kRegister.PC, handlerPc);
         currentStartPc = handlerPc;
         previousSp = spNow;

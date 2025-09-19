@@ -49,16 +49,66 @@ class SentinelSession {
     active = true;
     done = false;
     sentinel_pc = kAddressSpaceMax - 1; // Full 32-bit even-aligned
+    install_sentinel();
     m68k_set_reg(M68K_REG_PC, entry_pc);
   }
   void finish() { active = false; }
   bool isSentinelPc(unsigned int pc) const {
     return active && AddrPolicy32::matches(pc, sentinel_pc);
   }
+  void markConsumed() { sentinel_consumed = true; }
+  void finalize() {
+    if (!sentinel_installed) return;
+
+    if (saved_value_valid) {
+      // Restore original 32-bit value at the sentinel slot regardless of break reason.
+      m68k_write_memory_32(saved_sp, saved_value);
+    }
+
+    if (sentinel_consumed) {
+      // RTS consumed the sentinel; undo the extra +4 growth so SP reflects caller view.
+      unsigned int sp_now = m68k_get_reg(nullptr, M68K_REG_SP);
+      if (sp_now >= 4) {
+        m68k_set_reg(M68K_REG_SP, sp_now - 4);
+      }
+      if (_enable_printf_logging) {
+        printf("finalize_sentinel: consumed sp_now=0x%08X restored=0x%08X\n",
+               sp_now, sp_now >= 4 ? sp_now - 4 : sp_now);
+      }
+    } else if (_enable_printf_logging) {
+      printf("finalize_sentinel: not consumed, sp=0x%08X\n",
+             m68k_get_reg(nullptr, M68K_REG_SP));
+    }
+  }
 
   bool active = false;
   bool done = false;
   unsigned int sentinel_pc = kAddressSpaceMax - 1;
+  bool sentinel_installed = false;
+  bool sentinel_consumed = false;
+  unsigned int saved_sp = 0;
+  unsigned int saved_value = 0;
+  bool saved_value_valid = false;
+
+ private:
+  static inline unsigned int mask24(unsigned int value) {
+    return value & kAddr24Mask;
+  }
+
+  void install_sentinel() {
+    // Capture current SP so we can restore it accurately when the session ends.
+    saved_sp = mask24(m68k_get_reg(nullptr, M68K_REG_SP));
+    sentinel_consumed = false;
+    sentinel_installed = false;
+    saved_value_valid = true;
+    saved_value = m68k_read_memory_32(saved_sp);
+    m68k_write_memory_32(saved_sp, sentinel_pc);
+    sentinel_installed = true;
+    if (_enable_printf_logging) {
+      printf("install_sentinel: sp=0x%08X saved=0x%08X sentinel=0x%08X\n",
+             saved_sp, saved_value, sentinel_pc);
+    }
+  }
 };
 static SentinelSession _exec_session;
 
@@ -139,6 +189,10 @@ static inline HookResult processHooks(const HookContext& ctx, bool allow_break) 
     if (_exec_session.active) {
       m68k_set_reg(M68K_REG_PC, _exec_session.sentinel_pc);
       _exec_session.done = true;
+      if (_enable_printf_logging) {
+        printf("processHooks: JS break at pc=0x%08X -> sentinel=0x%08X\n",
+               ctx.pc, _exec_session.sentinel_pc);
+      }
     }
     _last_break_reason = BreakReason::JsHook;
     if (allow_break) {
@@ -151,7 +205,11 @@ static inline HookResult processHooks(const HookContext& ctx, bool allow_break) 
   // End if we hit the sentinel
   if (_exec_session.isSentinelPc(ctx.pc)) {
     _exec_session.done = true;
+    _exec_session.markConsumed();
     _last_break_reason = BreakReason::Sentinel;
+    if (_enable_printf_logging) {
+      printf("processHooks: sentinel pc encountered (pc=0x%08X)\n", ctx.pc);
+    }
     if (allow_break) {
       m68k_end_timeslice();
     }
@@ -415,9 +473,21 @@ extern "C" {
   unsigned long long m68k_call_until_js_stop(unsigned int entry_pc, unsigned int timeslice) {
     if (timeslice == 0) timeslice = kDefaultTimeslice;
     SessionGuard guard(entry_pc);
+    if (_enable_printf_logging) {
+      const unsigned int sp_start = m68k_get_reg(nullptr, M68K_REG_SP);
+      printf("call_until_js_stop: start pc=0x%08X sp=0x%08X timeslice=%u\n",
+             entry_pc, sp_start, timeslice);
+    }
     unsigned long long total_cycles = 0;
     while (!_exec_session.done) {
       total_cycles += m68k_execute(timeslice);
+    }
+    _exec_session.finalize();
+    if (_enable_printf_logging) {
+      const unsigned int sp_end = m68k_get_reg(nullptr, M68K_REG_SP);
+      const unsigned int pc_end = m68k_get_reg(nullptr, M68K_REG_PC);
+      printf("call_until_js_stop: exit pc=0x%08X sp=0x%08X cycles=%llu reason=%d\n",
+             pc_end, sp_end, total_cycles, static_cast<int>(_last_break_reason));
     }
     return total_cycles;
   }

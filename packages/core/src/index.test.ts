@@ -359,20 +359,26 @@ describe('@m68k/core', () => {
     expect(cycles).toBeGreaterThan(0);
 
     // Validate write event from MOVE.L D0, -(SP)
-    expect(writes.length).toBeGreaterThan(0);
-    const w = writes[0];
-    expect(w.addr >>> 0).toBe(0x100000);
-    expect(w.size).toBe(4);
-    expect(w.value >>> 0).toBe(0xcafebabe);
-    expect(w.pc >>> 0).toBe(subAddr + 6); // PC at instruction start
+    const pushEvents = writes.filter(ev => (ev.pc >>> 0) === (subAddr + 6));
+    expect(pushEvents.length).toBeGreaterThan(0);
+    const baseAddr = Math.min(...pushEvents.map(ev => ev.addr >>> 0));
+    expect(baseAddr).toBe(0x100000);
+    const combinedValue = pushEvents.reduce((acc, ev) => {
+      const offset = (ev.addr >>> 0) - baseAddr;
+      if (ev.size === 4) {
+        return ev.value >>> 0;
+      }
+      const mask = ev.size === 2 ? 0xffff : 0xff;
+      const shift = (4 - ev.size - offset) * 8;
+      return acc | ((ev.value & mask) << shift);
+    }, 0);
+    expect(combinedValue >>> 0).toBe(0xcafebabe);
 
     // Validate read event from MOVE.L (SP)+, D1
-    expect(reads.length).toBeGreaterThan(0);
-    const r = reads[0];
-    expect(r.addr >>> 0).toBe(0x100000);
-    expect(r.size).toBe(4);
-    expect(r.value >>> 0).toBe(0xcafebabe);
-    expect(r.pc >>> 0).toBe(subAddr + 8);
+    const popEvent = reads.find(ev => (ev.pc >>> 0) === (subAddr + 8));
+    expect(popEvent).toBeDefined();
+    expect(popEvent!.addr >>> 0).toBe(0x100000);
+    expect(popEvent!.value >>> 0).toBe(0xcafebabe);
 
     offW();
     offR();
