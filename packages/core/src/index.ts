@@ -308,34 +308,44 @@ class SystemImpl implements System {
 
   // --- Memory Trace (read/write) ---
   onMemoryRead(cb: MemoryAccessCallback): () => void {
-    this._memReads.add(cb);
-    this._updateMemTraceEnabled();
-    return () => {
-      this._memReads.delete(cb);
-      this._updateMemTraceEnabled();
-    };
+    return this._addMemoryListener(this._memReads, cb);
   }
 
   onMemoryWrite(cb: MemoryAccessCallback): () => void {
-    this._memWrites.add(cb);
-    this._updateMemTraceEnabled();
-    return () => {
-      this._memWrites.delete(cb);
-      this._updateMemTraceEnabled();
-    };
+    return this._addMemoryListener(this._memWrites, cb);
   }
 
   // Called by MusashiWrapper when the core emits a memory event
   _handleMemoryRead(addr: number, size: 1 | 2 | 4, value: number, pc: number): void {
-    if (this._memReads.size === 0) return;
-    const ev: MemoryAccessEvent = { addr, size, value, pc };
-    for (const cb of this._memReads) cb(ev);
+    this._dispatchMemoryEvent(this._memReads, { addr, size, value, pc });
   }
 
   _handleMemoryWrite(addr: number, size: 1 | 2 | 4, value: number, pc: number): void {
-    if (this._memWrites.size === 0) return;
-    const ev: MemoryAccessEvent = { addr, size, value, pc };
-    for (const cb of this._memWrites) cb(ev);
+    this._dispatchMemoryEvent(this._memWrites, { addr, size, value, pc });
+  }
+
+  private _addMemoryListener(
+    collection: Set<MemoryAccessCallback>,
+    callback: MemoryAccessCallback
+  ): () => void {
+    collection.add(callback);
+    this._updateMemTraceEnabled();
+    return () => {
+      collection.delete(callback);
+      this._updateMemTraceEnabled();
+    };
+  }
+
+  private _dispatchMemoryEvent(
+    listeners: Set<MemoryAccessCallback>,
+    event: MemoryAccessEvent
+  ): void {
+    if (listeners.size === 0) {
+      return;
+    }
+    for (const cb of listeners) {
+      cb(event);
+    }
   }
 
   private _updateMemTraceEnabled(): void {
