@@ -107,6 +107,12 @@ export class MusashiWrapper {
     this._module = module;
   }
 
+  private applyDefaultMemoryMapping(rom: Uint8Array, ram: Uint8Array): void {
+    this._memory.set(rom, 0x000000);
+    this._memory.set(ram, 0x100000);
+    this._ramWindows.push({ start: 0x100000, length: ram.length >>> 0, offset: 0 });
+  }
+
   private getActiveMemoryLayout(memoryLayout?: MemoryLayout): MemoryLayout | undefined {
     if (!memoryLayout) {
       return undefined;
@@ -195,9 +201,7 @@ export class MusashiWrapper {
       }
     } else {
       // Backward-compatible default mapping
-      this._memory.set(rom, 0x000000);
-      this._memory.set(ram, 0x100000);
-      this._ramWindows.push({ start: 0x100000, length: ram.length >>> 0, offset: 0 });
+      this.applyDefaultMemoryMapping(rom, ram);
     }
 
     // Setup callbacks (size-aware read/write; PC hook)
@@ -215,10 +219,6 @@ export class MusashiWrapper {
     this._module._set_read_mem_func(readSizedPtr);
     this._module._set_write_mem_func(writeSizedPtr);
     this._module._set_pc_hook_func(this._probeFunc);
-
-    // Copy ROM and RAM into our memory
-    this._memory.set(rom, 0x000000);
-    this._memory.set(ram, 0x100000);
 
     // CRITICAL: Write reset vectors BEFORE init/reset
     this.write32BE(0x00000000, 0x00108000); // Initial SSP (in RAM)
