@@ -308,21 +308,11 @@ class SystemImpl implements System {
 
   // --- Memory Trace (read/write) ---
   onMemoryRead(cb: MemoryAccessCallback): () => void {
-    this._memReads.add(cb);
-    this._updateMemTraceEnabled();
-    return () => {
-      this._memReads.delete(cb);
-      this._updateMemTraceEnabled();
-    };
+    return this._registerMemoryCallback(this._memReads, cb);
   }
 
   onMemoryWrite(cb: MemoryAccessCallback): () => void {
-    this._memWrites.add(cb);
-    this._updateMemTraceEnabled();
-    return () => {
-      this._memWrites.delete(cb);
-      this._updateMemTraceEnabled();
-    };
+    return this._registerMemoryCallback(this._memWrites, cb);
   }
 
   // Called by MusashiWrapper when the core emits a memory event
@@ -341,6 +331,18 @@ class SystemImpl implements System {
   private _updateMemTraceEnabled(): void {
     const want = this._memReads.size > 0 || this._memWrites.size > 0;
     this._musashi.setMemoryTraceEnabled(want);
+  }
+
+  private _registerMemoryCallback(
+    collection: Set<MemoryAccessCallback>,
+    cb: MemoryAccessCallback
+  ): () => void {
+    collection.add(cb);
+    this._updateMemTraceEnabled();
+    return () => {
+      collection.delete(cb);
+      this._updateMemTraceEnabled();
+    };
   }
 }
 
