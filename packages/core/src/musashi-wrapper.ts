@@ -122,6 +122,7 @@ export class MusashiWrapper {
     this._system = system;
 
     const layout = this.getActiveMemoryLayout(memoryLayout);
+    const requestedMinCapacity = (memoryLayout?.minimumCapacity ?? 0) >>> 0;
 
     // --- Allocate unified memory based on layout or defaults ---
     const DEFAULT_CAPACITY = 2 * 1024 * 1024; // 2MB
@@ -145,9 +146,10 @@ export class MusashiWrapper {
         const srcEnd = (srcStart + (m.length >>> 0)) >>> 0;
         if (srcEnd > maxEnd) maxEnd = srcEnd;
       }
-      const minCap = (layout.minimumCapacity ?? 0) >>> 0;
-      capacity = Math.max(maxEnd, minCap, 0) >>> 0;
+      capacity = Math.max(maxEnd, requestedMinCapacity) >>> 0;
     }
+
+    capacity = Math.max(capacity, requestedMinCapacity) >>> 0;
 
     this._memory = new Uint8Array(capacity);
 
