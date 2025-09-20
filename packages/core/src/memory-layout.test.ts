@@ -89,5 +89,27 @@ describe('Unified memory layout (regions + mirrors)', () => {
     system.write(0x100000, 1, 0x5a);
     expect((system as any).ram[0]).toBe(0x5a);
   });
+
+  it('honors minimumCapacity even without explicit regions or mirrors', async () => {
+    const rom = makeRom(0x2000);
+    const minCapacity = 0x400000; // 4 MiB
+
+    system = await createSystem({
+      rom,
+      ramSize: 0x2000,
+      memoryLayout: { minimumCapacity: minCapacity },
+    });
+
+    // Default ROM/RAM mapping remains intact
+    expect(system.read(0x000004, 1) & 0xff).toBe(rom[4]);
+    system.write(0x100000, 1, 0xa5);
+    expect((system as any).ram[0]).toBe(0xa5);
+
+    // Memory past the 2 MiB default is now writable thanks to minimumCapacity
+    const target = minCapacity - 4;
+    const value = 0xdeadbeef;
+    system.write(target, 4, value);
+    expect(system.read(target, 4)).toBe(value >>> 0);
+  });
 });
 
