@@ -193,6 +193,15 @@ jobs:
           cp ci-artifacts/wasm-perfetto-modules/musashi-universal.out.wasm npm-package/dist/musashi-perfetto.wasm
           cp ci-artifacts/wasm-perfetto-modules/musashi-universal.out.mjs  npm-package/dist/musashi-perfetto-loader.mjs
 
+          # Stage Node-specific build from wasm-modules (Node-targeted ESM)
+          echo "Staging Node-specific WASM build (Node ESM)..."
+          cp ci-artifacts/wasm-modules/musashi-node.out.mjs  npm-package/musashi-node.out.mjs
+          cp ci-artifacts/wasm-modules/musashi-node.out.wasm npm-package/musashi-node.out.wasm
+
+          if [ -f ci-artifacts/wasm-modules/musashi-node.out.wasm.map ]; then
+            cp ci-artifacts/wasm-modules/musashi-node.out.wasm.map npm-package/musashi-node.out.wasm.map
+          fi
+
           # Verify all files are present
           echo "Verifying staged files..."
           for file in musashi.wasm musashi-loader.mjs musashi-perfetto.wasm musashi-perfetto-loader.mjs; do
@@ -202,6 +211,21 @@ jobs:
             fi
             echo "✓ $file ($(stat -c%s "npm-package/dist/$file") bytes)"
           done
+
+          echo "Verifying Node-specific files..."
+          for file in musashi-node.out.mjs musashi-node.out.wasm; do
+            if [ ! -f "npm-package/$file" ]; then
+              echo "ERROR: Missing required file: $file"
+              exit 1
+            fi
+            echo "✓ $file ($(stat -c%s "npm-package/$file") bytes)"
+          done
+
+          if [ -f npm-package/musashi-node.out.wasm.map ]; then
+            echo "✓ musashi-node.out.wasm.map ($(stat -c%s "npm-package/musashi-node.out.wasm.map") bytes)"
+          else
+            echo "ℹ️ musashi-node.out.wasm.map not provided (optional)"
+          fi
 
           # Validate and set version
           VERSION_RAW='${{ steps.validate.outputs.tag }}'
@@ -218,7 +242,7 @@ jobs:
           {
             "name": "musashi-wasm",
             "version": "0.0.0",
-            "description": "M68k Musashi WebAssembly (default and Perfetto profiling builds)",
+            "description": "M68k Musashi WebAssembly (default, Node, and Perfetto profiling builds)",
             "license": "MIT",
             "author": "mblsha",
             "repository": {
@@ -242,13 +266,20 @@ jobs:
               },
               "./perf": {
                 "import": "./perf.mjs"
-              }
+              },
+              "./node": {
+                "import": "./musashi-node.out.mjs"
+              },
+              "./musashi-node.out.mjs": "./musashi-node.out.mjs",
+              "./musashi-node.out.wasm": "./musashi-node.out.wasm"
             },
             "main": "./index.mjs",
             "files": [
               "dist/*",
               "index.mjs",
               "perf.mjs",
+              "musashi-node.out.mjs",
+              "musashi-node.out.wasm",
               "README.md",
               "LICENSE"
             ],
