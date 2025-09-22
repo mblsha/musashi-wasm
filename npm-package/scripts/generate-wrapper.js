@@ -470,16 +470,47 @@ const nodeWasmCandidates = [
   path.join(rootDir, 'musashi-node.out.wasm'),
   path.join(altRootDir, 'musashi-node.out.wasm')
 ];
+const nodeWasmMapCandidates = [
+  path.join(rootDir, 'musashi-node.out.wasm.map'),
+  path.join(altRootDir, 'musashi-node.out.wasm.map')
+];
 const loaderOut = path.join(distDir, 'musashi-loader.mjs');
 const wasmOut = path.join(distDir, 'musashi.wasm');
+const wasmMapOut = path.join(distDir, 'musashi.wasm.map');
+const nodeModuleOut = path.join(rootDir, 'musashi-node.out.mjs');
+const nodeWasmOut = path.join(rootDir, 'musashi-node.out.wasm');
+const nodeWasmMapOut = path.join(rootDir, 'musashi-node.out.wasm.map');
 
 const nodeJsIn = nodeJsCandidates.find(p => fs.existsSync(p));
 const nodeWasmIn = nodeWasmCandidates.find(p => fs.existsSync(p));
-if (nodeJsIn) {
-  fs.copyFileSync(nodeJsIn, loaderOut);
+const nodeWasmMapIn = nodeWasmMapCandidates.find(p => fs.existsSync(p));
+
+if (!nodeJsIn || !nodeWasmIn) {
+  throw new Error('Missing musashi-node build artifacts. Run `./build.sh` before packaging.');
 }
-if (nodeWasmIn) {
-  fs.copyFileSync(nodeWasmIn, wasmOut);
+
+fs.copyFileSync(nodeJsIn, loaderOut);
+if (nodeJsIn !== nodeModuleOut) {
+  fs.copyFileSync(nodeJsIn, nodeModuleOut);
+}
+
+fs.copyFileSync(nodeWasmIn, wasmOut);
+if (nodeWasmIn !== nodeWasmOut) {
+  fs.copyFileSync(nodeWasmIn, nodeWasmOut);
+}
+
+if (nodeWasmMapIn) {
+  fs.copyFileSync(nodeWasmMapIn, wasmMapOut);
+  if (nodeWasmMapIn !== nodeWasmMapOut) {
+    fs.copyFileSync(nodeWasmMapIn, nodeWasmMapOut);
+  }
+} else {
+  // Remove stale maps if previous builds produced them.
+  [wasmMapOut, nodeWasmMapOut].forEach(target => {
+    if (fs.existsSync(target)) {
+      fs.rmSync(target);
+    }
+  });
 }
 
 // Write wrapper files (ESM-only)

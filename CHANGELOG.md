@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2025-09-20
+
+### 🐛 Bug Fixes
+
+- **npm package completeness**: Publish the Musashi Node loader (`musashi-node.out.mjs`) and WASM binaries alongside the browser build so Node integrations work without vendoring artifacts.
+
+### 🛠️ Tooling
+
+- **Packaging guardrails**: Fail npm packaging if the Musashi Node build is missing and mirror the `.wasm.map` into both `dist/` and the package root to keep artifacts in sync.
+
 ## [0.1.8] - 2025-09-19
 
 ### 🚀 Improvements
