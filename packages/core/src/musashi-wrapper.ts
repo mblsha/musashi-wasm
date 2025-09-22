@@ -344,17 +344,26 @@ export class MusashiWrapper {
     this._module._add_pc_hook_addr(addr);
   }
 
+  private findRamWindowForAddress(address: number) {
+    const addr = address >>> 0;
+    for (const window of this._ramWindows) {
+      const start = window.start >>> 0;
+      const end = start + (window.length >>> 0);
+      if (addr >= start && addr < end) {
+        return window;
+      }
+    }
+    return undefined;
+  }
+
   private isAccessWithinMemory(address: number, size: 1 | 2 | 4): boolean {
     const addr = address >>> 0;
     if (addr >= this._memory.length) return false;
-    if (addr + size > this._memory.length) return false;
-    for (const w of this._ramWindows) {
-      if (addr >= w.start && addr < w.start + w.length) {
-        if (addr + size > w.start + w.length) {
-          return false;
-        }
-        break;
-      }
+    const end = addr + size;
+    if (end > this._memory.length) return false;
+    const window = this.findRamWindowForAddress(addr);
+    if (window && end > window.start + window.length) {
+      return false;
     }
     return true;
   }
@@ -392,14 +401,11 @@ export class MusashiWrapper {
       this._memory[a] = byte;
 
       if (!hasWindows) continue;
-      for (const w of this._ramWindows) {
-        const windowEnd = w.start + w.length;
-        if (a >= w.start && a < windowEnd) {
-          const ramIndex = (w.offset + (a - w.start)) >>> 0;
-          if (ramIndex < ram.length) {
-            ram[ramIndex] = byte;
-          }
-        }
+      const window = this.findRamWindowForAddress(a);
+      if (!window) continue;
+      const ramIndex = (window.offset + (a - window.start)) >>> 0;
+      if (ramIndex < ram.length) {
+        ram[ramIndex] = byte;
       }
     }
   }
