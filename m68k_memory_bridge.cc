@@ -9,17 +9,6 @@ extern "C" {
 
 static inline uint32_t addr24(uint32_t a) { return a & 0x00FFFFFFu; }
 
-// Build big-endian words/longs from 8-bit reads to avoid host-endian issues.
-// Minimal fix: delegate multi-byte BE reads to my_read_memory to avoid
-// double big-endian composition and keep behavior consistent with JS handlers.
-static inline unsigned int be16_read(uint32_t a) {
-    return my_read_memory(addr24(a), 2);
-}
-
-static inline unsigned int be32_read(uint32_t a) {
-    return my_read_memory(addr24(a), 4);
-}
-
 extern "C" {
 
 // ---- Data read/write callbacks ----
