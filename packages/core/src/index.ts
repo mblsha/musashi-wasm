@@ -274,15 +274,11 @@ class SystemImpl implements System {
   }
 
   probe(address: number, callback: HookCallback): () => void {
-    this._hooks.probes.set(address, callback);
-    this._musashi.add_pc_hook_addr(address);
-    return () => this._hooks.probes.delete(address);
+    return this._registerHook(this._hooks.probes, address, callback);
   }
 
   override(address: number, callback: HookCallback): () => void {
-    this._hooks.overrides.set(address, callback);
-    this._musashi.add_pc_hook_addr(address);
-    return () => this._hooks.overrides.delete(address);
+    return this._registerHook(this._hooks.overrides, address, callback);
   }
 
   // --- Internal methods for the Musashi wrapper ---
@@ -351,6 +347,20 @@ class SystemImpl implements System {
   private _updateMemTraceEnabled(): void {
     const want = this._memReads.size > 0 || this._memWrites.size > 0;
     this._musashi.setMemoryTraceEnabled(want);
+  }
+
+  private _registerHook(
+    collection: Map<number, HookCallback>,
+    address: number,
+    callback: HookCallback
+  ): () => void {
+    collection.set(address, callback);
+    this._musashi.add_pc_hook_addr(address);
+    return () => {
+      if (collection.get(address) === callback) {
+        collection.delete(address);
+      }
+    };
   }
 }
 
