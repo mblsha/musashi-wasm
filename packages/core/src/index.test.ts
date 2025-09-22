@@ -208,6 +208,29 @@ describe('@m68k/core', () => {
     removeOverride();
   });
 
+  it('removing a stale override does not clear the active override', () => {
+    const overrideAddress = 0x408;
+    const staleCalls: number[] = [];
+    const removeStale = system.override(overrideAddress, sys => {
+      staleCalls.push(sys.getRegisters().pc);
+    });
+
+    const activeCalls: number[] = [];
+    const removeActive = system.override(overrideAddress, sys => {
+      activeCalls.push(sys.getRegisters().pc);
+      sys.setRegister('pc', 0x40e);
+    });
+
+    removeStale();
+
+    system.run(100);
+
+    expect(staleCalls.length).toBe(0);
+    expect(activeCalls.length).toBe(1);
+
+    removeActive();
+  });
+
   it('call() via C++ session stops when override PC is hit', async () => {
     const subAddr = 0x410;
     // Build a tiny subroutine at 0x410: MOVE.L #$CAFEBABE,D2 ; RTS
