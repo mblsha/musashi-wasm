@@ -18,6 +18,29 @@ if (!fs.existsSync(distDir)) {
   fs.mkdirSync(distDir, { recursive: true });
 }
 
+function copyDirRecursive(srcDir, destDir) {
+  if (!fs.existsSync(srcDir)) {
+    throw new Error(`Source directory not found: ${srcDir}`);
+  }
+
+  fs.rmSync(destDir, { recursive: true, force: true });
+  fs.mkdirSync(destDir, { recursive: true });
+
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const srcPath = path.join(srcDir, entry.name);
+    const destPath = path.join(destDir, entry.name);
+
+    if (entry.isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else if (entry.isSymbolicLink()) {
+      // Skip symlinks to avoid packaging broken references (the ESM variants cover our needs).
+      continue;
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
 // Generate CommonJS wrapper for standard build (kept for completeness; not exported)
 const cjsWrapper = `const fs = require('fs');
 const path = require('path');
@@ -273,7 +296,7 @@ export class Musashi {
 
 export default Musashi;
 
-export { createSystem } from '@m68k/core';
+export { createSystem } from './core/index.js';
 `;
 
 // Generate Perfetto-enabled CommonJS wrapper
@@ -512,6 +535,63 @@ if (nodeWasmMapIn) {
     }
   });
 }
+
+// Stage the @m68k/core runtime wrappers inside lib/core
+const coreDistCandidates = [
+  path.join(rootDir, '..', 'packages', 'core', 'dist'),
+  path.join(altRootDir, 'packages', 'core', 'dist'),
+  path.join(rootDir, 'node_modules', '@m68k', 'core', 'dist')
+];
+const coreDistIn = coreDistCandidates.find(p => fs.existsSync(p));
+if (!coreDistIn) {
+  throw new Error('Missing @m68k/core build output (dist). Run `npm run build --workspace @m68k/core` before packaging.');
+}
+const coreOutDir = path.join(libDir, 'core');
+copyDirRecursive(coreDistIn, coreOutDir);
+
+// Stage wasm loader shims used by the core runtime
+const coreWasmCandidates = [
+  path.join(rootDir, '..', 'packages', 'core', 'wasm'),
+  path.join(altRootDir, 'packages', 'core', 'wasm'),
+  path.join(rootDir, 'node_modules', '@m68k', 'core', 'wasm')
+];
+const coreWasmIn = coreWasmCandidates.find(p => fs.existsSync(p));
+if (!coreWasmIn) {
+  throw new Error('Missing @m68k/core wasm wrapper directory. Ensure the workspace is checked out with submodules.');
+}
+const coreWasmOutDir = path.join(libDir, 'wasm');
+copyDirRecursive(coreWasmIn, coreWasmOutDir);
+
+// Mirror the Node artifacts into lib/wasm for musashi-node-wrapper.mjs to resolve
+const wasmNodeTargets = [
+  { src: nodeJsIn, dest: path.join(coreWasmOutDir, 'musashi-node.out.mjs') },
+  { src: nodeWasmIn, dest: path.join(coreWasmOutDir, 'musashi-node.out.wasm') }
+];
+if (nodeWasmMapIn) {
+  wasmNodeTargets.push({ src: nodeWasmMapIn, dest: path.join(coreWasmOutDir, 'musashi-node.out.wasm.map') });
+}
+for (const { src, dest } of wasmNodeTargets) {
+  if (src) {
+    fs.copyFileSync(src, dest);
+  }
+}
+
+// Write a lightweight declaration file for musashi-wasm/node
+const nodeTypesPath = path.join(rootDir, 'musashi-node.d.ts');
+const nodeTypesSource = `declare module 'musashi-wasm/node' {
+  export interface MusashiNodeInitOptions {
+    locateFile?: (path: string, prefix?: string) => string;
+    [key: string]: unknown;
+  }
+
+  export type MusashiNodeFactory = (options?: MusashiNodeInitOptions) => Promise<unknown>;
+
+  const init: MusashiNodeFactory;
+
+  export default init;
+}
+`;
+fs.writeFileSync(nodeTypesPath, nodeTypesSource);
 
 // Write wrapper files (ESM-only)
 fs.writeFileSync(path.join(libDir, 'index.mjs'), esmWrapper);

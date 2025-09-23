@@ -12,10 +12,10 @@ import type {
   Tracer as CoreTracer,
   TraceConfig as CoreTraceConfig,
   SymbolMap as CoreSymbolMap,
-} from '@m68k/core';
+} from './core/index.js';
 
 declare module 'musashi-wasm' {
-  export { createSystem, M68kRegister } from '@m68k/core';
+  export { createSystem, M68kRegister } from './core/index.js';
   export type System = CoreSystem;
   export type SystemConfig = CoreSystemConfig;
   export type CpuRegisters = CoreCpuRegisters;

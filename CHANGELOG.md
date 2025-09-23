@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] - 2025-09-23
+
+### ✨ Features
+
+- **Core fusion wrapper**: Ship the compiled `@m68k/core` runtime and wasm shim as part of the `musashi-wasm` npm package so downstream tooling can call `import { createSystem } from 'musashi-wasm/core'` without vendoring sources.
+
+### 🛠️ Tooling
+
+- **Node typings**: Bundle a `musashi-wasm/node` declaration file and extend package exports/tests to guard the new surface during future releases.
+
 ## [0.1.10] - 2025-09-22
 
 ### 🐛 Bug Fixes
