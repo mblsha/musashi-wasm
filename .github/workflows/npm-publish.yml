@@ -179,11 +179,8 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Install dependencies and build core runtime
-        run: |
-          npm ci --workspaces --include-workspace-root
-          npm run build --workspace @m68k/common
-          npm run build --workspace @m68k/core
+      - name: Install workspace dependencies
+        run: npm ci --workspaces --include-workspace-root
 
       - name: Prepare npm package from CI artifacts
         shell: bash
