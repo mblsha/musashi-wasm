@@ -228,13 +228,38 @@ jobs:
             echo "✓ musashi-node.out.wasm.map ($(stat -c%s "npm-package/musashi-node.out.wasm.map") bytes)"
           fi
 
-          echo "Generating wrapper libraries via npm script..."
-          npm run build --prefix npm-package
+          echo "Syncing wasm artifacts into lib/wasm..."
+          mkdir -p npm-package/lib/wasm
+          cp ci-artifacts/wasm-modules/musashi.out.mjs npm-package/lib/wasm/musashi.out.mjs
+          cp ci-artifacts/wasm-modules/musashi.out.wasm npm-package/lib/wasm/musashi.out.wasm
+          cp ci-artifacts/wasm-modules/musashi-universal.out.mjs npm-package/lib/wasm/musashi-universal.out.mjs
+          cp ci-artifacts/wasm-modules/musashi-universal.out.wasm npm-package/lib/wasm/musashi-universal.out.wasm
+          cp ci-artifacts/wasm-modules/musashi-node.out.mjs npm-package/lib/wasm/musashi-node.out.mjs
+          cp ci-artifacts/wasm-modules/musashi-node.out.wasm npm-package/lib/wasm/musashi-node.out.wasm
+          if [ -f ci-artifacts/wasm-modules/musashi-node.out.wasm.map ]; then
+            cp ci-artifacts/wasm-modules/musashi-node.out.wasm.map npm-package/lib/wasm/musashi-node.out.wasm.map
+          fi
+
+          echo "Ensuring musashi-wasm/node typings are present..."
+          cat <<'EOF' > npm-package/musashi-node.d.ts
+declare module 'musashi-wasm/node' {
+  export interface MusashiNodeInitOptions {
+    locateFile?: (path: string, prefix?: string) => string;
+    [key: string]: unknown;
+  }
+
+  export type MusashiNodeFactory = (options?: MusashiNodeInitOptions) => Promise<unknown>;
+
+  const init: MusashiNodeFactory;
+
+  export default init;
+}
+EOF
 
           echo "Validating bundled core runtime..."
           for file in lib/core/index.js lib/core/index.d.ts lib/wasm/musashi-node-wrapper.mjs; do
             if [ ! -f "npm-package/$file" ]; then
-              echo "ERROR: Missing generated file: $file"
+              echo "ERROR: Missing required file: $file"
               exit 1
             fi
           done
