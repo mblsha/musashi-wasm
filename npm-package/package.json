@@ -1,6 +1,6 @@
 {
   "name": "musashi-wasm",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "WebAssembly port of the Musashi M68000 CPU emulator with optional Perfetto tracing support",
   "type": "module",
   "files": [
@@ -11,7 +11,8 @@
     "perf.mjs",
     "musashi-node.out.mjs",
     "musashi-node.out.wasm",
-    "musashi-node.out.wasm.map"
+    "musashi-node.out.wasm.map",
+    "musashi-node.d.ts"
   ],
   "exports": {
     ".": {
@@ -27,7 +28,16 @@
       "types": "./lib/index.d.ts"
     },
     "./node": {
-      "import": "./musashi-node.out.mjs"
+      "import": "./musashi-node.out.mjs",
+      "types": "./musashi-node.d.ts"
+    },
+    "./core": {
+      "import": "./lib/core/index.js",
+      "types": "./lib/core/index.d.ts"
+    },
+    "./core/*": {
+      "import": "./lib/core/*.js",
+      "types": "./lib/core/*.d.ts"
     },
     "./musashi-node.out.mjs": "./musashi-node.out.mjs",
     "./musashi-node.out.wasm": "./musashi-node.out.wasm",
@@ -62,7 +72,6 @@
     "prepare": "npm run build"
   },
   "dependencies": {
-    "@m68k/common": "^0.1.0",
-    "@m68k/core": "^1.0.0"
+    "@m68k/common": "^0.1.0"
   }
 }

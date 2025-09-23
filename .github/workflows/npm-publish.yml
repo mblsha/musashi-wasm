@@ -152,6 +152,8 @@ jobs:
           REQUIRED_FILES=(
             "ci-artifacts/wasm-modules/musashi-universal.out.wasm"
             "ci-artifacts/wasm-modules/musashi-universal.out.mjs"
+            "ci-artifacts/wasm-modules/musashi-node.out.wasm"
+            "ci-artifacts/wasm-modules/musashi-node.out.mjs"
             "ci-artifacts/wasm-perfetto-modules/musashi-universal.out.wasm"
             "ci-artifacts/wasm-perfetto-modules/musashi-universal.out.mjs"
           )
@@ -176,6 +178,11 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies and build core runtime
+        run: |
+          npm ci
+          npm run build --workspace @m68k/core
 
       - name: Prepare npm package from CI artifacts
         shell: bash
@@ -202,8 +209,7 @@ jobs:
             cp ci-artifacts/wasm-modules/musashi-node.out.wasm.map npm-package/musashi-node.out.wasm.map
           fi
 
-          # Verify all files are present
-          echo "Verifying staged files..."
+          echo "Verifying staged WASM artifacts..."
           for file in musashi.wasm musashi-loader.mjs musashi-perfetto.wasm musashi-perfetto-loader.mjs; do
             if [ ! -f "npm-package/dist/$file" ]; then
               echo "ERROR: Missing required file: $file"
@@ -212,7 +218,6 @@ jobs:
             echo "✓ $file ($(stat -c%s "npm-package/dist/$file") bytes)"
           done
 
-          echo "Verifying Node-specific files..."
           for file in musashi-node.out.mjs musashi-node.out.wasm; do
             if [ ! -f "npm-package/$file" ]; then
               echo "ERROR: Missing required file: $file"
@@ -223,108 +228,28 @@ jobs:
 
           if [ -f npm-package/musashi-node.out.wasm.map ]; then
             echo "✓ musashi-node.out.wasm.map ($(stat -c%s "npm-package/musashi-node.out.wasm.map") bytes)"
-          else
-            echo "ℹ️ musashi-node.out.wasm.map not provided (optional)"
           fi
 
-          # Validate and set version
-          VERSION_RAW='${{ steps.validate.outputs.tag }}'
-          VERSION="${VERSION_RAW#v}"
-          echo "📋 Package version: $VERSION"
-          
-          # Validate version format
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
-            echo "❌ ERROR: Invalid version format: $VERSION"
-            exit 1
-          fi
+          echo "Generating wrapper libraries via npm script..."
+          npm run build --prefix npm-package
 
-          cat > npm-package/package.json <<'JSON'
-          {
-            "name": "musashi-wasm",
-            "version": "0.0.0",
-            "description": "M68k Musashi WebAssembly (default, Node, and Perfetto profiling builds)",
-            "license": "MIT",
-            "author": "mblsha",
-            "repository": {
-              "type": "git",
-              "url": "git+https://github.com/mblsha/musashi-wasm.git"
-            },
-            "keywords": [
-              "m68k",
-              "68000",
-              "motorola",
-              "emulator",
-              "wasm",
-              "webassembly",
-              "perfetto",
-              "tracing"
-            ],
-            "type": "module",
-            "exports": {
-              ".": {
-                "import": "./index.mjs"
-              },
-              "./perf": {
-                "import": "./perf.mjs"
-              },
-              "./node": {
-                "import": "./musashi-node.out.mjs"
-              },
-              "./musashi-node.out.mjs": "./musashi-node.out.mjs",
-              "./musashi-node.out.wasm": "./musashi-node.out.wasm"
-            },
-            "main": "./index.mjs",
-            "files": [
-              "dist/*",
-              "index.mjs",
-              "perf.mjs",
-              "musashi-node.out.mjs",
-              "musashi-node.out.wasm",
-              "README.md",
-              "LICENSE"
-            ],
-            "publishConfig": {
-              "access": "public",
-              "provenance": true
-            }
-          }
-          JSON
+          echo "Validating bundled core runtime..."
+          for file in lib/core/index.js lib/core/index.d.ts lib/wasm/musashi-node-wrapper.mjs; do
+            if [ ! -f "npm-package/$file" ]; then
+              echo "ERROR: Missing generated file: $file"
+              exit 1
+            fi
+          done
 
-          # ESM wrapper for standard build
-          cat > npm-package/index.mjs <<'JS'
-          import { fileURLToPath } from "url";
-          import createModule from "./dist/musashi-loader.mjs";
-          
-          export default function init(options = {}) {
-            const isNode = typeof process !== "undefined" && !!process.versions?.node;
-            const wasmUrl = new URL("./dist/musashi.wasm", import.meta.url);
-            const wasmPath = isNode ? fileURLToPath(wasmUrl) : wasmUrl.href;
-            const locateFile = (p) => p.endsWith(".wasm") ? wasmPath : p;
-            return createModule({ locateFile, ...options });
-          }
-          JS
-
-          # ESM wrapper for Perfetto build
-          cat > npm-package/perf.mjs <<'JS'
-          import { fileURLToPath } from "url";
-          import createModule from "./dist/musashi-perfetto-loader.mjs";
-          
-          export default function init(options = {}) {
-            const isNode = typeof process !== "undefined" && !!process.versions?.node;
-            const wasmUrl = new URL("./dist/musashi-perfetto.wasm", import.meta.url);
-            const wasmPath = isNode ? fileURLToPath(wasmUrl) : wasmUrl.href;
-            const locateFile = (p) => p.endsWith(".wasm") ? wasmPath : p;
-            return createModule({ locateFile, ...options });
-          }
-          JS
-
-          # Copy documentation files if present
           [ -f README.md ] && cp README.md npm-package/ || true
           [ -f LICENSE ]   && cp LICENSE   npm-package/ || true
 
-          # Set the version from the tag
+          VERSION_RAW='${{ steps.validate.outputs.tag }}'
+          VERSION="${VERSION_RAW#v}"
+          echo "📋 Package version: $VERSION"
+
           npm --prefix npm-package version "$VERSION" --no-git-tag-version
-          
+
           echo "Prepared npm package structure:"
           ls -lR npm-package
 
