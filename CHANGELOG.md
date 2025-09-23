@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.12] - 2025-09-23
+## [0.1.13] - 2025-09-23
 
 ### ✨ Features
 
@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🛠️ Tooling
 
 - **Node typings & publish flow**: Bundle a `musashi-wasm/node` declaration file, extend package exports/tests to guard the new surface, and update the publish workflow to stage the new assets before uploading to npm.
+
+## [0.1.12] - 2025-09-23
+
+> ⚠️ Release superseded. Publishing to npm failed for this tag; use 0.1.13 instead.
 
 ## [0.1.11] - 2025-09-23
 

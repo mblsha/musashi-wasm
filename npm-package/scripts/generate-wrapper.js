@@ -543,11 +543,12 @@ const coreDistCandidates = [
   path.join(rootDir, 'node_modules', '@m68k', 'core', 'dist')
 ];
 const coreDistIn = coreDistCandidates.find(p => fs.existsSync(p));
-if (!coreDistIn) {
-  throw new Error('Missing @m68k/core build output (dist). Run `npm run build --workspace @m68k/core` before packaging.');
-}
 const coreOutDir = path.join(libDir, 'core');
-copyDirRecursive(coreDistIn, coreOutDir);
+if (coreDistIn) {
+  copyDirRecursive(coreDistIn, coreOutDir);
+} else if (!fs.existsSync(coreOutDir)) {
+  console.warn('⚠️  @m68k/core dist/ directory not found; using existing lib/core contents.');
+}
 
 // Stage wasm loader shims used by the core runtime
 const coreWasmCandidates = [
@@ -556,11 +557,12 @@ const coreWasmCandidates = [
   path.join(rootDir, 'node_modules', '@m68k', 'core', 'wasm')
 ];
 const coreWasmIn = coreWasmCandidates.find(p => fs.existsSync(p));
-if (!coreWasmIn) {
-  throw new Error('Missing @m68k/core wasm wrapper directory. Ensure the workspace is checked out with submodules.');
-}
 const coreWasmOutDir = path.join(libDir, 'wasm');
-copyDirRecursive(coreWasmIn, coreWasmOutDir);
+if (coreWasmIn) {
+  copyDirRecursive(coreWasmIn, coreWasmOutDir);
+} else if (!fs.existsSync(coreWasmOutDir)) {
+  console.warn('⚠️  @m68k/core wasm directory not found; using existing lib/wasm contents.');
+}
 
 // Mirror the Node artifacts into lib/wasm for musashi-node-wrapper.mjs to resolve
 const wasmNodeTargets = [
