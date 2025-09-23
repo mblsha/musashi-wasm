@@ -182,6 +182,7 @@ jobs:
       - name: Install dependencies and build core runtime
         run: |
           npm ci
+          npm ci --workspaces
           npm run build --workspace @m68k/core
 
       - name: Prepare npm package from CI artifacts
