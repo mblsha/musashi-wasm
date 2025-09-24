@@ -9,7 +9,7 @@ on:
 
 # Prevent concurrent runs that could interfere with each other
 concurrency:
-  group: npm-publish-${{ github.ref_name }}
+  group: npm-publish-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.ref }}
 
       - name: Install jq
         run: |
@@ -40,7 +40,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${{ github.ref_name }}"
+          TAG="$GITHUB_REF_NAME"
+          if [ -z "$TAG" ]; then
+            TAG="${GITHUB_REF##*/}"
+          fi
           COMMIT="$(git rev-parse HEAD)"
           
           echo "Tag: $TAG"
@@ -321,7 +324,7 @@ EOF
         if: failure()
         run: |
           echo "❌ NPM publish workflow failed"
-          echo "Release: ${{ github.ref_name }}"
+          echo "Release: ${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
           echo "Please check the logs above for specific error details"
           echo "Common issues:"
           echo "  - WebAssembly CI not completed or failed"
