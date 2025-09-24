@@ -185,9 +185,6 @@ jobs:
       - name: Install workspace dependencies
         run: npm ci --workspaces --include-workspace-root
 
-      - name: Build core runtime
-        run: npm run build --workspace=@m68k/core
-
       - name: Prepare npm package from CI artifacts
         shell: bash
         run: |
@@ -261,9 +258,6 @@ declare module 'musashi-wasm/node' {
   export default init;
 }
 EOF
-
-          echo "Rebuilding npm-package wrapper to stage core runtime..."
-          npm --prefix npm-package run build
 
           echo "Validating bundled core runtime..."
           for file in lib/core/index.js lib/core/index.d.ts lib/wasm/musashi-node-wrapper.mjs; do
