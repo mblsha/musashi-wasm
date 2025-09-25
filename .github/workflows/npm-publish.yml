@@ -3,20 +3,21 @@ name: Publish to npm (reuse CI artifacts)
 on:
   release:
     types: [published]
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag to publish (e.g., v0.1.1)'
+        required: true
+        type: string
 
 # Prevent concurrent runs that could interfere with each other
 concurrency:
-  group: npm-publish-${{ github.ref }}
+  group: npm-publish-${{ github.event.release.tag_name || inputs.tag_name }}
   cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'release' || startsWith(github.ref, 'refs/tags/') }}
     permissions:
       contents: read
       id-token: write   # provenance for npm
@@ -30,7 +31,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          ref: ${{ github.ref }}
+          ref: ${{ github.event.release.tag_name || inputs.tag_name }}
 
       - name: Install jq
         run: |
@@ -42,24 +43,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="$GITHUB_REF_NAME"
-          if [ -z "$TAG" ]; then
-            TAG="${GITHUB_REF##*/}"
-          fi
+          TAG="${{ github.event.release.tag_name || inputs.tag_name }}"
           COMMIT="$(git rev-parse HEAD)"
-          
+
           echo "Tag: $TAG"
           echo "Commit: $COMMIT"
-          
+
           # Validate tag format (should be semantic version)
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
             echo "ERROR: Tag '$TAG' does not follow semantic versioning format (v1.2.3 or v1.2.3-alpha.1)"
             exit 1
           fi
-          
+
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
-          
+
       - name: Wait for and resolve CI run
         id: find_run
         shell: bash
@@ -67,45 +65,45 @@ jobs:
           set -euo pipefail
           COMMIT="${{ steps.validate.outputs.commit }}"
           TAG="${{ steps.validate.outputs.tag }}"
-          
+
           echo "Looking for successful WebAssembly CI run for commit: $COMMIT"
-          
+
           # Wait for CI to complete with retries (max 10 minutes)
           MAX_ATTEMPTS=20
           WAIT_SECONDS=30
-          
+
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
             echo "Attempt $attempt/$MAX_ATTEMPTS: Searching for successful CI run..."
-            
+
             # Search for successful runs, increasing limit over time
             SEARCH_LIMIT=$((25 + attempt * 5))
             gh run list --workflow "WebAssembly CI" --json databaseId,headSha,conclusion,event,createdAt --limit $SEARCH_LIMIT > runs.json
-            
+
             # Debug: show what we found
             echo "Found runs for this commit:"
             jq -r --arg sha "$COMMIT" '.[] | select(.headSha==$sha) | "  Run " + (.databaseId|tostring) + ": " + .conclusion + " (" + .event + ")"' runs.json || true
-            
+
             # Look for successful run
             RUN_ID=$(jq -r --arg sha "$COMMIT" '.[] | select(.headSha==$sha and .conclusion=="success") | .databaseId' runs.json | head -n1)
-            
+
             if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
               echo "✅ Found successful CI run: $RUN_ID"
               echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            
+
             # Check if there are any failed runs
             FAILED_COUNT=$(jq -r --arg sha "$COMMIT" '[.[] | select(.headSha==$sha and .conclusion=="failure")] | length' runs.json)
             if [ "$FAILED_COUNT" -gt 0 ]; then
               echo "⚠️  Found $FAILED_COUNT failed CI run(s) for this commit"
             fi
-            
+
             if [ $attempt -lt $MAX_ATTEMPTS ]; then
               echo "No successful run found yet, waiting ${WAIT_SECONDS}s before retry..."
               sleep $WAIT_SECONDS
             fi
           done
-          
+
           echo "❌ TIMEOUT: No successful 'WebAssembly CI' run found for commit $COMMIT after $MAX_ATTEMPTS attempts"
           echo "Please check:"
           echo "  1. WebAssembly CI workflow is configured to run on tags (v*)"
@@ -120,13 +118,13 @@ jobs:
           set -euo pipefail
           RUN_ID="${{ steps.find_run.outputs.run_id }}"
           mkdir -p ci-artifacts
-          
+
           echo "📦 Downloading artifacts from CI run: $RUN_ID"
-          
+
           # List available artifacts first for debugging
           echo "Available artifacts for this run:"
           gh run view "$RUN_ID" --json artifacts --jq '.artifacts[] | "  " + .name + " (" + (.sizeInBytes|tostring) + " bytes)"' || true
-          
+
           # Download standard WASM build artifacts
           echo "Downloading wasm-modules..."
           if ! gh run download "$RUN_ID" --name wasm-modules --dir ci-artifacts/wasm-modules; then
@@ -135,7 +133,7 @@ jobs:
             gh run view "$RUN_ID" --json artifacts --jq '.artifacts[].name' || true
             exit 1
           fi
-          
+
           # Download Perfetto WASM build artifacts
           echo "Downloading wasm-perfetto-modules..."
           if ! gh run download "$RUN_ID" --name wasm-perfetto-modules --dir ci-artifacts/wasm-perfetto-modules; then
@@ -144,34 +142,32 @@ jobs:
             gh run view "$RUN_ID" --json artifacts --jq '.artifacts[].name' || true
             exit 1
           fi
-          
+
           echo "✅ Successfully downloaded all artifacts"
           echo "📁 Downloaded artifact contents:"
           ls -lR ci-artifacts
-          
+
           # Verify required files exist and have reasonable sizes
           echo "🔍 Verifying artifact contents..."
           REQUIRED_FILES=(
             "ci-artifacts/wasm-modules/musashi-universal.out.wasm"
             "ci-artifacts/wasm-modules/musashi-universal.out.mjs"
-            "ci-artifacts/wasm-modules/musashi-node.out.wasm"
-            "ci-artifacts/wasm-modules/musashi-node.out.mjs"
             "ci-artifacts/wasm-perfetto-modules/musashi-universal.out.wasm"
             "ci-artifacts/wasm-perfetto-modules/musashi-universal.out.mjs"
           )
-          
+
           for file in "${REQUIRED_FILES[@]}"; do
             if [ ! -f "$file" ]; then
               echo "❌ ERROR: Required file missing: $file"
               exit 1
             fi
-            
+
             size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0")
             if [ "$size" -lt 10000 ]; then  # Minimum reasonable size
               echo "❌ ERROR: File too small (likely corrupt): $file ($size bytes)"
               exit 1
             fi
-            
+
             echo "✅ $file ($size bytes)"
           done
 
@@ -212,7 +208,19 @@ jobs:
             cp ci-artifacts/wasm-modules/musashi-node.out.wasm.map npm-package/musashi-node.out.wasm.map
           fi
 
-          echo "Verifying staged WASM artifacts..."
+          # Copy the core wrapper and stage it
+          echo "Staging core wrapper..."
+          mkdir -p npm-package/lib/core
+          cp -R packages/core/dist/* npm-package/lib/core/
+
+          # Create wrapper that imports musashi-wasm/node instead of local path
+          echo "Patching core wrapper to use package import..."
+          if [ -f npm-package/lib/core/wasm/musashi-node-wrapper.mjs ]; then
+            sed -i "s|from ['\"][^'\"]*musashi-node\.out\.mjs['\"]|from 'musashi-wasm/node'|g" npm-package/lib/core/wasm/musashi-node-wrapper.mjs
+          fi
+
+          # Verify all files are present
+          echo "Verifying staged files..."
           for file in musashi.wasm musashi-loader.mjs musashi-perfetto.wasm musashi-perfetto-loader.mjs; do
             if [ ! -f "npm-package/dist/$file" ]; then
               echo "ERROR: Missing required file: $file"
@@ -221,6 +229,7 @@ jobs:
             echo "✓ $file ($(stat -c%s "npm-package/dist/$file") bytes)"
           done
 
+          echo "Verifying Node-specific files..."
           for file in musashi-node.out.mjs musashi-node.out.wasm; do
             if [ ! -f "npm-package/$file" ]; then
               echo "ERROR: Missing required file: $file"
@@ -231,54 +240,125 @@ jobs:
 
           if [ -f npm-package/musashi-node.out.wasm.map ]; then
             echo "✓ musashi-node.out.wasm.map ($(stat -c%s "npm-package/musashi-node.out.wasm.map") bytes)"
+          else
+            echo "ℹ️ musashi-node.out.wasm.map not provided (optional)"
           fi
 
-          echo "Syncing wasm artifacts into lib/wasm..."
-          mkdir -p npm-package/lib/wasm
-          cp ci-artifacts/wasm-modules/musashi.out.mjs npm-package/lib/wasm/musashi.out.mjs
-          cp ci-artifacts/wasm-modules/musashi.out.wasm npm-package/lib/wasm/musashi.out.wasm
-          cp ci-artifacts/wasm-modules/musashi-universal.out.mjs npm-package/lib/wasm/musashi-universal.out.mjs
-          cp ci-artifacts/wasm-modules/musashi-universal.out.wasm npm-package/lib/wasm/musashi-universal.out.wasm
-          cp ci-artifacts/wasm-modules/musashi-node.out.mjs npm-package/lib/wasm/musashi-node.out.mjs
-          cp ci-artifacts/wasm-modules/musashi-node.out.wasm npm-package/lib/wasm/musashi-node.out.wasm
-          if [ -f ci-artifacts/wasm-modules/musashi-node.out.wasm.map ]; then
-            cp ci-artifacts/wasm-modules/musashi-node.out.wasm.map npm-package/lib/wasm/musashi-node.out.wasm.map
-          fi
-
-          echo "Ensuring musashi-wasm/node typings are present..."
-          cat <<'EOF' > npm-package/musashi-node.d.ts
-declare module 'musashi-wasm/node' {
-  export interface MusashiNodeInitOptions {
-    locateFile?: (path: string, prefix?: string) => string;
-    [key: string]: unknown;
-  }
-
-  export type MusashiNodeFactory = (options?: MusashiNodeInitOptions) => Promise<unknown>;
-
-  const init: MusashiNodeFactory;
-
-  export default init;
-}
-EOF
-
-          echo "Rebuilding npm-package wrapper to stage core runtime..."
-          npm --prefix npm-package run build
-
-          echo "Validating bundled core runtime..."
-          for file in lib/core/index.js lib/core/index.d.ts lib/wasm/musashi-node-wrapper.mjs; do
+          echo "Verifying core wrapper files..."
+          for file in lib/core/index.js lib/core/index.d.ts; do
             if [ ! -f "npm-package/$file" ]; then
-              echo "ERROR: Missing required file: $file"
+              echo "ERROR: Missing required core file: $file"
               exit 1
             fi
+            echo "✓ $file ($(stat -c%s "npm-package/$file") bytes)"
           done
 
-          [ -f README.md ] && cp README.md npm-package/ || true
-          [ -f LICENSE ]   && cp LICENSE   npm-package/ || true
-
+          # Validate and set version
           VERSION_RAW='${{ steps.validate.outputs.tag }}'
           VERSION="${VERSION_RAW#v}"
           echo "📋 Package version: $VERSION"
 
+          # Validate version format
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "❌ ERROR: Invalid version format: $VERSION"
+            exit 1
+          fi
+
+          cat > npm-package/package.json <<'JSON'
+          {
+            "name": "musashi-wasm",
+            "version": "0.0.0",
+            "description": "M68k Musashi WebAssembly (default, Node, and Perfetto profiling builds)",
+            "license": "MIT",
+            "author": "mblsha",
+            "repository": {
+              "type": "git",
+              "url": "git+https://github.com/mblsha/musashi-wasm.git"
+            },
+            "keywords": [
+              "m68k",
+              "68000",
+              "motorola",
+              "emulator",
+              "wasm",
+              "webassembly",
+              "perfetto",
+              "tracing"
+            ],
+            "type": "module",
+            "exports": {
+              ".": {
+                "import": "./index.mjs",
+                "types": "./lib/index.d.ts"
+              },
+              "./perf": {
+                "import": "./perf.mjs",
+                "types": "./lib/perf.d.ts"
+              },
+              "./node": {
+                "import": "./musashi-node.out.mjs",
+                "types": "./musashi-node.d.ts"
+              },
+              "./core": {
+                "import": "./lib/core/index.js",
+                "types": "./lib/core/index.d.ts"
+              },
+              "./musashi-node.out.mjs": "./musashi-node.out.mjs",
+              "./musashi-node.out.wasm": "./musashi-node.out.wasm"
+            },
+            "main": "./index.mjs",
+            "files": [
+              "dist/**",
+              "lib/**",
+              "index.mjs",
+              "perf.mjs",
+              "musashi-node.out.mjs",
+              "musashi-node.out.wasm",
+              "musashi-node.out.wasm.map",
+              "musashi-node.d.ts",
+              "README.md",
+              "LICENSE"
+            ],
+            "publishConfig": {
+              "access": "public",
+              "provenance": true
+            }
+          }
+          JSON
+
+          # ESM wrapper for standard build
+          cat > npm-package/index.mjs <<'JS'
+          import { fileURLToPath } from "url";
+          import createModule from "./dist/musashi-loader.mjs";
+
+          export default function init(options = {}) {
+            const isNode = typeof process !== "undefined" && !!process.versions?.node;
+            const wasmUrl = new URL("./dist/musashi.wasm", import.meta.url);
+            const wasmPath = isNode ? fileURLToPath(wasmUrl) : wasmUrl.href;
+            const locateFile = (p) => p.endsWith(".wasm") ? wasmPath : p;
+            return createModule({ locateFile, ...options });
+          }
+          JS
+
+          # ESM wrapper for Perfetto build
+          cat > npm-package/perf.mjs <<'JS'
+          import { fileURLToPath } from "url";
+          import createModule from "./dist/musashi-perfetto-loader.mjs";
+
+          export default function init(options = {}) {
+            const isNode = typeof process !== "undefined" && !!process.versions?.node;
+            const wasmUrl = new URL("./dist/musashi-perfetto.wasm", import.meta.url);
+            const wasmPath = isNode ? fileURLToPath(wasmUrl) : wasmUrl.href;
+            const locateFile = (p) => p.endsWith(".wasm") ? wasmPath : p;
+            return createModule({ locateFile, ...options });
+          }
+          JS
+
+          # Copy documentation files if present
+          [ -f README.md ] && cp README.md npm-package/ || true
+          [ -f LICENSE ]   && cp LICENSE   npm-package/ || true
+
+          # Set the version from the tag
           npm --prefix npm-package version "$VERSION" --no-git-tag-version
 
           echo "Prepared npm package structure:"
@@ -296,23 +376,23 @@ EOF
         run: |
           echo "🚀 Publishing to npm..."
           echo "Package: $(cat package.json | jq -r '.name + "@" + .version')"
-          
+
           # Check if this version already exists
           PACKAGE_NAME=$(cat package.json | jq -r '.name')
           PACKAGE_VERSION=$(cat package.json | jq -r '.version')
-          
+
           if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/dev/null 2>&1; then
             echo "⚠️  Package $PACKAGE_NAME@$PACKAGE_VERSION already exists on npm"
             echo "Skipping publish (this is not an error for re-runs)"
             exit 0
           fi
-          
+
           npm publish --access public --provenance
           echo "✅ Successfully published $PACKAGE_NAME@$PACKAGE_VERSION to npm!"
-          
+
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          
+
       - name: Report success
         if: success()
         run: |
@@ -321,12 +401,12 @@ EOF
           echo "Commit: ${{ steps.validate.outputs.commit }}"
           echo "CI Run: ${{ steps.find_run.outputs.run_id }}"
           echo "Package: $(cat npm-package/package.json | jq -r '.name + "@" + .version')"
-          
+
       - name: Report failure details
         if: failure()
         run: |
           echo "❌ NPM publish workflow failed"
-          echo "Release: ${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
+          echo "Release: ${{ github.event.release.tag_name || inputs.tag_name }}"
           echo "Please check the logs above for specific error details"
           echo "Common issues:"
           echo "  - WebAssembly CI not completed or failed"
