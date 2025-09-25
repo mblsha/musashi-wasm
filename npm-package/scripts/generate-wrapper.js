@@ -105,6 +105,41 @@ async function bundleCoreRuntime() {
   return coreOutDir;
 }
 
+async function bundleMemoryHelpers() {
+  const memoryOutDir = path.join(libDir, 'memory');
+  fs.rmSync(memoryOutDir, { recursive: true, force: true });
+  fs.mkdirSync(memoryOutDir, { recursive: true });
+
+  const memoryEntry = path.join(repoRootDir, 'packages', 'memory', 'src', 'index.ts');
+
+  await esbuildBuild({
+    entryPoints: [memoryEntry],
+    outfile: path.join(memoryOutDir, 'index.js'),
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    target: ['es2020'],
+    absWorkingDir: repoRootDir,
+    logLevel: 'silent',
+  });
+
+  const [memoryDts] = generateDtsBundle([
+    {
+      filePath: memoryEntry,
+      output: {
+        noBanner: true,
+      },
+      compilerOptions: {
+        baseUrl: path.join(repoRootDir, 'packages'),
+      },
+    },
+  ]);
+
+  fs.writeFileSync(path.join(memoryOutDir, 'index.d.ts'), `${memoryDts.trimEnd()}\n`);
+
+  return memoryOutDir;
+}
+
 function stageCoreAssets(coreOutDir) {
   const wasmCandidates = [
     path.join(repoRootDir, 'packages', 'core', 'wasm'),
@@ -380,6 +415,7 @@ export class Musashi {
   }
 }
 
+export { createSystem, M68kRegister } from './core/index.js';
 export default Musashi;
 `;
 
@@ -622,6 +658,7 @@ if (nodeWasmMapIn) {
 
 const coreOutDir = await bundleCoreRuntime();
 stageCoreAssets(coreOutDir);
+await bundleMemoryHelpers();
 
 // Note: musashi-node.d.ts is committed to the repo and doesn't need regeneration
 

@@ -6,7 +6,6 @@
   "files": [
     "dist/**",
     "lib/**",
-    "index.mjs",
     "perf.mjs",
     "musashi-node.out.mjs",
     "musashi-node.out.wasm",
@@ -17,7 +16,7 @@
   ],
   "exports": {
     ".": {
-      "import": "./index.mjs",
+      "import": "./lib/index.mjs",
       "types": "./lib/index.d.ts"
     },
     "./perf": {
@@ -29,7 +28,7 @@
       "types": "./lib/index.d.ts"
     },
     "./browser": {
-      "import": "./index.mjs",
+      "import": "./lib/index.mjs",
       "types": "./lib/index.d.ts"
     },
     "./node": {
@@ -40,12 +39,16 @@
       "import": "./lib/core/index.js",
       "types": "./lib/core/index.d.ts"
     },
+    "./memory": {
+      "import": "./lib/memory/index.js",
+      "types": "./lib/memory/index.d.ts"
+    },
     "./musashi-node.out.mjs": "./musashi-node.out.mjs",
     "./musashi-node.out.wasm": "./musashi-node.out.wasm",
     "./musashi-node.out.wasm.map": "./musashi-node.out.wasm.map"
   },
   "types": "./lib/index.d.ts",
-  "main": "./index.mjs",
+  "main": "./lib/index.mjs",
   "keywords": [
     "m68k",
     "m68000",
