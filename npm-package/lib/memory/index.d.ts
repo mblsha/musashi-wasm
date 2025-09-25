@@ -1,0 +1,62 @@
+export interface SystemMemoryIO {
+	readBytes(address: number, length: number): Uint8Array;
+	writeBytes(address: number, data: Uint8Array): void;
+}
+/** A user-defined function that parses a byte buffer into a structured object. */
+export type Parser<T> = (data: Uint8Array) => T;
+/**
+ * Provides structured, type-safe access to a single data structure
+ * at a fixed address in the system's memory.
+ */
+export declare class MemoryRegion<T> {
+	private readonly system;
+	private readonly address;
+	private readonly size;
+	private readonly parser;
+	constructor(system: SystemMemoryIO, address: number, size: number, parser: Parser<T>);
+	/** Reads the memory region and returns the parsed structure. */
+	get(): T;
+	/** Writes raw bytes to the memory region. */
+	setBytes(data: Uint8Array): void;
+}
+/**
+ * Provides array-like access to a collection of fixed-size structures in memory,
+ * such as a game's entity list.
+ */
+export declare class MemoryArray<T> {
+	private readonly system;
+	private readonly baseAddress;
+	private readonly stride;
+	private readonly parser;
+	constructor(system: SystemMemoryIO, baseAddress: number, stride: number, // The size of each element in bytes.
+	parser: Parser<T>);
+	/** Reads and parses the element at the given index. */
+	at(index: number): T;
+	/** Writes raw bytes to the element at the given index. */
+	setAt(index: number, data: Uint8Array): void;
+	/** Creates an iterable over a range of indices. */
+	iterate(start: number, count: number): IterableIterator<T>;
+}
+/**
+ * Helper utilities for parsing common data types from byte arrays.
+ */
+export declare class DataParser {
+	/** Reads a big-endian 16-bit unsigned integer. */
+	static readUint16BE(data: Uint8Array, offset?: number): number;
+	/** Reads a big-endian 32-bit unsigned integer. */
+	static readUint32BE(data: Uint8Array, offset?: number): number;
+	/** Reads a big-endian 16-bit signed integer. */
+	static readInt16BE(data: Uint8Array, offset?: number): number;
+	/** Reads a big-endian 32-bit signed integer. */
+	static readInt32BE(data: Uint8Array, offset?: number): number;
+	/** Writes a big-endian 16-bit unsigned integer. */
+	static writeUint16BE(data: Uint8Array, value: number, offset?: number): void;
+	/** Writes a big-endian 32-bit unsigned integer. */
+	static writeUint32BE(data: Uint8Array, value: number, offset?: number): void;
+	/** Reads a null-terminated ASCII string. */
+	static readCString(data: Uint8Array, offset?: number, maxLength?: number): string;
+	/** Writes a null-terminated ASCII string. */
+	static writeCString(data: Uint8Array, value: string, offset?: number, maxLength?: number): void;
+}
+
+export {};
