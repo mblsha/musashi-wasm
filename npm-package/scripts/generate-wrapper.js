@@ -295,8 +295,6 @@ export class Musashi {
 }
 
 export default Musashi;
-
-export { createSystem } from './core/index.js';
 `;
 
 // Generate Perfetto-enabled CommonJS wrapper
@@ -546,54 +544,20 @@ const coreDistIn = coreDistCandidates.find(p => fs.existsSync(p));
 const coreOutDir = path.join(libDir, 'core');
 if (coreDistIn) {
   copyDirRecursive(coreDistIn, coreOutDir);
+
+  // Patch any wasm wrapper to import from 'musashi-wasm/node' instead of relative paths
+  const wrapperPath = path.join(coreOutDir, 'wasm', 'musashi-node-wrapper.mjs');
+  if (fs.existsSync(wrapperPath)) {
+    let src = fs.readFileSync(wrapperPath, 'utf8');
+    // Replace relative imports of musashi-node.out.mjs with package subpath
+    src = src.replace(/from\s+(['"])(\.{1,2}\/.*musashi-node\.out\.mjs)\1/g, "from 'musashi-wasm/node'");
+    fs.writeFileSync(wrapperPath, src);
+  }
 } else if (!fs.existsSync(coreOutDir)) {
   console.warn('⚠️  @m68k/core dist/ directory not found; using existing lib/core contents.');
 }
 
-// Stage wasm loader shims used by the core runtime
-const coreWasmCandidates = [
-  path.join(rootDir, '..', 'packages', 'core', 'wasm'),
-  path.join(altRootDir, 'packages', 'core', 'wasm'),
-  path.join(rootDir, 'node_modules', '@m68k', 'core', 'wasm')
-];
-const coreWasmIn = coreWasmCandidates.find(p => fs.existsSync(p));
-const coreWasmOutDir = path.join(libDir, 'wasm');
-if (coreWasmIn) {
-  copyDirRecursive(coreWasmIn, coreWasmOutDir);
-} else if (!fs.existsSync(coreWasmOutDir)) {
-  console.warn('⚠️  @m68k/core wasm directory not found; using existing lib/wasm contents.');
-}
-
-// Mirror the Node artifacts into lib/wasm for musashi-node-wrapper.mjs to resolve
-const wasmNodeTargets = [
-  { src: nodeJsIn, dest: path.join(coreWasmOutDir, 'musashi-node.out.mjs') },
-  { src: nodeWasmIn, dest: path.join(coreWasmOutDir, 'musashi-node.out.wasm') }
-];
-if (nodeWasmMapIn) {
-  wasmNodeTargets.push({ src: nodeWasmMapIn, dest: path.join(coreWasmOutDir, 'musashi-node.out.wasm.map') });
-}
-for (const { src, dest } of wasmNodeTargets) {
-  if (src) {
-    fs.copyFileSync(src, dest);
-  }
-}
-
-// Write a lightweight declaration file for musashi-wasm/node
-const nodeTypesPath = path.join(rootDir, 'musashi-node.d.ts');
-const nodeTypesSource = `declare module 'musashi-wasm/node' {
-  export interface MusashiNodeInitOptions {
-    locateFile?: (path: string, prefix?: string) => string;
-    [key: string]: unknown;
-  }
-
-  export type MusashiNodeFactory = (options?: MusashiNodeInitOptions) => Promise<unknown>;
-
-  const init: MusashiNodeFactory;
-
-  export default init;
-}
-`;
-fs.writeFileSync(nodeTypesPath, nodeTypesSource);
+// Note: musashi-node.d.ts is committed to the repo and doesn't need regeneration
 
 // Write wrapper files (ESM-only)
 fs.writeFileSync(path.join(libDir, 'index.mjs'), esmWrapper);
