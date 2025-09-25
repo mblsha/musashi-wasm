@@ -38,5 +38,26 @@ for spec in "${tests[@]}"; do
   run_workspace_ci "${ws}" "${secs}"
 done
 
-echo "All tests completed"
+echo "Building npm-package bundle for integration smoke test..."
+if ! timeout 60 npm --prefix npm-package run build; then
+  rc=$?
+  if [[ $rc -eq 124 ]]; then
+    echo "npm-package build timed out after 60s" >&2
+  else
+    echo "npm-package build failed with exit code ${rc}" >&2
+  fi
+  exit $rc
+fi
 
+echo "Running npm-package integration smoke test (30s timeout)..."
+if ! timeout 30 node npm-package/test/integration.mjs; then
+  rc=$?
+  if [[ $rc -eq 124 ]]; then
+    echo "npm-package integration test timed out after 30s" >&2
+  else
+    echo "npm-package integration test failed with exit code ${rc}" >&2
+  fi
+  exit $rc
+fi
+
+echo "All tests completed"
