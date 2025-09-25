@@ -61,12 +61,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mblsha/Musashi.git"
+    "url": "https://github.com/mblsha/musashi-wasm.git"
   },
   "bugs": {
-    "url": "https://github.com/mblsha/Musashi/issues"
+    "url": "https://github.com/mblsha/musashi-wasm/issues"
   },
-  "homepage": "https://github.com/mblsha/Musashi#readme"
+  "homepage": "https://github.com/mblsha/musashi-wasm#readme"
   ,
   "scripts": {
     "build": "node ./scripts/generate-wrapper.js",
