@@ -136,12 +136,11 @@ const pc = cpu.getReg(M68kRegister.PC);
 const d0 = cpu.getReg(M68kRegister.D0);
 ```
 
-### Fusion/Core Wrapper (Node & Tooling)
+### Core wrapper (fusion runtime)
 
-The package now bundles the higher-level runtime shipped in `@m68k/core`. It exposes
-helpers for synchronous stepping, tracing, and memory hooks.
+For Node/tooling use cases, `musashi-wasm` exposes the core wrapper under a stable subpath:
 
-```typescript
+```ts
 import {
   createSystem,
   M68kRegister,
@@ -149,26 +148,18 @@ import {
   type SystemConfig,
 } from 'musashi-wasm/core';
 
-const config: SystemConfig = {
-  rom: await fetchRom(),
-  memoryLayout: {
-    regions: [{ start: 0x0, length: 0x200000 }],
-  },
-};
-
-const system: System = await createSystem(config);
-system.step();
-system.setHook(M68kRegister.PC, () => {
-  console.log('PC advanced to', system.getRegisters().pc.toString(16));
-});
+// ...
 ```
 
-- `musashi-wasm/core` re-exports the assembled JS runtime (`lib/core/*.js`) and its
-  `.d.ts` definitions, so downstream projects no longer need to vendor the wrapper.
-- `musashi-wasm/core/*` exposes supporting modules such as `musashi-wrapper` and
-  `test-utils` for advanced integrations.
-- The raw Emscripten factory remains available at `musashi-wasm/node` with bundled
-  TypeScript declarations for custom loaders.
+The raw Emscripten factory remains available at `musashi-wasm/node`:
+
+```ts
+import initMusashi from 'musashi-wasm/node';
+const mod = await initMusashi();
+```
+
+This avoids vendoring the wrapper in downstream projects and ensures shared enums/types
+(e.g., `M68kRegister`, `SystemConfig`, `System`) are available from the same package.
 
 ## API Reference
 
