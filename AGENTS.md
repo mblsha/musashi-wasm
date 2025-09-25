@@ -5,6 +5,7 @@
 - Reuse existing build/test scripts where possible; avoid ad-hoc command invocations without a timeout guard.
 - The standard toolchain remains: `./build.sh` for WASM, `timeout 60 npm test --workspace=@m68k/core` for core tests, `npm run build` / `npm run typecheck` for TypeScript.
 - You may use the GitHub CLI (`gh`) to create pull requests and check GitHub Actions status from the terminal—preferred when branch protection blocks direct pushes.
+- To verify npm-package exports, rely on `run-tests-ci.sh`; it builds the bundle and runs `npm-package/test/integration.mjs`, which is the canonical smoke test for published entrypoints.
 
 ## Release Checklist (0.1.x)
 
