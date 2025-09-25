@@ -8,6 +8,9 @@ import type {
   SymbolMap,
   MemoryAccessCallback,
   MemoryAccessEvent,
+  MemoryLayout,
+  MemoryRegion,
+  MirrorRegion,
 } from './types.js';
 import { M68kRegister } from '@m68k/common';
 import { MusashiWrapper, getModule } from './musashi-wrapper.js';
@@ -21,8 +24,18 @@ export type {
   Tracer,
   TraceConfig,
   SymbolMap,
+  MemoryAccessCallback,
+  MemoryAccessEvent,
+  MemoryLayout,
+  MemoryRegion,
+  MirrorRegion,
 };
 export { M68kRegister } from '@m68k/common';
+export type {
+  ReadMemoryCallback,
+  WriteMemoryCallback,
+  PCHookCallback,
+} from '@m68k/common';
 
 // --- Private Implementation ---
 

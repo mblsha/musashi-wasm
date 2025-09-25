@@ -72,9 +72,7 @@
     "build": "node ./scripts/generate-wrapper.js",
     "prepare": "npm run build"
   },
-  "dependencies": {
-    "@m68k/common": "^0.1.0"
-  },
+  "dependencies": {},
   "publishConfig": {
     "access": "public",
     "provenance": true

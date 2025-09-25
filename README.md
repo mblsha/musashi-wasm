@@ -10,7 +10,7 @@ A Motorola M68000 CPU emulator (v4.10) compiled to WebAssembly with TypeScript b
 
 - **M68k CPU Emulation**: Supports 68000, 68010, 68EC020, 68020, 68EC030, 68030, 68EC040, 68040
 - **WebAssembly Target**: Runs in browsers and Node.js
-- **TypeScript API**: Clean, type-safe interface via `@m68k/core` and `@m68k/memory` packages
+- **TypeScript API**: Clean, type-safe interface via `musashi-wasm/core` and `musashi-wasm/memory` packages
 - **Perfetto Tracing**: Optional performance profiling with Chrome's tracing format
 - **Memory Hooks**: Custom memory access handlers
 - **PC Hooks**: Breakpoint and code patching support
@@ -20,7 +20,7 @@ A Motorola M68000 CPU emulator (v4.10) compiled to WebAssembly with TypeScript b
 ### Using the TypeScript API
 
 ```typescript
-import { createSystem } from '@m68k/core';
+import { createSystem } from 'musashi-wasm/core';
 
 // Create a system with ROM and RAM
 const system = await createSystem({
@@ -78,8 +78,8 @@ SKIP_WASM_BUILD=1 ./test_with_real_wasm.sh
 
 The TypeScript API is organized into modular packages:
 
-- **[@m68k/core](packages/core)** - Core emulator with CPU control, memory access, and hooks
-- **[@m68k/memory](packages/memory)** - Memory utilities for structured data access
+- **`musashi-wasm/core`** (source: [packages/core](packages/core)) - Core emulator with CPU control, memory access, and hooks
+- **`musashi-wasm/memory`** (source: [packages/memory](packages/memory)) - Memory utilities for structured data access
 
 See [packages/README.md](packages/README.md) for detailed documentation.
 
@@ -159,8 +159,8 @@ Both hook functions should return 0 to continue execution, or non-zero to break 
 ├── m68k_perfetto.cc    # Perfetto integration
 ├── build.sh            # WebAssembly build script (bash)
 ├── packages/           # TypeScript packages
-│   ├── core/          # @m68k/core package
-│   └── memory/        # @m68k/memory package
+│   ├── core/          # Source for musashi-wasm/core runtime
+│   └── memory/        # Source for musashi-wasm/memory helpers
 └── musashi-wasm-test/ # Integration tests
 ```
 

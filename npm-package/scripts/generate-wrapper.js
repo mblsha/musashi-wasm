@@ -2,6 +2,8 @@
 
 import fs from 'fs';
 import path from 'path';
+import { build as esbuildBuild } from 'esbuild';
+import { generateDtsBundle } from 'dts-bundle-generator';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -10,6 +12,8 @@ const __dirname = path.dirname(__filename);
 // Ensure directories exist
 const libDir = path.join(__dirname, '..', 'lib');
 const distDir = path.join(__dirname, '..', 'dist');
+const packageRootDir = path.join(__dirname, '..');
+const repoRootDir = path.join(packageRootDir, '..');
 
 if (!fs.existsSync(libDir)) {
   fs.mkdirSync(libDir, { recursive: true });
@@ -38,6 +42,88 @@ function copyDirRecursive(srcDir, destDir) {
     } else {
       fs.copyFileSync(srcPath, destPath);
     }
+  }
+}
+
+async function bundleCoreRuntime() {
+  const coreOutDir = path.join(libDir, 'core');
+  fs.rmSync(coreOutDir, { recursive: true, force: true });
+  fs.mkdirSync(coreOutDir, { recursive: true });
+
+  const coreEntry = path.join(repoRootDir, 'packages', 'core', 'src', 'index.ts');
+  const commonEntry = path.join(repoRootDir, 'packages', 'common', 'src', 'index.ts');
+
+  await esbuildBuild({
+    entryPoints: [coreEntry],
+    outfile: path.join(coreOutDir, 'index.js'),
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    target: ['es2020'],
+    absWorkingDir: repoRootDir,
+    logLevel: 'silent',
+    plugins: [
+      {
+        name: 'musashi-wasm-alias',
+        setup(build) {
+          build.onResolve({ filter: /^@m68k\/common$/ }, () => ({
+            path: commonEntry,
+          }));
+          build.onResolve({ filter: /^musashi-wasm\/node$/ }, () => ({
+            path: 'musashi-wasm/node',
+            external: true,
+          }));
+          build.onResolve({ filter: /^\.\.\/wasm\/musashi-node-wrapper\.mjs$/ }, args => ({
+            path: args.path,
+            external: true,
+          }));
+        },
+      },
+    ],
+  });
+
+  const [coreDts] = generateDtsBundle([
+    {
+      filePath: coreEntry,
+      output: {
+        noBanner: true,
+      },
+      libraries: {
+        inlinedLibraries: ['@m68k/common'],
+      },
+      compilerOptions: {
+        baseUrl: path.join(repoRootDir, 'packages'),
+        paths: {
+          '@m68k/common': ['common/src/index.ts'],
+        },
+      },
+    },
+  ]);
+
+  fs.writeFileSync(path.join(coreOutDir, 'index.d.ts'), `${coreDts.trimEnd()}\n`);
+
+  return coreOutDir;
+}
+
+function stageCoreAssets(coreOutDir) {
+  const wasmCandidates = [
+    path.join(repoRootDir, 'packages', 'core', 'wasm'),
+    path.join(packageRootDir, 'node_modules', '@m68k', 'core', 'wasm'),
+  ];
+  const wasmSrc = wasmCandidates.find(p => fs.existsSync(p));
+  if (!wasmSrc) {
+    console.warn('⚠️  packages/core/wasm directory not found; skipping musashi-node wrapper stage.');
+    return;
+  }
+
+  const wasmOutDir = path.join(libDir, 'wasm');
+  copyDirRecursive(wasmSrc, wasmOutDir);
+
+  const wrapperPath = path.join(wasmOutDir, 'musashi-node-wrapper.mjs');
+  if (fs.existsSync(wrapperPath)) {
+    let wrapperSrc = fs.readFileSync(wrapperPath, 'utf8');
+    wrapperSrc = wrapperSrc.replace(/from\s+(['"])(\.{1,2}\/.*musashi-node\.out\.mjs)\1/g, "from 'musashi-wasm/node'");
+    fs.writeFileSync(wrapperPath, wrapperSrc);
   }
 }
 
@@ -481,8 +567,8 @@ module.exports.default = MusashiPerfetto;
 `;
 
 // Ensure expected Emscripten loader+wasm are present under dist/
-const rootDir = path.join(__dirname, '..');
-const altRootDir = path.join(__dirname, '..', '..');
+const rootDir = packageRootDir;
+const altRootDir = repoRootDir;
 const nodeJsCandidates = [
   path.join(rootDir, 'musashi-node.out.mjs'),
   path.join(altRootDir, 'musashi-node.out.mjs')
@@ -534,28 +620,8 @@ if (nodeWasmMapIn) {
   });
 }
 
-// Stage the @m68k/core runtime wrappers inside lib/core
-const coreDistCandidates = [
-  path.join(rootDir, '..', 'packages', 'core', 'dist'),
-  path.join(altRootDir, 'packages', 'core', 'dist'),
-  path.join(rootDir, 'node_modules', '@m68k', 'core', 'dist')
-];
-const coreDistIn = coreDistCandidates.find(p => fs.existsSync(p));
-const coreOutDir = path.join(libDir, 'core');
-if (coreDistIn) {
-  copyDirRecursive(coreDistIn, coreOutDir);
-
-  // Patch any wasm wrapper to import from 'musashi-wasm/node' instead of relative paths
-  const wrapperPath = path.join(coreOutDir, 'wasm', 'musashi-node-wrapper.mjs');
-  if (fs.existsSync(wrapperPath)) {
-    let src = fs.readFileSync(wrapperPath, 'utf8');
-    // Replace relative imports of musashi-node.out.mjs with package subpath
-    src = src.replace(/from\s+(['"])(\.{1,2}\/.*musashi-node\.out\.mjs)\1/g, "from 'musashi-wasm/node'");
-    fs.writeFileSync(wrapperPath, src);
-  }
-} else if (!fs.existsSync(coreOutDir)) {
-  console.warn('⚠️  @m68k/core dist/ directory not found; using existing lib/core contents.');
-}
+const coreOutDir = await bundleCoreRuntime();
+stageCoreAssets(coreOutDir);
 
 // Note: musashi-node.d.ts is committed to the repo and doesn't need regeneration
 

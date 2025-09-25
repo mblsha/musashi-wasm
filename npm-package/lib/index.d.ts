@@ -1,10 +1,8 @@
 import type {
-  M68kRegister as CommonM68kRegister,
-  ReadMemoryCallback as CommonReadMemoryCallback,
-  WriteMemoryCallback as CommonWriteMemoryCallback,
-  PCHookCallback as CommonPCHookCallback,
-} from '@m68k/common';
-import type {
+  M68kRegister as CoreM68kRegister,
+  ReadMemoryCallback as CoreReadMemoryCallback,
+  WriteMemoryCallback as CoreWriteMemoryCallback,
+  PCHookCallback as CorePCHookCallback,
   System as CoreSystem,
   SystemConfig as CoreSystemConfig,
   CpuRegisters as CoreCpuRegisters,
@@ -12,10 +10,15 @@ import type {
   Tracer as CoreTracer,
   TraceConfig as CoreTraceConfig,
   SymbolMap as CoreSymbolMap,
-} from '@m68k/core';
+  MemoryAccessCallback as CoreMemoryAccessCallback,
+  MemoryAccessEvent as CoreMemoryAccessEvent,
+  MemoryLayout as CoreMemoryLayout,
+  MemoryRegion as CoreMemoryRegion,
+  MirrorRegion as CoreMirrorRegion,
+} from './core/index.js';
 
 declare module 'musashi-wasm' {
-  export { createSystem, M68kRegister } from '@m68k/core';
+  export { createSystem, M68kRegister } from './core/index.js';
   export type System = CoreSystem;
   export type SystemConfig = CoreSystemConfig;
   export type CpuRegisters = CoreCpuRegisters;
@@ -23,6 +26,11 @@ declare module 'musashi-wasm' {
   export type Tracer = CoreTracer;
   export type TraceConfig = CoreTraceConfig;
   export type SymbolMap = CoreSymbolMap;
+  export type MemoryAccessCallback = CoreMemoryAccessCallback;
+  export type MemoryAccessEvent = CoreMemoryAccessEvent;
+  export type MemoryLayout = CoreMemoryLayout;
+  export type MemoryRegion = CoreMemoryRegion;
+  export type MirrorRegion = CoreMirrorRegion;
 
   export interface MusashiModule {
     _m68k_init(): void;
@@ -46,10 +54,10 @@ declare module 'musashi-wasm' {
     allocateUTF8(str: string): number;
   }
 
-  export type M68kRegister = CommonM68kRegister;
-  export type ReadMemoryCallback = CommonReadMemoryCallback;
-  export type WriteMemoryCallback = CommonWriteMemoryCallback;
-  export type PCHookCallback = CommonPCHookCallback;
+  export type M68kRegister = CoreM68kRegister;
+  export type ReadMemoryCallback = CoreReadMemoryCallback;
+  export type WriteMemoryCallback = CoreWriteMemoryCallback;
+  export type PCHookCallback = CorePCHookCallback;
 
   export class Musashi {
     constructor();
