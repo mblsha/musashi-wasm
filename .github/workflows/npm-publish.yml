@@ -6,7 +6,7 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 # Prevent concurrent runs that could interfere with each other
 concurrency:
