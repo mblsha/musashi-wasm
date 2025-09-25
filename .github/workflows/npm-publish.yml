@@ -234,8 +234,14 @@ jobs:
           echo "Rebuilding npm-package wrapper to stage core runtime..."
           npm --prefix npm-package run build
 
-          echo "Validating top-level ESM wrappers..."
-          for file in index.mjs perf.mjs; do
+          echo "Validating ESM entrypoints..."
+          TOP_LEVEL_FILES=(
+            "lib/index.mjs"
+            "lib/index.d.ts"
+            "perf.mjs"
+          )
+
+          for file in "${TOP_LEVEL_FILES[@]}"; do
             if [ ! -f "npm-package/$file" ]; then
               echo "ERROR: Missing required file: $file"
               exit 1
