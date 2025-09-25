@@ -81,3 +81,4 @@ lerna-debug.log*
 npm-package/dist/
 npm-package/lib/*.mjs
 npm-package/lib/core/
+npm-package/lib/wasm/

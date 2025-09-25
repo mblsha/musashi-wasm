@@ -4,9 +4,9 @@ This directory contains TypeScript packages for the M68k emulator with optional 
 
 ## Packages
 
-### @m68k/core
+### musashi-wasm/core
 
-The core M68k emulator package that provides:
+Bundled runtime exported from the npm package (`packages/core` workspace is published internally as `@m68k/core`). It provides:
 - Low-level CPU emulation via WebAssembly
 - Memory access (read/write)
 - Register manipulation
@@ -14,9 +14,9 @@ The core M68k emulator package that provides:
 - Hook system (probe and override)
 - Optional Perfetto tracing support
 
-### @m68k/memory
+### musashi-wasm/memory
 
-Memory utilities for structured access to M68k memory:
+Memory utilities bundled with the npm package (`packages/memory` workspace name is `@m68k/memory`):
 - `MemoryRegion`: Type-safe access to fixed memory structures
 - `MemoryArray`: Array-like access to collections of structures
 - `DataParser`: Utilities for parsing big-endian data
@@ -24,8 +24,8 @@ Memory utilities for structured access to M68k memory:
 ## Quick Start
 
 ```typescript
-import { createSystem } from '@m68k/core';
-import { MemoryRegion, DataParser } from '@m68k/memory';
+import { createSystem } from 'musashi-wasm/core';
+import { MemoryRegion, DataParser } from 'musashi-wasm/memory';
 
 // Create a system with ROM and RAM
 const system = await createSystem({

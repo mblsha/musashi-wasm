@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✨ Features
 
-- **Core wrapper**: Export compiled `@m68k/core` runtime as `musashi-wasm/core` for `import { createSystem }` without vendoring
+- **Core wrapper**: Bundle the `@m68k/common` and `@m68k/core` sources directly into `musashi-wasm/core`, so `import { createSystem } from 'musashi-wasm/core'` works without extra packages
 - **Node typings**: Add TypeScript definitions for `musashi-wasm/node` import path
 
 ## [0.1.10] - 2025-09-22
