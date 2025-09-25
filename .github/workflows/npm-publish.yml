@@ -180,8 +180,10 @@ jobs:
       - name: Install workspace dependencies
         run: npm ci --workspaces --include-workspace-root
 
-      - name: Build core runtime
-        run: npm run build --workspace=@m68k/core
+      - name: Build workspace packages
+        run: |
+          npm run build --workspace=@m68k/common
+          npm run build --workspace=@m68k/core
 
       - name: Prepare npm package from CI artifacts
         shell: bash
