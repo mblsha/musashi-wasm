@@ -36,6 +36,63 @@ assert.equal(typeof stepResult.endPc, 'number', 'step() must expose updated PC')
 
 system.cleanup();
 
+// Regression guard: ensure ANDI byte immediate sets Z when zeroing a register.
+const ENTRY_PC = 0x0200;
+const romWithAndi = new Uint8Array(0x1000);
+const writeLong = (mem, offset, value) => {
+  mem[offset + 0] = (value >>> 24) & 0xff;
+  mem[offset + 1] = (value >>> 16) & 0xff;
+  mem[offset + 2] = (value >>> 8) & 0xff;
+  mem[offset + 3] = value & 0xff;
+};
+
+const readWord = (mem, offset) => ((mem[offset] << 8) | mem[offset + 1]) >>> 0;
+
+const INITIAL_SP = 0x00001000;
+
+writeLong(romWithAndi, 0x0000, INITIAL_SP); // initial SP inside RAM window
+writeLong(romWithAndi, 0x0004, ENTRY_PC); // initial PC
+
+const andiProgram = [
+  0x02, 0x00, 0x00, 0x02, // andi.b  #$2, D0 -> 0x20 & 0x02 === 0
+  0x4e, 0x72, 0x27, 0x00, // stop    #$2700
+];
+
+andiProgram.forEach((byte, index) => {
+  romWithAndi[ENTRY_PC + index] = byte;
+});
+
+assert.equal(readWord(romWithAndi, ENTRY_PC), 0x0200, 'entry word must be ANDI opcode');
+assert.equal(readWord(romWithAndi, ENTRY_PC + 2), 0x0002, 'ANDI immediate must equal 0x0002');
+
+const andiSystem = await coreModule.createSystem({ rom: romWithAndi, ramSize: 0x20000 });
+andiSystem.reset();
+andiSystem.setRegister('d0', 0x20);
+
+const stepOne = andiSystem.step();
+
+assert.equal(stepOne.startPc >>> 0, ENTRY_PC, 'step() must begin at reset PC');
+assert.equal(stepOne.endPc >>> 0, ENTRY_PC + 4, 'ANDI instruction size should be 4 bytes');
+
+const afterAndiRegisters = andiSystem.getRegisters();
+const srAfterAndi = afterAndiRegisters.sr >>> 0;
+const zFlagSet = (srAfterAndi & 0x04) !== 0;
+
+assert.equal(afterAndiRegisters.d0 >>> 0, 0, 'ANDI must clear D0 when masking to zero');
+assert.equal(afterAndiRegisters.pc >>> 0, ENTRY_PC + 4, 'PC must advance past ANDI');
+assert.equal(zFlagSet, true, 'andi.b zero-result must set the Z flag');
+
+const stepTwo = andiSystem.step();
+assert.equal(stepTwo.startPc >>> 0, ENTRY_PC + 4, 'second step should begin at STOP opcode');
+
+const afterStopRegisters = andiSystem.getRegisters();
+const srAfterStop = afterStopRegisters.sr >>> 0;
+
+assert.equal(srAfterStop, 0x2700, 'STOP #$2700 must load SR with provided immediate');
+assert.equal(afterStopRegisters.pc >>> 0, ENTRY_PC + 8, 'STOP must advance PC past its operand');
+
+andiSystem.cleanup();
+
 musashiInstance.pulseReset?.();
 
 const coreEntry = await import(new URL('lib/core/index.js', pkgRoot));

@@ -220,9 +220,29 @@ export class MusashiWrapper {
     this._module._set_write_mem_func(writeSizedPtr);
     this._module._set_pc_hook_func(this._probeFunc);
 
-    // CRITICAL: Write reset vectors BEFORE init/reset
-    this.write32BE(0x00000000, 0x00108000); // Initial SSP (in RAM)
-    this.write32BE(0x00000004, 0x00000400); // Initial PC (in ROM)
+    // Respect any reset vector supplied in the ROM. Only fall back to the
+    // legacy defaults when individual fields are zero to preserve historic
+    // behaviour for images without a vector table.
+    const defaultSp = 0x0010_8000 >>> 0;
+    const defaultPc = 0x0000_0400 >>> 0;
+    const existingSp = this.read32BE(0x0000);
+    const existingPc = this.read32BE(0x0004);
+
+    const vectorSp = existingSp !== 0 ? existingSp >>> 0 : defaultSp;
+    const vectorPc = existingPc !== 0 ? existingPc >>> 0 : defaultPc;
+
+    if (existingSp === 0) {
+      this.write32BE(0x0000, vectorSp);
+    }
+    if (existingPc === 0) {
+      this.write32BE(0x0004, vectorPc);
+    }
+
+    if ((vectorPc & 1) !== 0) {
+      throw new Error(
+        `Reset vector PC must be even (saw 0x${vectorPc.toString(16)})`
+      );
+    }
 
     // Initialize CPU
     this._module._m68k_init();
@@ -232,10 +252,11 @@ export class MusashiWrapper {
     this._module._m68k_pulse_reset();
 
     // Verify initialization
-    const pc = this._module._m68k_get_reg(0, M68kRegister.PC);
-    if (pc !== 0x400) {
+    const pc = this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0;
+    const normalizedExpectedPc = (vectorPc & 0x00ff_ffff) & ~1;
+    if (pc !== normalizedExpectedPc) {
       throw new Error(
-        `CPU not properly initialized, PC=0x${pc.toString(16)} (expected 0x400)`
+        `CPU not properly initialized, PC=0x${pc.toString(16)} (expected 0x${normalizedExpectedPc.toString(16)})`
       );
     }
   }
@@ -245,6 +266,15 @@ export class MusashiWrapper {
     this._memory[addr + 1] = (value >>> 16) & 0xff;
     this._memory[addr + 2] = (value >>> 8) & 0xff;
     this._memory[addr + 3] = value & 0xff;
+  }
+
+  private read32BE(addr: number): number {
+    return (
+      (this._memory[addr + 0] << 24) |
+      (this._memory[addr + 1] << 16) |
+      (this._memory[addr + 2] << 8) |
+      this._memory[addr + 3]
+    ) >>> 0;
   }
 
   cleanup() {
