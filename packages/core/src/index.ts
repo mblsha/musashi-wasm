@@ -242,26 +242,19 @@ class SystemImpl implements System {
     const spNow = this._musashi.get_reg(M68kRegister.A7) >>> 0;
     const spDelta = initialSp >= spNow ? (initialSp - spNow) >>> 0 : 0;
 
+    const grewStack = spNow < initialSp && spDelta >= 6;
+    const instSize = this.getInstructionSize(startPc) >>> 0;
+    const sequentialPc = instSize ? ((startPc + instSize) >>> 0) : startPc;
+    const exceptionDetected = grewStack && afterPc !== sequentialPc;
+
     let finalPc = afterPc >>> 0;
     let finalPpc = ppc >>> 0;
 
-    const exceptionDetected =
-      spNow < initialSp &&
-      spDelta >= 6 &&
-      afterPc < startPc;
-
     if (exceptionDetected) {
-      let handlerPc = afterPc >>> 0;
-      if (this.getInstructionSize(handlerPc) === 0 && handlerPc >= 2) {
-        handlerPc = (handlerPc - 2) >>> 0;
-      }
-      finalPc = handlerPc >>> 0;
+      finalPc = afterPc >>> 0;
       finalPpc = startPc >>> 0;
       this._musashi.set_reg(M68kRegister.PC, finalPc);
       this._musashi.set_reg(M68kRegister.PPC, finalPpc);
-    } else {
-      this._musashi.set_reg(M68kRegister.PPC, startPc >>> 0);
-      this._musashi.set_reg(M68kRegister.PC, finalPc >>> 0);
     }
 
     return { cycles: totalCycles >>> 0, startPc, endPc: finalPc >>> 0, ppc: finalPpc };
