@@ -369,12 +369,12 @@ class SystemImpl implements System {
   }
 
   // Called by MusashiWrapper when the core emits a memory event
-  _handleMemoryRead(addr: number, size: 1 | 2 | 4, value: number, pc: number): void {
-    this._dispatchMemoryEvent(this._memReads, { addr, size, value, pc, kind: 'read' });
+  _handleMemoryRead(addr: number, size: 1 | 2 | 4, value: number, pc: number, ppc?: number): void {
+    this._dispatchMemoryEvent(this._memReads, { addr, size, value, pc, kind: 'read', ppc });
   }
 
-  _handleMemoryWrite(addr: number, size: 1 | 2 | 4, value: number, pc: number): void {
-    this._dispatchMemoryEvent(this._memWrites, { addr, size, value, pc, kind: 'write' });
+  _handleMemoryWrite(addr: number, size: 1 | 2 | 4, value: number, pc: number, ppc?: number): void {
+    this._dispatchMemoryEvent(this._memWrites, { addr, size, value, pc, kind: 'write', ppc });
   }
 
   private _addMemoryListener(
