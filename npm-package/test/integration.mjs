@@ -163,4 +163,7 @@ if (perfExists) {
 const nodeFactory = await import(new URL('musashi-node.out.mjs', pkgRoot));
 assert.equal(typeof nodeFactory.default, 'function', 'musashi-node.out.mjs should export default factory');
 
+// Run the TP/core vs WASM fusion regression guard. This script throws on divergence.
+await import(new URL('./fusion-divergence.test.mjs', import.meta.url));
+
 console.log('✅ musashi-wasm integration smoke test passed');

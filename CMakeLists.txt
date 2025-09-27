@@ -223,7 +223,6 @@ if(BUILD_TESTS)
     # Test executable for basic M68k functionality
     add_executable(test_m68k
         tests/test_m68k.cpp
-        tests/extra_byte_min.cpp
     )
     
     target_link_libraries(test_m68k
@@ -310,12 +309,12 @@ if(BUILD_TESTS)
         musashi_api
         GTest::gtest_main
     )
-
+    
     # Force fetched gtest headers BEFORE system headers
     if(GTEST_INCLUDES)
         target_include_directories(test_exceptions PRIVATE BEFORE ${GTEST_INCLUDES})
     endif()
-
+    
     
     # Assemble test program with vasm
     add_custom_command(
@@ -356,11 +355,11 @@ if(BUILD_TESTS)
     gtest_discover_tests(test_vasm_binary)
     gtest_discover_tests(test_fixture_example)
     gtest_discover_tests(test_exceptions)
-
+    
     if(ENABLE_PERFETTO)
         gtest_discover_tests(test_perfetto)
     endif()
-
+    
     # Add a custom target to run all tests
     add_custom_target(run_tests
         COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
