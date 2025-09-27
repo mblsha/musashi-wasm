@@ -2,7 +2,7 @@ import { createSystem } from './index.js';
 import type { MemoryAccessEvent } from './types.js';
 
 describe('system.step exception handling', () => {
-  it('executes the trap handler within a single step()', async () => {
+  it('requires an additional step() to execute the trap handler', async () => {
     const rom = new Uint8Array(0x200000);
     const ramSize = 0x100000;
     const handlerAddr = 0x400;
@@ -35,14 +35,27 @@ describe('system.step exception handling', () => {
 
     const expectedHandlerSize = system.getInstructionSize(handlerAddr);
 
-    const { startPc, endPc } = system.step();
+    const firstStep = system.step();
 
-    const trapWrite = memoryWrites.find(
+    let trapWrite = memoryWrites.find(
       (w) => w.addr === 0x00100B1C && w.size === 4 && w.value === 0xFFFFFFFF
     );
 
-    expect(startPc).toBe(0x5DC20);
-    expect(endPc).toBe(handlerAddr + expectedHandlerSize);
+    expect(firstStep.startPc).toBe(0x5DC20);
+    expect(firstStep.endPc).toBe(handlerAddr);
+    expect(system.getRegisters().pc >>> 0).toBe(handlerAddr);
+    expect(trapWrite).toBeUndefined();
+
+    memoryWrites.length = 0;
+
+    const secondStep = system.step();
+
+    trapWrite = memoryWrites.find(
+      (w) => w.addr === 0x00100B1C && w.size === 4 && w.value === 0xFFFFFFFF
+    );
+
+    expect(secondStep.startPc).toBe(handlerAddr);
+    expect(secondStep.endPc).toBe(handlerAddr + expectedHandlerSize);
     expect(system.getRegisters().pc >>> 0).toBe(handlerAddr + expectedHandlerSize);
     expect(trapWrite).toBeDefined();
   });
