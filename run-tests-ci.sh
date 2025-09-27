@@ -60,4 +60,15 @@ if ! timeout 30 node npm-package/test/integration.mjs; then
   exit $rc
 fi
 
+echo "Running TP/core vs WASM divergence repro (30s timeout)..."
+if ! timeout 30 node npm-package/test/fusion-divergence.test.mjs; then
+  rc=$?
+  if [[ $rc -eq 124 ]]; then
+    echo "fusion divergence repro timed out after 30s" >&2
+  else
+    echo "fusion divergence repro failed with exit code ${rc}" >&2
+  fi
+  exit $rc
+fi
+
 echo "All tests completed"
