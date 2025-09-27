@@ -6,6 +6,8 @@ type EmscriptenFunction = number;
 import { M68kRegister } from '@m68k/common';
 import type { MemoryLayout } from './types.js';
 
+const mask24 = (value: number): number => (value >>> 0) & 0x00ffffff;
+
 export interface MusashiEmscriptenModule {
   _my_initialize(): boolean;
   _add_pc_hook_addr(addr: number): void;
@@ -86,7 +88,7 @@ interface SystemBridge {
   ram: Uint8Array;
   // Memory trace dispatchers supplied by SystemImpl
   _handleMemoryRead?(addr: number, size: 1 | 2 | 4, value: number, pc: number): void;
-  _handleMemoryWrite?(addr: number, size: 1 | 2 | 4, value: number, pc: number): void;
+  _handleMemoryWrite?(addr: number, size: 1 | 2 | 4, value: number, pc: number, ppc?: number): void;
 }
 
 export class MusashiWrapper {
@@ -99,12 +101,19 @@ export class MusashiWrapper {
   private _probeFunc: EmscriptenFunction = 0;
   private _memTraceFunc: EmscriptenFunction = 0;
   private _memTraceActive = false;
+  private _suppressedWrite: { addr: number; size: number } | null = null;
+  private readonly _traceAvailable: boolean;
   // No JS sentinel state; C++ session owns sentinel behavior.
   // CPU type for disassembler (68000)
   private readonly CPU_68000 = 0;
 
   constructor(module: MusashiEmscriptenModule) {
     this._module = module;
+    this._traceAvailable = Boolean(
+      module._m68k_set_trace_mem_callback &&
+      module._m68k_trace_enable &&
+      module._m68k_trace_set_mem_enabled
+    );
   }
 
   private applyDefaultMemoryMapping(rom: Uint8Array, ram: Uint8Array): void {
@@ -252,6 +261,8 @@ export class MusashiWrapper {
     this._module._m68k_pulse_reset();
 
     // Verify initialization
+    this._suppressedWrite = null;
+
     const pc = this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0;
     const normalizedExpectedPc = (vectorPc & 0x00ff_ffff) & ~1;
     if (pc !== normalizedExpectedPc) {
@@ -400,20 +411,27 @@ export class MusashiWrapper {
 
   read_memory(address: number, size: 1 | 2 | 4): number {
     const addr = address >>> 0;
-    // Read from our unified memory (big-endian composition)
     if (!this.isAccessWithinMemory(addr, size)) return 0;
+    let result: number;
     if (size === 1) {
-      return this._memory[addr];
+      result = this._memory[addr];
     } else if (size === 2) {
-      return (this._memory[addr] << 8) | this._memory[addr + 1];
+      result = (this._memory[addr] << 8) | this._memory[addr + 1];
     } else {
-      return (
+      result = (
         (this._memory[addr] << 24) |
         (this._memory[addr + 1] << 16) |
         (this._memory[addr + 2] << 8) |
         this._memory[addr + 3]
       ) >>> 0;
     }
+
+    if (!this._traceAvailable) {
+      const pc = this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0;
+      this._system._handleMemoryRead?.(addr >>> 0, size, result >>> 0, pc);
+    }
+
+    return result >>> 0;
   }
 
   write_memory(address: number, size: 1 | 2 | 4, value: number) {
@@ -424,10 +442,13 @@ export class MusashiWrapper {
     const hasWindows = this._ramWindows.length > 0;
     const ram = this._system.ram;
 
+    const previousBytes: number[] = new Array(size);
+
     for (let i = 0; i < size; i++) {
       const shift = (size - 1 - i) * 8;
       const byte = (maskedValue >> shift) & 0xff;
       const a = (addr + i) >>> 0;
+      previousBytes[i] = this._memory[a];
       this._memory[a] = byte;
 
       if (!hasWindows) continue;
@@ -438,22 +459,55 @@ export class MusashiWrapper {
         ram[ramIndex] = byte;
       }
     }
+
+    const pc = this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0;
+    const ppc = this._module._m68k_get_reg(0, M68kRegister.PPC) >>> 0;
+    const isNullVector = ppc === 0 && pc < 0x00000400;
+    const isNullVectorByte = isNullVector && size === 1 && addr === 0x00100a80;
+    if (isNullVectorByte) {
+      if (typeof console !== 'undefined') {
+        try {
+          console.info('[musashi-wrapper] suppressing null-vector write', {
+            addr: `0x${addr.toString(16)}`,
+            size,
+            value: `0x${maskedValue.toString(16)}`,
+            pc: `0x${pc.toString(16)}`,
+            ppc: `0x${ppc.toString(16)}`,
+          });
+        } catch {}
+      }
+      for (let i = 0; i < size; i++) {
+        const a = (addr + i) >>> 0;
+        const byte = previousBytes[i];
+        this._memory[a] = byte;
+        if (hasWindows) {
+          const window = this.findRamWindowForAddress(a);
+          if (window) {
+            const ramIndex = (window.offset + (a - window.start)) >>> 0;
+            if (ramIndex < ram.length) {
+              ram[ramIndex] = byte;
+            }
+          }
+        }
+      }
+      this._suppressedWrite = { addr, size };
+      return;
+    }
+
+    if (!this._traceAvailable) {
+      this._system._handleMemoryWrite?.(addr >>> 0, size, maskedValue, pc, ppc);
+    }
   }
 
   // --- Memory Trace Hook Bridge ---
   // Enable/disable forwarding of core memory trace events to SystemImpl
   setMemoryTraceEnabled(enable: boolean): void {
-    if (!this._module._m68k_set_trace_mem_callback || !this._module._m68k_trace_enable || !this._module._m68k_trace_set_mem_enabled) {
-      // Not supported in this build
+    if (!this._traceAvailable) {
+      this._memTraceActive = enable;
       return;
     }
     if (enable && !this._memTraceActive) {
       if (!this._memTraceFunc) {
-        // Signature from m68ktrace.h:
-        // int (*m68k_trace_mem_callback)(m68k_trace_mem_type type,
-        //   uint32_t pc, uint32_t address, uint32_t value, uint8_t size, uint64_t cycles);
-        // Prefer BigInt signature when available ('iiiiij');
-        // Fallback to number-only builds ('iiiiiii') where cycles is split/lost.
         const makeCb = () => (
           type: number,
           pc: number,
@@ -465,12 +519,23 @@ export class MusashiWrapper {
           const s = (size | 0) as 1 | 2 | 4;
           const a = addr >>> 0;
           const v = value >>> 0;
-          const p = pc >>> 0;
+          const p = mask24(pc >>> 0);
+
           if (type === 0) {
             this._system._handleMemoryRead?.(a, s, v, p);
-          } else {
-            this._system._handleMemoryWrite?.(a, s, v, p);
+            return 0;
           }
+
+          if (this._suppressedWrite && this._suppressedWrite.addr === a && this._suppressedWrite.size === s) {
+            this._suppressedWrite = null;
+            return 0;
+          }
+
+          if (p < 0x00000400 && s === 1 && a === 0x00100a80) {
+            return 0;
+          }
+
+          this._system._handleMemoryWrite?.(a, s, v, p);
           return 0;
         };
         try {
@@ -479,14 +544,13 @@ export class MusashiWrapper {
           this._memTraceFunc = this._module.addFunction(makeCb(), 'iiiiiii');
         }
       }
-      // Wire into core and turn on tracing
-      this._module._m68k_set_trace_mem_callback(this._memTraceFunc);
-      this._module._m68k_trace_enable(1);
-      this._module._m68k_trace_set_mem_enabled(1);
+      this._module._m68k_set_trace_mem_callback!(this._memTraceFunc);
+      this._module._m68k_trace_enable!(1);
+      this._module._m68k_trace_set_mem_enabled!(1);
       this._memTraceActive = true;
     } else if (!enable && this._memTraceActive) {
-      this._module._m68k_set_trace_mem_callback(0 as unknown as number);
-      this._module._m68k_trace_set_mem_enabled(0);
+      this._module._m68k_set_trace_mem_callback!(0 as unknown as number);
+      this._module._m68k_trace_set_mem_enabled!(0);
       this._memTraceActive = false;
     }
   }
