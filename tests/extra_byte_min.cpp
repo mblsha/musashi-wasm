@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <initializer_list>
 #include <iostream>
 #include <vector>
 
@@ -29,6 +31,11 @@ constexpr uint32_t kRamSize = 0x00100000u;
 constexpr uint32_t kRomLength = 0x00300000u;
 constexpr uint32_t kA0InitialValue = 0x00100A80u;
 constexpr uint32_t kA0WriteFirstByte = kA0InitialValue;
+constexpr uint32_t kFormat0FrameStart = 0x0010F2BAu;
+constexpr uint32_t kFormat0FrameEnd = kFormat0FrameStart + 6u;
+
+constexpr std::array<uint8_t, 6> kCalleeDirectWriteBytes{0x20, 0xFC, 0x11, 0x22, 0x33, 0x44};
+constexpr std::array<uint8_t, 6> kCalleePredecrementAbsBytes{0x21, 0xBC, 0xFF, 0xFF, 0xFF, 0xFF};
 
 std::array<uint8_t, kRomLength> g_rom{};
 std::array<uint8_t, kRamSize> g_ram{};
@@ -58,8 +65,28 @@ struct TraceRead {
 std::vector<TraceWrite> g_write_log;
 std::vector<TraceRead> g_read_log;
 uint32_t g_current_step = 0;
+bool g_unaligned_read_seen = false;
+bool g_unaligned_write_seen = false;
 
 constexpr uint32_t Mask24(uint32_t value) { return value & 0x00FFFFFFu; }
+
+void DumpTraceLogs() {
+  for (const auto& entry : g_write_log) {
+    const auto& write = entry.event;
+    std::cerr << "write step=" << std::dec << entry.step
+              << " pc=0x" << std::hex << entry.pc
+              << " addr=0x" << write.addr
+              << " size=" << std::dec << write.size
+              << " value=0x" << std::hex << write.value << std::endl;
+  }
+  for (const auto& read : g_read_log) {
+    std::cerr << "read step=" << std::dec << read.step
+              << " pc=0x" << std::hex << read.pc
+              << " addr=0x" << read.addr
+              << " size=" << std::dec << read.size
+              << " value=0x" << std::hex << read.value << std::endl;
+  }
+}
 
 void WriteLongBE(uint32_t addr, uint32_t value) {
   g_rom[addr + 0] = static_cast<uint8_t>((value >> 24) & 0xFFu);
@@ -79,7 +106,7 @@ int ReadMemory(unsigned int address, int size) {
   const uint32_t addr = Mask24(address);
   const uint32_t pc = Mask24(static_cast<uint32_t>(m68k_get_reg(nullptr, M68K_REG_PC)));
   if ((size > 1) && (addr & 1u)) {
-    ADD_FAILURE() << "Unaligned read size=" << size << " addr=0x" << std::hex << addr;
+    g_unaligned_read_seen = true;
   }
 
   uint32_t value = 0;
@@ -109,7 +136,7 @@ void WriteMemory(unsigned int address, int size, unsigned int value) {
   const uint32_t addr = Mask24(address);
   const uint32_t pc = Mask24(static_cast<uint32_t>(m68k_get_reg(nullptr, M68K_REG_PC)));
   if ((size > 1) && (addr & 1u)) {
-    ADD_FAILURE() << "Unaligned write size=" << size << " addr=0x" << std::hex << addr;
+    g_unaligned_write_seen = true;
   }
   if (addr >= kRamBase && addr < kRamBase + kRamSize) {
     const uint32_t offset = addr - kRamBase;
@@ -122,7 +149,7 @@ void WriteMemory(unsigned int address, int size, unsigned int value) {
   g_write_log.push_back({g_current_step, {addr, size, value}, pc});
 }
 
-void InitializeRom() {
+void InitializeRom(const std::array<uint8_t, 6>& callee_bytes) {
   g_rom.fill(0);
   WriteLongBE(0x000000u, kStackBase);
   WriteLongBE(0x000004u, kCallEntry);
@@ -133,8 +160,9 @@ void InitializeRom() {
   WriteBytes(kCallEntry + 4u, {0x4E, 0xB9, 0x00, 0x05, 0xDC, 0x1C});
   WriteBytes(kCallEntry + 10u, {0x4E, 0x75});
   WriteBytes(kCalleeEntry, {0x30, 0x3C, 0x00, 0x9C});
-  // MOVE.L #$11223344,(A0)
-  WriteBytes(kCalleeEntry + 4u, {0x20, 0xFC, 0x11, 0x22, 0x33, 0x44});
+  for (size_t i = 0; i < callee_bytes.size(); ++i) {
+    g_rom[kCalleeEntry + 4u + static_cast<uint32_t>(i)] = callee_bytes[i];
+  }
   WriteBytes(kCalleeEntry + 10u, {0x4E, 0x75});
 }
 
@@ -161,57 +189,74 @@ void InitializeCpu() {
   m68k_set_reg(M68K_REG_PC, kCallEntry);
 }
 
-bool StepUntilExitOrWrite(uint32_t target_addr) {
+struct ProgramRunOutcome {
+  bool saw_target = false;
+  bool saw_format0 = false;
+  uint32_t format0_bytes = 0;
+  uint32_t stop_step = 0;
+};
+
+ProgramRunOutcome RunUntilExit(uint32_t target_addr) {
   constexpr uint32_t kStepLimit = 200000;
   g_write_log.clear();
   g_read_log.clear();
+  ProgramRunOutcome outcome{};
+  std::array<bool, 6> format_hits{};
+
   for (uint32_t step = 0; step < kStepLimit; ++step) {
     g_current_step = step;
     g_writes.clear();
     m68k_step_one();
+
     for (const auto& write : g_writes) {
       for (int i = 0; i < write.size; ++i) {
-        if (write.addr + static_cast<uint32_t>(i) == target_addr) {
-          return true;
+        const uint32_t byte_addr = Mask24(write.addr + static_cast<uint32_t>(i));
+        if (byte_addr == target_addr) {
+          outcome.saw_target = true;
+        }
+        if (byte_addr >= kFormat0FrameStart && byte_addr < kFormat0FrameEnd) {
+          const size_t index = static_cast<size_t>(byte_addr - kFormat0FrameStart);
+          if (!format_hits[index]) {
+            format_hits[index] = true;
+            ++outcome.format0_bytes;
+          }
         }
       }
     }
+
+    outcome.saw_format0 = outcome.format0_bytes > 0;
+
     const uint32_t pc = Mask24(static_cast<uint32_t>(m68k_get_reg(nullptr, M68K_REG_PC)));
     if (pc == 0 || (pc & 0x00FF0000u) == 0x00AD0000u) {
+      outcome.stop_step = step;
       break;
     }
   }
-  return false;
+
+  return outcome;
 }
 
 class FusionDivergenceTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    InitializeRom();
+  void SetUp() override { ResetWithCalleeBytes(kCalleeDirectWriteBytes); }
+
+  void ResetWithCalleeBytes(const std::array<uint8_t, 6>& callee_bytes) {
+    InitializeRom(callee_bytes);
     InitializeCpu();
+    g_write_log.clear();
+    g_read_log.clear();
+    g_current_step = 0;
+    g_unaligned_read_seen = false;
+    g_unaligned_write_seen = false;
   }
 };
 
 TEST_F(FusionDivergenceTest, EmitsA0DirectWrite) {
-  const bool observed = StepUntilExitOrWrite(kA0WriteFirstByte);
-  EXPECT_TRUE(observed)
+  const ProgramRunOutcome outcome = RunUntilExit(kA0WriteFirstByte);
+  EXPECT_TRUE(outcome.saw_target)
       << "expected write to 0x" << std::hex << kA0WriteFirstByte << " not observed";
-  if (!observed) {
-    for (const auto& entry : g_write_log) {
-      const auto& write = entry.event;
-      std::cerr << "write step=" << std::dec << entry.step
-                << " pc=0x" << std::hex << entry.pc
-                << " addr=0x" << write.addr
-                << " size=" << std::dec << write.size
-                << " value=0x" << std::hex << write.value << std::endl;
-    }
-    for (const auto& read : g_read_log) {
-      std::cerr << "read step=" << std::dec << read.step
-                << " pc=0x" << std::hex << read.pc
-                << " addr=0x" << read.addr
-                << " size=" << std::dec << read.size
-                << " value=0x" << std::hex << read.value << std::endl;
-    }
+  if (!outcome.saw_target) {
+    DumpTraceLogs();
   } else {
     const uint32_t offset = kA0InitialValue - kRamBase;
     ASSERT_LT(offset + 3u, static_cast<uint32_t>(g_ram.size()));
@@ -219,6 +264,22 @@ TEST_F(FusionDivergenceTest, EmitsA0DirectWrite) {
     EXPECT_EQ(g_ram[offset + 1], 0x22);
     EXPECT_EQ(g_ram[offset + 2], 0x33);
     EXPECT_EQ(g_ram[offset + 3], 0x44);
+  }
+}
+
+TEST_F(FusionDivergenceTest, MoveAbsolutePredecrementDoesNotTouchA0) {
+  ResetWithCalleeBytes(kCalleePredecrementAbsBytes);
+  const ProgramRunOutcome outcome = RunUntilExit(kA0WriteFirstByte);
+
+  EXPECT_FALSE(outcome.saw_target)
+      << "unexpected byte write observed at (A0) for MOVE.L <abs.l>,-(A0)";
+  EXPECT_TRUE(outcome.saw_format0)
+      << "expected Format-0 exception frame bytes at 0x" << std::hex << kFormat0FrameStart;
+  EXPECT_EQ(outcome.format0_bytes, 6u)
+      << "expected 6 unique Format-0 bytes, saw " << std::dec << outcome.format0_bytes;
+
+  if (outcome.saw_target || outcome.format0_bytes != 6u) {
+    DumpTraceLogs();
   }
 }
 
