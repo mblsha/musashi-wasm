@@ -40,6 +40,7 @@ struct WriteEvent {
 };
 
 std::vector<WriteEvent> g_writes;
+std::vector<std::pair<uint32_t, WriteEvent>> g_write_log;
 
 constexpr uint32_t Mask24(uint32_t value) { return value & 0x00FFFFFFu; }
 
@@ -126,10 +127,12 @@ void InitializeCpu() {
 
 bool StepUntilExitOrWrite(uint32_t target_addr) {
   constexpr uint32_t kStepLimit = 200000;
+  g_write_log.clear();
   for (uint32_t step = 0; step < kStepLimit; ++step) {
     g_writes.clear();
     m68k_step_one();
     for (const auto& write : g_writes) {
+      g_write_log.emplace_back(step, write);
       for (int i = 0; i < write.size; ++i) {
         if (write.addr + static_cast<uint32_t>(i) == target_addr) {
           return true;
@@ -156,6 +159,15 @@ TEST_F(FusionDivergenceTest, EmitsA0PredecrementWrite) {
   const bool observed = StepUntilExitOrWrite(kA0WriteFirstByte);
   EXPECT_TRUE(observed)
       << "expected write to 0x" << std::hex << kA0WriteFirstByte << " not observed";
+  if (!observed) {
+    for (const auto& entry : g_write_log) {
+      const auto& write = entry.second;
+      std::cerr << "step=" << std::dec << entry.first
+                << " addr=0x" << std::hex << write.addr
+                << " size=" << std::dec << write.size
+                << " value=0x" << std::hex << write.value << std::endl;
+    }
+  }
 }
 
 }  // namespace
