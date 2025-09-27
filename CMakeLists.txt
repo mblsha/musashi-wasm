@@ -223,7 +223,7 @@ if(BUILD_TESTS)
     # Test executable for basic M68k functionality
     add_executable(test_m68k
         tests/test_m68k.cpp
-        tests/fusion_divergence_repro.cpp
+        tests/extra_byte_min.cpp
     )
     
     target_link_libraries(test_m68k
