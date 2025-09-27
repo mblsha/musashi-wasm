@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.16] - 2025-09-27
+
+### 🐛 Bug Fixes
+
+- **Core runtime**: Remove wrapper-side write suppression and rely on native Musashi trace hooks so exception frames no longer emit spurious `(A0)` bytes.
+- **TP/core control flow**: Halt stepping when the CPU vectors through an uninitialised entry, eliminating false attribution of stack frame writes to the caller.
+
+### 🛠️ Diagnostics
+
+- **Trace tooling**: Add targeted memory trace diagnostics that capture per-step write provenance (PC/PPC/source) to investigate future divergence reports.
+
+### 🧪 Tests
+
+- **Fusion divergence regression**: Replace ad-hoc Node repros with an automated integration test that compares TP/core and local runtimes, ensuring no extra `(A0)` writes escape.
+
+### 📚 Documentation
+
+- **Getting started**: Clarify how consumers should work with git checkouts versus npm packages when reproducing reported issues.
+
 ## [0.1.12] - 2025-09-25
 
 ### ✨ Features
