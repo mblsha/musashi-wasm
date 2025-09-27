@@ -232,54 +232,39 @@ class SystemImpl implements System {
     const startPc = this._musashi.get_reg(M68kRegister.PC) >>> 0; // PC before executing
     const initialSp = this._musashi.get_reg(M68kRegister.A7) >>> 0;
 
-    let totalCycles = 0;
-    let currentStartPc = startPc;
-    let previousSp = initialSp;
-    let finalPc = startPc;
-    let ppc = this._musashi.get_reg(M68kRegister.PPC) >>> 0;
+    // musashi.step() may return an unsigned long long (BigInt with WASM_BIGINT)
+    // Normalize to Number before masking to avoid BigInt/Number mixing.
+    const cyclesRaw = this._musashi.step();
+    const totalCycles = Number(cyclesRaw) >>> 0;
 
-    for (let iteration = 0; iteration < 2; iteration++) {
-      // musashi.step() may return an unsigned long long (BigInt with WASM_BIGINT)
-      // Normalize to Number before masking to avoid BigInt/Number mixing.
-      const cyclesRaw = this._musashi.step();
-      totalCycles += Number(cyclesRaw) >>> 0;
+    const afterPc = this._musashi.get_reg(M68kRegister.PC) >>> 0;
+    const ppc = this._musashi.get_reg(M68kRegister.PPC) >>> 0;
+    const spNow = this._musashi.get_reg(M68kRegister.A7) >>> 0;
+    const spDelta = initialSp >= spNow ? (initialSp - spNow) >>> 0 : 0;
 
-      const afterPc = this._musashi.get_reg(M68kRegister.PC) >>> 0;
-      finalPc = afterPc;
-      ppc = this._musashi.get_reg(M68kRegister.PPC) >>> 0;
+    let finalPc = afterPc >>> 0;
+    let finalPpc = ppc >>> 0;
 
-      const spNow = this._musashi.get_reg(M68kRegister.A7) >>> 0;
-      const spDelta = previousSp >= spNow ? (previousSp - spNow) >>> 0 : 0;
+    const exceptionDetected =
+      spNow < initialSp &&
+      spDelta >= 6 &&
+      afterPc < startPc;
 
-      const exceptionDetected =
-        iteration === 0 &&
-        spNow < previousSp &&
-        spDelta >= 6 &&
-        afterPc < startPc;
-
-      if (exceptionDetected) {
-        // Execute the handler from its true start. If the core already
-        // normalized PC to the handler entry, use it directly; otherwise fall
-        // back to compensating for the prefetch word.
-        let handlerPc = afterPc >>> 0;
-        if (this.getInstructionSize(handlerPc) === 0 && handlerPc >= 2) {
-          handlerPc = (handlerPc - 2) >>> 0;
-        }
-        this._musashi.set_reg(M68kRegister.PC, handlerPc);
-        currentStartPc = handlerPc;
-        previousSp = spNow;
-        // Execute exactly one instruction from the handler on the next loop iteration
-        continue;
+    if (exceptionDetected) {
+      let handlerPc = afterPc >>> 0;
+      if (this.getInstructionSize(handlerPc) === 0 && handlerPc >= 2) {
+        handlerPc = (handlerPc - 2) >>> 0;
       }
-
-      break;
+      finalPc = handlerPc >>> 0;
+      finalPpc = startPc >>> 0;
+      this._musashi.set_reg(M68kRegister.PC, finalPc);
+      this._musashi.set_reg(M68kRegister.PPC, finalPpc);
+    } else {
+      this._musashi.set_reg(M68kRegister.PPC, startPc >>> 0);
+      this._musashi.set_reg(M68kRegister.PC, finalPc >>> 0);
     }
 
-    // Normalize core state so subsequent reads see the final instruction boundary.
-    this._musashi.set_reg(M68kRegister.PPC, currentStartPc >>> 0);
-    this._musashi.set_reg(M68kRegister.PC, finalPc >>> 0);
-
-    return { cycles: totalCycles >>> 0, startPc, endPc: finalPc >>> 0, ppc };
+    return { cycles: totalCycles >>> 0, startPc, endPc: finalPc >>> 0, ppc: finalPpc };
   }
 
   reset(): void {
