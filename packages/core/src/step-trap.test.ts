@@ -25,6 +25,8 @@ describe('system.step exception handling', () => {
     system.setRegister('a0', 0x100A80);
     system.setRegister('d0', 156);
 
+    const initialSp = system.getRegisters().sp >>> 0;
+
     const flineBytes = [0xF9, 0x41, 0x10, 0x00, 0xB0, 0x6E];
     for (let i = 0; i < flineBytes.length; i++) {
       system.write(0x5DC20 + i, 1, flineBytes[i]);
@@ -36,6 +38,7 @@ describe('system.step exception handling', () => {
     const expectedHandlerSize = system.getInstructionSize(handlerAddr);
 
     const firstStep = system.step();
+    const regsAfterFirst = system.getRegisters();
 
     let trapWrite = memoryWrites.find(
       (w) => w.addr === 0x00100B1C && w.size === 4 && w.value === 0xFFFFFFFF
@@ -43,12 +46,17 @@ describe('system.step exception handling', () => {
 
     expect(firstStep.startPc).toBe(0x5DC20);
     expect(firstStep.endPc).toBe(handlerAddr);
-    expect(system.getRegisters().pc >>> 0).toBe(handlerAddr);
+    expect(firstStep.ppc).toBe(0x5DC20);
+    const spAfterFirst = regsAfterFirst.sp >>> 0;
+    expect(spAfterFirst).toBeLessThan(initialSp);
+    expect(initialSp - spAfterFirst).toBeGreaterThanOrEqual(6);
+    expect(regsAfterFirst.pc >>> 0).toBe(handlerAddr);
     expect(trapWrite).toBeUndefined();
 
     memoryWrites.length = 0;
 
     const secondStep = system.step();
+    const regsAfterSecond = system.getRegisters();
 
     trapWrite = memoryWrites.find(
       (w) => w.addr === 0x00100B1C && w.size === 4 && w.value === 0xFFFFFFFF
@@ -56,7 +64,8 @@ describe('system.step exception handling', () => {
 
     expect(secondStep.startPc).toBe(handlerAddr);
     expect(secondStep.endPc).toBe(handlerAddr + expectedHandlerSize);
-    expect(system.getRegisters().pc >>> 0).toBe(handlerAddr + expectedHandlerSize);
+    expect(secondStep.ppc).toBe(handlerAddr);
+    expect(regsAfterSecond.pc >>> 0).toBe(handlerAddr + expectedHandlerSize);
     expect(trapWrite).toBeDefined();
   });
 });
