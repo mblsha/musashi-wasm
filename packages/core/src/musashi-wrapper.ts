@@ -4,7 +4,7 @@
 type EmscriptenBuffer = number;
 type EmscriptenFunction = number;
 import { M68kRegister } from '@m68k/common';
-import type { MemoryLayout } from './types.js';
+import type { MemoryLayout, MemoryTraceSource } from './types.js';
 
 const mask24 = (value: number): number => (value >>> 0) & 0x00ffffff;
 
@@ -87,8 +87,8 @@ interface SystemBridge {
   _handlePCHook(pc: number): boolean;
   ram: Uint8Array;
   // Memory trace dispatchers supplied by SystemImpl
-  _handleMemoryRead?(addr: number, size: 1 | 2 | 4, value: number, pc: number): void;
-  _handleMemoryWrite?(addr: number, size: 1 | 2 | 4, value: number, pc: number, ppc?: number): void;
+  _handleMemoryRead?(addr: number, size: 1 | 2 | 4, value: number, pc: number, ppc?: number, source?: MemoryTraceSource): void;
+  _handleMemoryWrite?(addr: number, size: 1 | 2 | 4, value: number, pc: number, ppc?: number, source?: MemoryTraceSource): void;
 }
 
 export class MusashiWrapper {
@@ -101,7 +101,6 @@ export class MusashiWrapper {
   private _probeFunc: EmscriptenFunction = 0;
   private _memTraceFunc: EmscriptenFunction = 0;
   private _memTraceActive = false;
-  private _suppressedWrite: { addr: number; size: number } | null = null;
   private readonly _traceAvailable: boolean;
   // No JS sentinel state; C++ session owns sentinel behavior.
   // CPU type for disassembler (68000)
@@ -261,8 +260,6 @@ export class MusashiWrapper {
     this._module._m68k_pulse_reset();
 
     // Verify initialization
-    this._suppressedWrite = null;
-
     const pc = this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0;
     const normalizedExpectedPc = (vectorPc & 0x00ff_ffff) & ~1;
     if (pc !== normalizedExpectedPc) {
@@ -427,8 +424,14 @@ export class MusashiWrapper {
     }
 
     if (!this._traceAvailable) {
-      const pc = this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0;
-      this._system._handleMemoryRead?.(addr >>> 0, size, result >>> 0, pc);
+      const pc = mask24(this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0);
+      let ppc = pc;
+      try {
+        ppc = mask24(this._module._m68k_get_reg(0, M68kRegister.PPC) >>> 0);
+      } catch {
+        ppc = pc;
+      }
+      this._system._handleMemoryRead?.(addr >>> 0, size, result >>> 0, pc, ppc, 'wrapper-fallback');
     }
 
     return result >>> 0;
@@ -442,13 +445,10 @@ export class MusashiWrapper {
     const hasWindows = this._ramWindows.length > 0;
     const ram = this._system.ram;
 
-    const previousBytes: number[] = new Array(size);
-
     for (let i = 0; i < size; i++) {
       const shift = (size - 1 - i) * 8;
       const byte = (maskedValue >> shift) & 0xff;
       const a = (addr + i) >>> 0;
-      previousBytes[i] = this._memory[a];
       this._memory[a] = byte;
 
       if (!hasWindows) continue;
@@ -460,42 +460,15 @@ export class MusashiWrapper {
       }
     }
 
-    const pc = this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0;
-    const ppc = this._module._m68k_get_reg(0, M68kRegister.PPC) >>> 0;
-    const isNullVector = ppc === 0 && pc < 0x00000400;
-    const isNullVectorByte = isNullVector && size === 1 && addr === 0x00100a80;
-    if (isNullVectorByte) {
-      if (typeof console !== 'undefined') {
-        try {
-          console.info('[musashi-wrapper] suppressing null-vector write', {
-            addr: `0x${addr.toString(16)}`,
-            size,
-            value: `0x${maskedValue.toString(16)}`,
-            pc: `0x${pc.toString(16)}`,
-            ppc: `0x${ppc.toString(16)}`,
-          });
-        } catch {}
-      }
-      for (let i = 0; i < size; i++) {
-        const a = (addr + i) >>> 0;
-        const byte = previousBytes[i];
-        this._memory[a] = byte;
-        if (hasWindows) {
-          const window = this.findRamWindowForAddress(a);
-          if (window) {
-            const ramIndex = (window.offset + (a - window.start)) >>> 0;
-            if (ramIndex < ram.length) {
-              ram[ramIndex] = byte;
-            }
-          }
-        }
-      }
-      this._suppressedWrite = { addr, size };
-      return;
-    }
-
     if (!this._traceAvailable) {
-      this._system._handleMemoryWrite?.(addr >>> 0, size, maskedValue, pc, ppc);
+      const pc = mask24(this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0);
+      let ppc = pc;
+      try {
+        ppc = mask24(this._module._m68k_get_reg(0, M68kRegister.PPC) >>> 0);
+      } catch {
+        ppc = pc;
+      }
+      this._system._handleMemoryWrite?.(addr >>> 0, size, maskedValue, pc, ppc, 'wrapper-fallback');
     }
   }
 
@@ -520,22 +493,19 @@ export class MusashiWrapper {
           const a = addr >>> 0;
           const v = value >>> 0;
           const p = mask24(pc >>> 0);
+          let ppc = p;
+          try {
+            ppc = mask24(this._module._m68k_get_reg(0, M68kRegister.PPC) >>> 0);
+          } catch {
+            ppc = p;
+          }
 
           if (type === 0) {
-            this._system._handleMemoryRead?.(a, s, v, p);
+            this._system._handleMemoryRead?.(a, s, v, p, ppc, 'core-trace');
             return 0;
           }
 
-          if (this._suppressedWrite && this._suppressedWrite.addr === a && this._suppressedWrite.size === s) {
-            this._suppressedWrite = null;
-            return 0;
-          }
-
-          if (p < 0x00000400 && s === 1 && a === 0x00100a80) {
-            return 0;
-          }
-
-          this._system._handleMemoryWrite?.(a, s, v, p);
+          this._system._handleMemoryWrite?.(a, s, v, p, ppc, 'core-trace');
           return 0;
         };
         try {

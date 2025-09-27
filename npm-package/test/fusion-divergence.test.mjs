@@ -122,9 +122,10 @@ class LocalRunner {
       addr: addr >>> 0,
       size,
       value: value >>> 0,
-      pc: this.getReg(M68kRegister.PC) >>> 0,
-      ppc: this.module._m68k_get_reg(0, M68kRegister.PPC) >>> 0,
+      pc: mask24(this.getReg(M68kRegister.PC) >>> 0),
+      ppc: mask24(this.module._m68k_get_reg(0, M68kRegister.PPC) >>> 0),
       bytes: emitBytes(size, addr, value),
+      source: 'local-shim',
     });
   }
 
@@ -158,6 +159,7 @@ class TpRunner {
   constructor(rom) {
     this.rom = rom;
     this.pendingWrites = [];
+    this.sources = new Set();
   }
 
   async init() {
@@ -175,13 +177,16 @@ class TpRunner {
       memoryLayout,
     });
     this.unsubscribe = this.system.onMemoryWrite((evt) => {
+      this.sources.add(evt.source ?? 'unknown');
+      const ppcValue = evt.ppc === undefined ? undefined : mask24(evt.ppc >>> 0);
       this.pendingWrites.push({
         addr: evt.addr >>> 0,
         size: evt.size >>> 0,
         value: evt.value >>> 0,
-        pc: evt.pc >>> 0,
-        ppc: evt.ppc >>> 0,
+        pc: mask24(evt.pc >>> 0),
+        ppc: ppcValue,
         bytes: emitBytes(evt.size, evt.addr >>> 0, evt.value >>> 0),
+        source: evt.source,
       });
     });
   }
@@ -273,5 +278,14 @@ for (let step = 0; step < STEP_LIMIT; step += 1) {
 
 assert.equal(localA0Event, null, localA0Event ? JSON.stringify(localA0Event, null, 2) : '');
 assert.equal(tpA0Event, null, tpA0Event ? JSON.stringify(tpA0Event, null, 2) : '');
+
+const seenSources = [...tp.sources];
+assert.ok(seenSources.length > 0, 'expected musashi trace events from core');
+const unexpectedSources = seenSources.filter((source) => source !== 'core-trace');
+assert.equal(
+  unexpectedSources.length,
+  0,
+  `unexpected memory event sources: ${JSON.stringify(seenSources)}`,
+);
 
 console.log('✅ TP/core emits no unexpected (A0) write for fusion divergence repro');
