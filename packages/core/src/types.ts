@@ -35,6 +35,13 @@ export interface MemoryAccessEvent {
   size: 1 | 2 | 4;
   value: number;
   pc: number;
+  kind?: 'read' | 'write';
+  sequence?: number;
+  ppc?: number;
+  sp?: number;
+  sr?: number;
+  timestamp?: number;
+  stack?: string;
 }
 
 /** Callback invoked on traced memory access. */

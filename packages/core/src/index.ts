@@ -39,6 +39,71 @@ export type {
 
 // --- Private Implementation ---
 
+const normalizeTraceAddress = (value: number): number => (value >>> 0) & 0x00ffffff;
+
+const parseBooleanEnv = (value: string | undefined): boolean => {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+};
+
+const env = typeof process !== 'undefined' ? process.env : undefined;
+
+const TRACE_ADDRESSES: ReadonlySet<number> = (() => {
+  const targets = new Set<number>();
+  if (!env) return targets;
+
+  const addToken = (token: string) => {
+    const value = token.trim();
+    if (!value) return;
+    const parsed = value.startsWith('0x') || value.startsWith('0X')
+      ? Number.parseInt(value, 16)
+      : Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) return;
+    targets.add(normalizeTraceAddress(parsed));
+  };
+
+  if (parseBooleanEnv(env.MUSASHI_TRACE_A0)) {
+    addToken('0x00100a80');
+  }
+
+  if (env.MUSASHI_TRACE_ADDRS) {
+    for (const token of env.MUSASHI_TRACE_ADDRS.split(',')) {
+      addToken(token);
+    }
+  }
+
+  return targets;
+})();
+
+const TRACE_INCLUDE_STACK = env ? parseBooleanEnv(env.MUSASHI_TRACE_STACK) : false;
+const TRACE_LEVEL = (env?.MUSASHI_TRACE_LEVEL ?? 'warn').toLowerCase();
+const TRACE_ENABLED = TRACE_ADDRESSES.size > 0;
+
+const TRACE_LOGGER: (payload: unknown) => void = (() => {
+  if (typeof console === 'undefined') {
+    return () => {};
+  }
+  const consoleAny = console as unknown as Record<string, unknown>;
+  let logFn: ((...args: unknown[]) => void) | undefined;
+  const candidate = consoleAny[TRACE_LEVEL];
+  if (typeof candidate === 'function') {
+    logFn = candidate as (...args: unknown[]) => void;
+  } else if (typeof console.warn === 'function') {
+    logFn = (...args: unknown[]) => console.warn(...args);
+  }
+  if (!logFn) {
+    return () => {};
+  }
+  return (payload: unknown) => {
+    try {
+      logFn('[musashi-trace]', payload);
+    } catch {
+      // ignore logging failures
+    }
+  };
+})();
+
 // A map from register names to their numeric index in Musashi.
 const REGISTER_MAP: { [K in keyof CpuRegisters]: M68kRegister } = {
   d0: M68kRegister.D0,
@@ -157,6 +222,7 @@ class SystemImpl implements System {
   };
   private _memReads = new Set<MemoryAccessCallback>();
   private _memWrites = new Set<MemoryAccessCallback>();
+  private _memSequence = 0;
   readonly tracer: Tracer;
 
   constructor(musashi: MusashiWrapper, config: SystemConfig) {
@@ -304,11 +370,11 @@ class SystemImpl implements System {
 
   // Called by MusashiWrapper when the core emits a memory event
   _handleMemoryRead(addr: number, size: 1 | 2 | 4, value: number, pc: number): void {
-    this._dispatchMemoryEvent(this._memReads, { addr, size, value, pc });
+    this._dispatchMemoryEvent(this._memReads, { addr, size, value, pc, kind: 'read' });
   }
 
   _handleMemoryWrite(addr: number, size: 1 | 2 | 4, value: number, pc: number): void {
-    this._dispatchMemoryEvent(this._memWrites, { addr, size, value, pc });
+    this._dispatchMemoryEvent(this._memWrites, { addr, size, value, pc, kind: 'write' });
   }
 
   private _addMemoryListener(
@@ -327,12 +393,70 @@ class SystemImpl implements System {
     listeners: Set<MemoryAccessCallback>,
     event: MemoryAccessEvent
   ): void {
+    const payload = event as MemoryAccessEvent & { sequence?: number };
+    payload.sequence = ++this._memSequence;
+
+    if (TRACE_ENABLED) {
+      this._maybeTraceMemoryEvent(payload);
+    }
+
     if (listeners.size === 0) {
       return;
     }
     for (const cb of listeners) {
-      cb(event);
+      cb(payload);
     }
+  }
+
+  private _maybeTraceMemoryEvent(event: MemoryAccessEvent): void {
+    if (!TRACE_ENABLED) return;
+    const normalizedAddr = normalizeTraceAddress(event.addr);
+    if (!TRACE_ADDRESSES.has(normalizedAddr)) return;
+
+    const ppc = this._musashi.get_reg(M68kRegister.PPC) >>> 0;
+    const sp = this._musashi.get_reg(M68kRegister.A7) >>> 0;
+    const sr = this._musashi.get_reg(M68kRegister.SR) >>> 0;
+
+    const enriched = event as MemoryAccessEvent & {
+      ppc?: number;
+      sp?: number;
+      sr?: number;
+      timestamp?: number;
+      stack?: string;
+    };
+
+    enriched.ppc = ppc;
+    enriched.sp = sp;
+    enriched.sr = sr;
+    enriched.timestamp = Date.now();
+
+    let stack: string | undefined;
+    if (TRACE_INCLUDE_STACK) {
+      stack = new Error('musashi-trace').stack;
+      if (stack) {
+        enriched.stack = stack;
+      }
+    }
+
+    const formatHex = (value: number) => `0x${(value >>> 0).toString(16)}`;
+
+    const payload: Record<string, unknown> = {
+      seq: event.sequence,
+      kind: event.kind ?? 'write',
+      addr: formatHex(normalizedAddr),
+      size: event.size,
+      value: formatHex(event.value),
+      pc: formatHex(normalizeTraceAddress(event.pc)),
+      ppc: formatHex(normalizeTraceAddress(ppc)),
+      sp: formatHex(normalizeTraceAddress(sp)),
+      sr: formatHex(sr),
+    };
+
+    if (TRACE_INCLUDE_STACK && stack) {
+      payload.stack = stack;
+    }
+
+    TRACE_LOGGER(payload);
   }
 
   private _updateMemTraceEnabled(): void {
