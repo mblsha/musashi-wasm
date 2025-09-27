@@ -309,12 +309,20 @@ if(BUILD_TESTS)
         musashi_api
         GTest::gtest_main
     )
-    
+
     # Force fetched gtest headers BEFORE system headers
     if(GTEST_INCLUDES)
         target_include_directories(test_exceptions PRIVATE BEFORE ${GTEST_INCLUDES})
     endif()
-    
+
+    add_executable(fusion_divergence_repro
+        tests/fusion_divergence_repro.cpp
+    )
+
+    target_link_libraries(fusion_divergence_repro
+        musashi_api
+    )
+
     
     # Assemble test program with vasm
     add_custom_command(
@@ -355,15 +363,17 @@ if(BUILD_TESTS)
     gtest_discover_tests(test_vasm_binary)
     gtest_discover_tests(test_fixture_example)
     gtest_discover_tests(test_exceptions)
-    
+
     if(ENABLE_PERFETTO)
         gtest_discover_tests(test_perfetto)
     endif()
-    
+
+    add_test(NAME fusion_divergence_repro COMMAND fusion_divergence_repro)
+
     # Add a custom target to run all tests
     add_custom_target(run_tests
         COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-        DEPENDS test_myfunc test_m68k
+        DEPENDS test_myfunc test_m68k fusion_divergence_repro
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "Running all tests"
     )
