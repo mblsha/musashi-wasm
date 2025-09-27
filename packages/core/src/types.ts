@@ -29,6 +29,8 @@ export interface CpuRegisters {
 /** A function to be executed when a specific address is hit during execution. */
 export type HookCallback = (system: System) => void;
 
+export type MemoryTraceSource = 'core-trace' | 'wrapper-fallback';
+
 /** Memory access event payload for JS callbacks. */
 export interface MemoryAccessEvent {
   addr: number;
@@ -38,6 +40,7 @@ export interface MemoryAccessEvent {
   kind?: 'read' | 'write';
   sequence?: number;
   ppc?: number;
+  source?: MemoryTraceSource;
   sp?: number;
   sr?: number;
   timestamp?: number;
