@@ -26,7 +26,9 @@ constexpr uint32_t kStackBase = 0x0010F300u;
 constexpr uint32_t kRamBase = 0x00100000u;
 constexpr uint32_t kRamSize = 0x00100000u;
 constexpr uint32_t kRomLength = 0x00300000u;
-constexpr uint32_t kReturnVectorByte = 0x00100A80u;
+// First byte written by MOVE.L <abs.l>, -(A0) when A0 starts at 0x00100A80.
+constexpr uint32_t kA0InitialValue = 0x00100A80u;
+constexpr uint32_t kA0WriteFirstByte = kA0InitialValue - 4u;
 
 std::array<uint8_t, kRomLength> g_rom{};
 std::array<uint8_t, kRamSize> g_ram{};
@@ -94,6 +96,7 @@ void InitializeRom() {
   WriteBytes(kCallEntry + 4u, {0x4E, 0xB9, 0x00, 0x05, 0xDC, 0x1C});
   WriteBytes(kCallEntry + 10u, {0x4E, 0x75});
   WriteBytes(kCalleeEntry, {0x30, 0x3C, 0x00, 0x9C});
+  // MOVE.L <abs.l>, -(A0) with source 0x00FFFFFF, resulting in zero being stored.
   WriteBytes(kCalleeEntry + 4u, {0x21, 0xBC, 0xFF, 0xFF, 0xFF, 0xFF});
   WriteBytes(kCalleeEntry + 10u, {0x4E, 0x75});
 }
@@ -113,8 +116,8 @@ void InitializeCpu() {
 
   m68k_set_reg(M68K_REG_A7, kStackBase);
   m68k_set_reg(M68K_REG_SP, kStackBase);
-  m68k_set_reg(M68K_REG_A0, kReturnVectorByte);
-  m68k_set_reg(M68K_REG_A1, kReturnVectorByte);
+  m68k_set_reg(M68K_REG_A0, kA0InitialValue);
+  m68k_set_reg(M68K_REG_A1, kA0InitialValue);
   m68k_set_reg(M68K_REG_D0, 0x0000009Cu);
   m68k_set_reg(M68K_REG_D1, 0);
   m68k_set_reg(M68K_REG_SR, 0x2704u);
@@ -133,8 +136,8 @@ bool StepUntilExitOrWrite(uint32_t target_addr) {
         }
       }
     }
-    const uint32_t pc_raw = static_cast<uint32_t>(m68k_get_reg(nullptr, M68K_REG_PC));
-    if (pc_raw == 0 || (pc_raw & 0xFFFF0000u) == 0xDEAD0000u) {
+    const uint32_t pc = Mask24(static_cast<uint32_t>(m68k_get_reg(nullptr, M68K_REG_PC)));
+    if (pc == 0 || (pc & 0x00FF0000u) == 0x00AD0000u) {
       break;
     }
   }
@@ -149,10 +152,10 @@ class FusionDivergenceTest : public ::testing::Test {
   }
 };
 
-TEST_F(FusionDivergenceTest, EmitsReturnVectorByte) {
-  const bool observed = StepUntilExitOrWrite(kReturnVectorByte);
+TEST_F(FusionDivergenceTest, EmitsA0PredecrementWrite) {
+  const bool observed = StepUntilExitOrWrite(kA0WriteFirstByte);
   EXPECT_TRUE(observed)
-      << "expected write to 0x" << std::hex << kReturnVectorByte << " not observed";
+      << "expected write to 0x" << std::hex << kA0WriteFirstByte << " not observed";
 }
 
 }  // namespace
