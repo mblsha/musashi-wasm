@@ -41,6 +41,12 @@ const { cycles: c1, startPc, endPc } = system.step();
 console.log(`Stepped ${c1} cycles from 0x${startPc.toString(16)} to 0x${endPc.toString(16)}`);
 ```
 
+### Installation Notes
+
+- **Use the npm release for consumption**: the published tarball (`npm install musashi-wasm`) bundles the prebuilt `musashi-wasm/core` and `musashi-wasm/memory` entry points. Those artifacts are intentionally excluded from git, so `npm install musashi-wasm@github:mblsha/musashi-wasm#<sha>` will only produce the raw workspaces and WebAssembly objects.
+- **Need to recreate the bundle locally?** After cloning, run `npm --prefix npm-package run build` (or the full `./run-tests-ci.sh` pipeline) to regenerate `npm-package/lib/**` before testing imports such as `import { createSystem } from 'musashi-wasm/core'`.
+- **Git checkouts are source-first**: the files under `packages/core/dist` are build outputs. They stay untracked so the repository can remain lean for development workflows.
+
 ### Building from Source
 
 ```bash

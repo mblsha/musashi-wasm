@@ -2,6 +2,8 @@
 
 This directory contains TypeScript packages for the M68k emulator with optional Perfetto tracing support.
 
+> **Heads-up:** `musashi-wasm/core` and `musashi-wasm/memory` are distributed prebuilt on npm. Git checkouts only include the TypeScript sources plus the WASM assets; `packages/*/dist` and `npm-package/lib/**` stay untracked by design. To exercise the bundled entrypoints locally, install the published package (`npm install musashi-wasm`) or regenerate the wrapper after cloning via `npm --prefix npm-package run build` / `./run-tests-ci.sh`.
+
 ## Packages
 
 ### musashi-wasm/core
