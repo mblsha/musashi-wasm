@@ -303,34 +303,60 @@ module.exports.default = Musashi;
 `;
 
 // Generate ESM wrapper for standard build (Node + Browser)
-const esmWrapper = `import createModule from '../dist/musashi-loader.mjs';
+const esmWrapper = `const detectRuntime = () => {
+  const globalScope = globalThis;
+  const isBrowser =
+    typeof globalScope.importScripts === 'function' ||
+    typeof globalScope.navigator === 'object' ||
+    'document' in globalScope ||
+    'window' in globalScope;
+  const isNode =
+    typeof globalScope.process !== 'undefined' &&
+    globalScope.process?.release?.name === 'node';
+  return isNode && !isBrowser ? 'node' : 'browser';
+};
+
+const runtime = detectRuntime();
 
 let Module = null;
 let modulePromise = null;
 
-async function loadMusashi() {
-  if (modulePromise) return modulePromise;
-  
-  modulePromise = new Promise(async (resolve, reject) => {
-    try {
-      const isNode = typeof process !== 'undefined' && !!process.versions?.node;
-      const wasmUrl = new URL('../dist/musashi.wasm', import.meta.url);
-      let wasmPath;
-      if (isNode) {
-        const { fileURLToPath } = await import('url');
-        wasmPath = fileURLToPath(wasmUrl);
-      } else {
-        wasmPath = wasmUrl.href;
-      }
-      const locateFile = (p) => p.endsWith('.wasm') ? wasmPath : p;
-
-      const EmscriptenModule = createModule;
-      EmscriptenModule({ locateFile, onRuntimeInitialized() { Module = this; resolve(this); } });
-    } catch (error) {
-      reject(error);
+async function instantiateNode() {
+  const [{ default: createModule }, { fileURLToPath }] = await Promise.all([
+    import('../dist/musashi-loader.mjs'),
+    import('url')
+  ]);
+  const wasmUrl = new URL('../dist/musashi.wasm', import.meta.url);
+  const wasmPath = fileURLToPath(wasmUrl);
+  return createModule({
+    locateFile(path) {
+      return path.endsWith('.wasm') ? wasmPath : path;
     }
   });
-  
+}
+
+async function instantiateBrowser() {
+  const { default: createModule } = await import('../musashi.out.mjs');
+  return createModule();
+}
+
+async function loadMusashi() {
+  if (Module) return Module;
+
+  if (!modulePromise) {
+    modulePromise = (async () => {
+      const instantiatedModule = runtime === 'node'
+        ? await instantiateNode()
+        : await instantiateBrowser();
+      Module = instantiatedModule;
+      return instantiatedModule;
+    })();
+
+    modulePromise.catch(() => {
+      modulePromise = null;
+    });
+  }
+
   return modulePromise;
 }
 
@@ -633,6 +659,22 @@ const nodeModuleOut = path.join(rootDir, 'musashi-node.out.mjs');
 const nodeWasmOut = path.join(rootDir, 'musashi-node.out.wasm');
 const nodeWasmMapOut = path.join(rootDir, 'musashi-node.out.wasm.map');
 
+const browserJsCandidates = [
+  path.join(rootDir, 'musashi.out.mjs'),
+  path.join(altRootDir, 'musashi.out.mjs')
+];
+const browserWasmCandidates = [
+  path.join(rootDir, 'musashi.out.wasm'),
+  path.join(altRootDir, 'musashi.out.wasm')
+];
+const browserWasmMapCandidates = [
+  path.join(rootDir, 'musashi.out.wasm.map'),
+  path.join(altRootDir, 'musashi.out.wasm.map')
+];
+const browserModuleOut = path.join(rootDir, 'musashi.out.mjs');
+const browserWasmOut = path.join(rootDir, 'musashi.out.wasm');
+const browserWasmMapOut = path.join(rootDir, 'musashi.out.wasm.map');
+
 const nodeJsIn = nodeJsCandidates.find(p => fs.existsSync(p));
 const nodeWasmIn = nodeWasmCandidates.find(p => fs.existsSync(p));
 const nodeWasmMapIn = nodeWasmMapCandidates.find(p => fs.existsSync(p));
@@ -665,6 +707,30 @@ if (nodeWasmMapIn) {
   });
 }
 
+const browserJsIn = browserJsCandidates.find(p => fs.existsSync(p));
+const browserWasmIn = browserWasmCandidates.find(p => fs.existsSync(p));
+const browserWasmMapIn = browserWasmMapCandidates.find(p => fs.existsSync(p));
+
+if (!browserJsIn || !browserWasmIn) {
+  throw new Error('Missing musashi browser build artifacts. Run `./build.sh` before packaging.');
+}
+
+if (browserJsIn !== browserModuleOut) {
+  fs.copyFileSync(browserJsIn, browserModuleOut);
+}
+
+if (browserWasmIn !== browserWasmOut) {
+  fs.copyFileSync(browserWasmIn, browserWasmOut);
+}
+
+if (browserWasmMapIn) {
+  if (browserWasmMapIn !== browserWasmMapOut) {
+    fs.copyFileSync(browserWasmMapIn, browserWasmMapOut);
+  }
+} else if (fs.existsSync(browserWasmMapOut)) {
+  fs.rmSync(browserWasmMapOut);
+}
+
 const coreOutDir = await bundleCoreRuntime();
 stageCoreAssets(coreOutDir);
 await bundleMemoryHelpers();
@@ -675,34 +741,53 @@ await bundleMemoryHelpers();
 fs.writeFileSync(path.join(libDir, 'index.mjs'), esmWrapper);
 
 // Generate ESM wrapper for perfetto (Node + Browser; saveTrace only in Node)
-const perfettoEsmWrapper = `import createModule from '../dist/musashi-perfetto-loader.mjs';
+const perfettoEsmWrapper = `const detectRuntime = () => {
+  const globalScope = globalThis;
+  const isBrowser =
+    typeof globalScope.importScripts === 'function' ||
+    typeof globalScope.navigator === 'object' ||
+    'document' in globalScope ||
+    'window' in globalScope;
+  const isNode =
+    typeof globalScope.process !== 'undefined' &&
+    globalScope.process?.release?.name === 'node';
+  return isNode && !isBrowser ? 'node' : 'browser';
+};
+
+const runtime = detectRuntime();
 
 let Module = null;
 let modulePromise = null;
 
-async function loadMusashiPerfetto() {
-  if (modulePromise) return modulePromise;
-  
-  modulePromise = new Promise(async (resolve, reject) => {
-    try {
-      const isNode = typeof process !== 'undefined' && !!process.versions?.node;
-      const wasmUrl = new URL('../dist/musashi-perfetto.wasm', import.meta.url);
-      let wasmPath;
-      if (isNode) {
-        const { fileURLToPath } = await import('url');
-        wasmPath = fileURLToPath(wasmUrl);
-      } else {
-        wasmPath = wasmUrl.href;
-      }
-      const locateFile = (p) => p.endsWith('.wasm') ? wasmPath : p;
-
-      const EmscriptenModule = createModule;
-      EmscriptenModule({ locateFile, onRuntimeInitialized() { Module = this; resolve(this); } });
-    } catch (error) {
-      reject(error);
+async function instantiateNode() {
+  const [{ default: createModule }, { fileURLToPath }] = await Promise.all([
+    import('../dist/musashi-perfetto-loader.mjs'),
+    import('url')
+  ]);
+  const wasmUrl = new URL('../dist/musashi-perfetto.wasm', import.meta.url);
+  const wasmPath = fileURLToPath(wasmUrl);
+  return createModule({
+    locateFile(path) {
+      return path.endsWith('.wasm') ? wasmPath : path;
     }
   });
-  
+}
+
+async function loadMusashiPerfetto() {
+  if (Module) return Module;
+  if (runtime !== 'node') {
+    throw new Error('MusashiPerfetto is only available in Node.js environments.');
+  }
+  if (!modulePromise) {
+    modulePromise = (async () => {
+      const instantiatedModule = await instantiateNode();
+      Module = instantiatedModule;
+      return instantiatedModule;
+    })();
+    modulePromise.catch(() => {
+      modulePromise = null;
+    });
+  }
   return modulePromise;
 }
 
