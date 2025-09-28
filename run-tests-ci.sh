@@ -60,4 +60,15 @@ if ! timeout 30 node npm-package/test/integration.mjs; then
   exit $rc
 fi
 
+echo "Running npm-package browser smoke test (60s timeout)..."
+if ! timeout 60 npm --prefix npm-package run test:browser; then
+  rc=$?
+  if [[ $rc -eq 124 ]]; then
+    echo "npm-package browser smoke test timed out after 60s" >&2
+  else
+    echo "npm-package browser smoke test failed with exit code ${rc}" >&2
+  fi
+  exit $rc
+fi
+
 echo "All tests completed"

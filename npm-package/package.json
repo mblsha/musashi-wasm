@@ -7,6 +7,9 @@
     "dist/**",
     "lib/**",
     "perf.mjs",
+    "musashi.out.mjs",
+    "musashi.out.wasm",
+    "musashi.out.wasm.map",
     "musashi-node.out.mjs",
     "musashi-node.out.wasm",
     "musashi-node.out.wasm.map",
@@ -43,6 +46,9 @@
       "import": "./lib/memory/index.js",
       "types": "./lib/memory/index.d.ts"
     },
+    "./musashi.out.mjs": "./musashi.out.mjs",
+    "./musashi.out.wasm": "./musashi.out.wasm",
+    "./musashi.out.wasm.map": "./musashi.out.wasm.map",
     "./musashi-node.out.mjs": "./musashi-node.out.mjs",
     "./musashi-node.out.wasm": "./musashi-node.out.wasm",
     "./musashi-node.out.wasm.map": "./musashi-node.out.wasm.map"
@@ -73,7 +79,8 @@
   ,
   "scripts": {
     "build": "node ./scripts/generate-wrapper.js",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "test:browser": "playwright test"
   },
   "dependencies": {},
   "publishConfig": {

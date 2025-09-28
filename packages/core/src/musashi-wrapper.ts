@@ -8,6 +8,30 @@ import type { MemoryLayout, MemoryTraceSource } from './types.js';
 
 const mask24 = (value: number): number => (value >>> 0) & 0x00ffffff;
 
+type RuntimeTag = 'node' | 'browser';
+
+const detectRuntime = (): RuntimeTag => {
+  const scope = globalThis as typeof globalThis & {
+    process?: NodeJS.Process;
+    navigator?: { userAgent?: string };
+    importScripts?: unknown;
+    document?: unknown;
+    window?: unknown;
+  };
+
+  const isNodeProcess =
+    typeof scope.process !== 'undefined' &&
+    scope.process?.release?.name === 'node';
+
+  const isBrowserLike =
+    typeof scope.importScripts === 'function' ||
+    typeof scope.navigator?.userAgent === 'string' ||
+    typeof scope.document === 'object' ||
+    typeof scope.window === 'object';
+
+  return isNodeProcess && !isBrowserLike ? 'node' : 'browser';
+};
+
 export interface MusashiEmscriptenModule {
   _my_initialize(): boolean;
   _add_pc_hook_addr(addr: number): void;
@@ -737,8 +761,8 @@ export class MusashiWrapper {
 // Factory function to load and initialize the wasm module
 export async function getModule(): Promise<MusashiWrapper> {
   // Environment detection without DOM types
-  const isNode =
-    typeof process !== 'undefined' && !!process.versions?.node;
+  const runtime = detectRuntime();
+  const isNode = runtime === 'node';
 
   // Dynamic import based on environment
   let module: unknown;
