@@ -472,6 +472,32 @@ export class MusashiWrapper {
     }
   }
 
+  readRaw8(address: number): number {
+    const addr = address >>> 0;
+    if (!this.isAccessWithinMemory(addr, 1)) {
+      return 0;
+    }
+    return this._memory[addr] & 0xff;
+  }
+
+  writeRaw8(address: number, value: number): void {
+    const addr = address >>> 0;
+    if (!this.isAccessWithinMemory(addr, 1)) {
+      return;
+    }
+    const byte = value & 0xff;
+    this._memory[addr] = byte;
+
+    const window = this.findRamWindowForAddress(addr);
+    if (!window) {
+      return;
+    }
+    const ramIndex = (window.offset + (addr - window.start)) >>> 0;
+    if (ramIndex < this._system.ram.length) {
+      this._system.ram[ramIndex] = byte;
+    }
+  }
+
   // --- Memory Trace Hook Bridge ---
   // Enable/disable forwarding of core memory trace events to SystemImpl
   setMemoryTraceEnabled(enable: boolean): void {
