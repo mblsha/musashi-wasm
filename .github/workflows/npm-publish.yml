@@ -218,6 +218,12 @@ jobs:
             cp ci-artifacts/wasm-modules/musashi-universal.out.wasm.map musashi.out.wasm.map
           fi
 
+          cp musashi.out.mjs  npm-package/musashi.out.mjs
+          cp musashi.out.wasm npm-package/musashi.out.wasm
+          if [ -f musashi.out.wasm.map ]; then
+            cp musashi.out.wasm.map npm-package/musashi.out.wasm.map
+          fi
+
           echo "Verifying staged WASM artifacts..."
           for file in musashi.wasm musashi-loader.mjs musashi-perfetto.wasm musashi-perfetto-loader.mjs; do
             if [ ! -f "npm-package/dist/$file" ]; then
@@ -245,6 +251,14 @@ jobs:
               exit 1
             fi
             echo "✓ $file ($(stat -c%s "$file") bytes)"
+          done
+
+          for file in musashi.out.mjs musashi.out.wasm; do
+            if [ ! -f "npm-package/$file" ]; then
+              echo "ERROR: Missing required browser artifact in npm-package: $file"
+              exit 1
+            fi
+            echo "✓ npm-package/$file ($(stat -c%s "npm-package/$file") bytes)"
           done
 
           echo "Rebuilding npm-package wrapper to stage core runtime..."
