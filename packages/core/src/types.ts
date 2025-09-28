@@ -155,6 +155,18 @@ export interface System {
   /** Writes an unsigned integer to the system's memory space. */
   write(address: number, size: 1 | 2 | 4, value: number): void;
 
+  /**
+   * Reads a single byte from unified memory without invoking region translation or callbacks.
+   * Values are returned as 0-255 and addresses are interpreted modulo 24 bits.
+   */
+  readRaw8(address: number): number;
+
+  /**
+   * Writes a single byte directly into unified memory without triggering callbacks or traces.
+   * Useful for mirroring host-side mutations into the core's RAM buffer.
+   */
+  writeRaw8(address: number, value: number): void;
+
   /** Reads a block of memory into a new byte array. */
   readBytes(address: number, length: number): Uint8Array;
 

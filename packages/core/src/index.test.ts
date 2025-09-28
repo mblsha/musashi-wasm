@@ -93,6 +93,39 @@ describe('@m68k/core', () => {
     expect(system.read(ramBase + 6, 2)).toBe(0xcdef);
   });
 
+  it('provides raw byte helpers without triggering trace callbacks', () => {
+    const ramBase = 0x100000;
+    const addr = ramBase + 0x20;
+    const writes: unknown[] = [];
+    const writesStop = system.onMemoryWrite(evt => {
+      writes.push(evt);
+    });
+    const reads: unknown[] = [];
+    const readsStop = system.onMemoryRead(evt => {
+      reads.push(evt);
+    });
+
+    expect(system.readRaw8(addr)).toBe(0);
+    expect(reads).toHaveLength(0);
+
+    system.writeRaw8(addr, 0x5a);
+    expect(system.readRaw8(addr)).toBe(0x5a);
+    expect(reads).toHaveLength(0);
+    expect(writes).toHaveLength(0);
+
+    readsStop();
+
+    expect(system.read(addr, 1)).toBe(0x5a);
+    expect(system.readBytes(addr, 1)[0]).toBe(0x5a);
+
+    const outside = 0x400000;
+    system.writeRaw8(outside, 0xaa);
+    expect(system.readRaw8(outside)).toBe(0);
+    expect(writes).toHaveLength(0);
+
+    writesStop();
+  });
+
   it('handles unsigned 32-bit values correctly', () => {
     const ramBase = 0x100000;
     const value = 0xf2345678;

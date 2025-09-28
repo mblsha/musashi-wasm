@@ -258,6 +258,14 @@ class SystemImpl implements System {
     this._musashi.write_memory(address, size, value);
   }
 
+  readRaw8(address: number): number {
+    return this._musashi.readRaw8(address);
+  }
+
+  writeRaw8(address: number, value: number): void {
+    this._musashi.writeRaw8(address, value);
+  }
+
   readBytes(address: number, length: number): Uint8Array {
     const buffer = new Uint8Array(length);
     for (let i = 0; i < length; i++) {
