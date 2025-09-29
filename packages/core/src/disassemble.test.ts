@@ -1,42 +1,48 @@
-import { createSystem } from './index';
+import { createSystem } from './index.js';
+import type { System } from './types.js';
 
 describe('disassembly helpers', () => {
-  let sys: any;
+  let sys: System | undefined;
 
   afterEach(() => {
-    if (sys && typeof sys.cleanup === 'function') sys.cleanup();
-    sys = undefined;
+    if (sys) {
+      sys.cleanup();
+      sys = undefined;
+    }
   });
 
   it('disassembles a NOP at 0x400', async () => {
     const rom = new Uint8Array(0x2000);
-    sys = await createSystem({ rom, ramSize: 0x10000 });
+    const system = await createSystem({ rom, ramSize: 0x10000 });
+    sys = system;
 
     // Place a NOP (0x4E71) at the reset PC (0x00000400)
-    sys.write(0x400, 1, 0x4e);
-    sys.write(0x401, 1, 0x71);
+    system.write(0x400, 1, 0x4e);
+    system.write(0x401, 1, 0x71);
 
-    const line = sys.disassemble(0x400);
+    const line = system.disassemble(0x400);
     expect(line).toBe('nop');
   });
 
   it('disassembles a short sequence', async () => {
     const rom = new Uint8Array(0x2000);
-    sys = await createSystem({ rom, ramSize: 0x10000 });
+    const system = await createSystem({ rom, ramSize: 0x10000 });
+    sys = system;
 
     // Sequence: NOP (0x4E71), RTS (0x4E75)
-    sys.write(0x600, 1, 0x4e);
-    sys.write(0x601, 1, 0x71);
-    sys.write(0x602, 1, 0x4e);
-    sys.write(0x603, 1, 0x75);
+    system.write(0x600, 1, 0x4e);
+    system.write(0x601, 1, 0x71);
+    system.write(0x602, 1, 0x4e);
+    system.write(0x603, 1, 0x75);
 
-    expect(sys.disassemble(0x600)).toBe('nop');
-    expect(sys.disassemble(0x602)).toBe('rts');
+    expect(system.disassemble(0x600)).toBe('nop');
+    expect(system.disassemble(0x602)).toBe('rts');
   });
 
   it('disassembles complex instructions and formats text lines', async () => {
     const rom = new Uint8Array(0x4000);
-    sys = await createSystem({ rom, ramSize: 0x20000 });
+    const system = await createSystem({ rom, ramSize: 0x20000 });
+    sys = system;
 
     const cases: Array<{ addr: number; bytes: number[]; expect: string | string[] }> = [
       { addr: 0x0800, bytes: [0x73, 0x7f], expect: ['moveq   #$7f, D3', 'dc.w $737f; ILLEGAL'] },
@@ -51,8 +57,8 @@ describe('disassembly helpers', () => {
     ];
 
     for (const tc of cases) {
-      for (let i = 0; i < tc.bytes.length; i++) sys.write(tc.addr + i, 1, tc.bytes[i]);
-      const line = sys.disassemble(tc.addr);
+      for (let i = 0; i < tc.bytes.length; i++) system.write(tc.addr + i, 1, tc.bytes[i]);
+      const line = system.disassemble(tc.addr);
       if (Array.isArray(tc.expect)) {
         expect(tc.expect).toContain(line);
       } else {
