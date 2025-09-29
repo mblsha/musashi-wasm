@@ -128,6 +128,15 @@ enum class HookResult : int { Continue = 0, Break = 1 };
 enum class BreakReason : int { None = 0, Trace = 1, InstrHook = 2, JsHook = 3, Sentinel = 4, Step = 5 };
 static BreakReason _last_break_reason = BreakReason::None;
 
+static inline HookResult finalize_break_request(BreakReason reason, bool allow_break) {
+  _last_break_reason = reason;
+  if (allow_break) {
+    m68k_end_timeslice();
+    return HookResult::Break;
+  }
+  return HookResult::Continue;
+}
+
 // Single-step control state
 enum class StepState : int { Idle = 0, Arm = 1, BreakNext = 2 };
 static StepState _step_state = StepState::Idle;
@@ -163,24 +172,14 @@ static inline HookResult processHooks(const HookContext& ctx, bool allow_break) 
   // Trace first
   int trace_result = m68k_trace_instruction_hook(ctx.pc, (uint16_t)ctx.ir, (int)ctx.cycles);
   if (trace_result != 0) {
-    _last_break_reason = BreakReason::Trace;
-    if (allow_break) {
-      m68k_end_timeslice();
-      return HookResult::Break;
-    }
-    return HookResult::Continue;
+    return finalize_break_request(BreakReason::Trace, allow_break);
   }
 
   // Full instruction hook
   if (_instr_hook) {
     int result = _instr_hook(ctx.pc, ctx.ir, ctx.cycles);
     if (result != 0) {
-      _last_break_reason = BreakReason::InstrHook;
-      if (allow_break) {
-        m68k_end_timeslice();
-        return HookResult::Break;
-      }
-      return HookResult::Continue;
+      return finalize_break_request(BreakReason::InstrHook, allow_break);
     }
   }
 
@@ -196,12 +195,7 @@ static inline HookResult processHooks(const HookContext& ctx, bool allow_break) 
                ctx.pc, _exec_session.sentinel_pc);
       }
     }
-    _last_break_reason = BreakReason::JsHook;
-    if (allow_break) {
-      m68k_end_timeslice();
-      return HookResult::Break;
-    }
-    return HookResult::Continue;
+    return finalize_break_request(BreakReason::JsHook, allow_break);
   }
 
   // End if we hit the sentinel
