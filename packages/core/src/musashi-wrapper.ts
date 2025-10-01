@@ -418,6 +418,21 @@ export class MusashiWrapper {
     return undefined;
   }
 
+  private getTraceRegisters(
+    options?: { fallbackPc?: number }
+  ): { pc: number; ppc: number } {
+    const pc = mask24(this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0);
+    let ppc = pc;
+    try {
+      ppc = mask24(this._module._m68k_get_reg(0, M68kRegister.PPC) >>> 0);
+    } catch {
+      if (options?.fallbackPc !== undefined) {
+        ppc = mask24(options.fallbackPc >>> 0);
+      }
+    }
+    return { pc, ppc };
+  }
+
   private isAccessWithinMemory(address: number, size: 1 | 2 | 4): boolean {
     const addr = address >>> 0;
     if (addr >= this._memory.length) return false;
@@ -448,13 +463,7 @@ export class MusashiWrapper {
     }
 
     if (!this._traceAvailable) {
-      const pc = mask24(this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0);
-      let ppc = pc;
-      try {
-        ppc = mask24(this._module._m68k_get_reg(0, M68kRegister.PPC) >>> 0);
-      } catch {
-        ppc = pc;
-      }
+      const { pc, ppc } = this.getTraceRegisters();
       this._system._handleMemoryRead?.(addr >>> 0, size, result >>> 0, pc, ppc, 'wrapper-fallback');
     }
 
@@ -485,13 +494,7 @@ export class MusashiWrapper {
     }
 
     if (!this._traceAvailable) {
-      const pc = mask24(this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0);
-      let ppc = pc;
-      try {
-        ppc = mask24(this._module._m68k_get_reg(0, M68kRegister.PPC) >>> 0);
-      } catch {
-        ppc = pc;
-      }
+      const { pc, ppc } = this.getTraceRegisters();
       this._system._handleMemoryWrite?.(addr >>> 0, size, maskedValue, pc, ppc, 'wrapper-fallback');
     }
   }
@@ -533,7 +536,7 @@ export class MusashiWrapper {
       if (!this._memTraceFunc) {
         const makeCb = () => (
           type: number,
-          pc: number,
+          pcParam: number,
           addr: number,
           value: number,
           size: number,
@@ -542,13 +545,8 @@ export class MusashiWrapper {
           const s = (size | 0) as 1 | 2 | 4;
           const a = addr >>> 0;
           const v = value >>> 0;
-          const p = mask24(pc >>> 0);
-          let ppc = p;
-          try {
-            ppc = mask24(this._module._m68k_get_reg(0, M68kRegister.PPC) >>> 0);
-          } catch {
-            ppc = p;
-          }
+          const p = mask24(pcParam >>> 0);
+          const { ppc } = this.getTraceRegisters({ fallbackPc: p });
 
           if (type === 0) {
             this._system._handleMemoryRead?.(a, s, v, p, ppc, 'core-trace');
