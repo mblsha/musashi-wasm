@@ -1,15 +1,15 @@
 import { createSystem } from './index.js';
-import type { MemoryAccessEvent } from './types.js';
+import type { MemoryAccessEvent, System } from './types.js';
 
 function hex(n: number) {
   return '0x' + (n >>> 0).toString(16).padStart(8, '0');
 }
 
 describe('Memory trace for absolute long accesses (read path)', () => {
-  let sys: any;
+  let sys: System | undefined;
 
   afterEach(() => {
-    if (sys && typeof sys.cleanup === 'function') sys.cleanup();
+    sys?.cleanup();
     sys = undefined;
   });
 
@@ -25,20 +25,26 @@ describe('Memory trace for absolute long accesses (read path)', () => {
     rom.set([0x20, 0x39, 0x00, 0x10, 0x6e, 0x80], 0x41c);
 
     sys = await createSystem({ rom, ramSize: 0x100000 });
-    sys.setRegister('sr', 0x2704);
-    sys.setRegister('sp', 0x10f300);
-    sys.setRegister('a0', 0x100a80);
-    sys.setRegister('pc', 0x416);
+    const system = sys;
+
+    if (!system) {
+      throw new Error('Failed to initialize system for memory trace test');
+    }
+
+    system.setRegister('sr', 0x2704);
+    system.setRegister('sp', 0x10f300);
+    system.setRegister('a0', 0x100a80);
+    system.setRegister('pc', 0x416);
 
     const reads: MemoryAccessEvent[] = [];
     const writes: MemoryAccessEvent[] = [];
 
-    const offR = sys.onMemoryRead((e: MemoryAccessEvent) => reads.push(e));
-    const offW = sys.onMemoryWrite((e: MemoryAccessEvent) => writes.push(e));
+    const offR = system.onMemoryRead((e: MemoryAccessEvent) => reads.push(e));
+    const offW = system.onMemoryWrite((e: MemoryAccessEvent) => writes.push(e));
 
     // Execute two instructions
-    await sys.step(); // @ 0x416
-    await sys.step(); // @ 0x41c
+    await system.step(); // @ 0x416
+    await system.step(); // @ 0x41c
 
     offR?.();
     offW?.();
