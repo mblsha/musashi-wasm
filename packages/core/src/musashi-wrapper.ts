@@ -448,13 +448,7 @@ export class MusashiWrapper {
     }
 
     if (!this._traceAvailable) {
-      const pc = mask24(this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0);
-      let ppc = pc;
-      try {
-        ppc = mask24(this._module._m68k_get_reg(0, M68kRegister.PPC) >>> 0);
-      } catch {
-        ppc = pc;
-      }
+      const { pc, ppc } = this.getCurrentPcAndPpc();
       this._system._handleMemoryRead?.(addr >>> 0, size, result >>> 0, pc, ppc, 'wrapper-fallback');
     }
 
@@ -485,15 +479,20 @@ export class MusashiWrapper {
     }
 
     if (!this._traceAvailable) {
-      const pc = mask24(this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0);
-      let ppc = pc;
-      try {
-        ppc = mask24(this._module._m68k_get_reg(0, M68kRegister.PPC) >>> 0);
-      } catch {
-        ppc = pc;
-      }
+      const { pc, ppc } = this.getCurrentPcAndPpc();
       this._system._handleMemoryWrite?.(addr >>> 0, size, maskedValue, pc, ppc, 'wrapper-fallback');
     }
+  }
+
+  private getCurrentPcAndPpc(): { pc: number; ppc: number } {
+    const pc = mask24(this._module._m68k_get_reg(0, M68kRegister.PC) >>> 0);
+    let ppc = pc;
+    try {
+      ppc = mask24(this._module._m68k_get_reg(0, M68kRegister.PPC) >>> 0);
+    } catch {
+      ppc = pc;
+    }
+    return { pc, ppc };
   }
 
   readRaw8(address: number): number {
