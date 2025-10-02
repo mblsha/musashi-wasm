@@ -7,33 +7,61 @@ extern "C" {
     void my_write_memory(unsigned int address, int size, unsigned int value);
 }
 
+namespace {
+
 static inline uint32_t addr24(uint32_t a) { return a & 0x00FFFFFFu; }
+
+template <unsigned int Size>
+constexpr unsigned int mask_for_size() {
+    static_assert(Size == 1 || Size == 2 || Size == 4, "Unsupported access size");
+    if constexpr (Size == 1) {
+        return 0xFFu;
+    } else if constexpr (Size == 2) {
+        return 0xFFFFu;
+    } else {
+        return 0xFFFFFFFFu;
+    }
+}
+
+template <unsigned int Size>
+unsigned int read_memory(unsigned int address) {
+    static_assert(Size == 1 || Size == 2 || Size == 4, "Unsupported access size");
+    return my_read_memory(addr24(address), Size);
+}
+
+template <unsigned int Size>
+void write_memory(unsigned int address, unsigned int value) {
+    static_assert(Size == 1 || Size == 2 || Size == 4, "Unsupported access size");
+    my_write_memory(addr24(address), Size, value & mask_for_size<Size>());
+}
+
+}  // namespace
 
 extern "C" {
 
 // ---- Data read/write callbacks ----
-unsigned int m68k_read_memory_8(unsigned int address) { 
-    return my_read_memory(addr24(address), 1); 
+unsigned int m68k_read_memory_8(unsigned int address) {
+    return read_memory<1>(address);
 }
 
-unsigned int m68k_read_memory_16(unsigned int address) { 
-    return my_read_memory(addr24(address), 2); 
+unsigned int m68k_read_memory_16(unsigned int address) {
+    return read_memory<2>(address);
 }
 
-unsigned int m68k_read_memory_32(unsigned int address) { 
-    return my_read_memory(addr24(address), 4); 
+unsigned int m68k_read_memory_32(unsigned int address) {
+    return read_memory<4>(address);
 }
 
-void m68k_write_memory_8(unsigned int address, unsigned int value) { 
-    my_write_memory(addr24(address), 1, value & 0xFFu); 
+void m68k_write_memory_8(unsigned int address, unsigned int value) {
+    write_memory<1>(address, value);
 }
 
-void m68k_write_memory_16(unsigned int address, unsigned int value) { 
-    my_write_memory(addr24(address), 2, value & 0xFFFFu); 
+void m68k_write_memory_16(unsigned int address, unsigned int value) {
+    write_memory<2>(address, value);
 }
 
-void m68k_write_memory_32(unsigned int address, unsigned int value) { 
-    my_write_memory(addr24(address), 4, value); 
+void m68k_write_memory_32(unsigned int address, unsigned int value) {
+    write_memory<4>(address, value);
 }
 
 // Predecrement write for move.l with -(An) destination
