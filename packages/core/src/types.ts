@@ -128,9 +128,9 @@ export interface Tracer {
   /**
    * Stops the current tracing session and returns the captured data.
    * Throws an error if no session is active.
-   * @returns A promise that resolves to the trace data as a `Uint8Array`.
+   * @returns The trace data as a `Uint8Array`.
    */
-    stop(): Uint8Array;
+  stop(): Uint8Array;
 
   /**
    * Registers a map of addresses to function names. These names will appear
@@ -180,8 +180,8 @@ export interface System {
   setRegister<K extends keyof CpuRegisters>(register: K, value: number): void;
 
   /**
-   * Executes a native subroutine at the given address. The promise resolves
-   * when the subroutine returns (e.g., via an RTS instruction).
+   * Executes a native subroutine at the given address and returns when the
+   * subroutine completes (e.g., via an RTS instruction).
    * @returns The number of CPU cycles executed.
    */
   call(address: number): number;
