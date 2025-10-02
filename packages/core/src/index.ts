@@ -217,7 +217,6 @@ class TracerImpl implements Tracer {
 class SystemImpl implements System {
   private _musashi: MusashiWrapper;
   readonly ram: Uint8Array;
-  private _rom: Uint8Array;
   private _hooks = {
     probes: new Map<number, HookCallback>(),
     overrides: new Map<number, HookCallback>(),
@@ -229,7 +228,6 @@ class SystemImpl implements System {
 
   constructor(musashi: MusashiWrapper, config: SystemConfig) {
     this._musashi = musashi;
-    this._rom = config.rom;
     this.ram = new Uint8Array(config.ramSize);
     this.tracer = new TracerImpl(musashi);
 
