@@ -42,6 +42,7 @@ export type {
 // --- Private Implementation ---
 
 const normalizeTraceAddress = (value: number): number => (value >>> 0) & 0x00ffffff;
+const formatTraceHex = (value: number): string => `0x${(value >>> 0).toString(16)}`;
 
 const parseBooleanEnv = (value: string | undefined): boolean => {
   if (!value) return false;
@@ -462,18 +463,16 @@ class SystemImpl implements System {
       }
     }
 
-    const formatHex = (value: number) => `0x${(value >>> 0).toString(16)}`;
-
     const payload: Record<string, unknown> = {
       seq: event.sequence,
       kind: event.kind ?? 'write',
-      addr: formatHex(normalizedAddr),
+      addr: formatTraceHex(normalizedAddr),
       size: event.size,
-      value: formatHex(event.value),
-      pc: formatHex(normalizeTraceAddress(event.pc)),
-      ppc: formatHex(normalizeTraceAddress(ppc)),
-      sp: formatHex(normalizeTraceAddress(sp)),
-      sr: formatHex(sr),
+      value: formatTraceHex(event.value),
+      pc: formatTraceHex(normalizeTraceAddress(event.pc)),
+      ppc: formatTraceHex(normalizeTraceAddress(ppc)),
+      sp: formatTraceHex(normalizeTraceAddress(sp)),
+      sr: formatTraceHex(sr),
     };
 
     if (TRACE_INCLUDE_STACK && stack) {
