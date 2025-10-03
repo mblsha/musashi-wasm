@@ -6,32 +6,44 @@
 static uint32_t memory[0x100000/4];  // 1MB memory
 
 /* Memory access callbacks */
+static inline uint32_t mask_address(unsigned int address) {
+    return address & 0xFFFFF;
+}
+
+static inline uint8_t* memory_bytes(void) {
+    return (uint8_t*)memory;
+}
+
+static inline uint8_t read_byte(unsigned int address) {
+    return memory_bytes()[mask_address(address)];
+}
+
+static inline void write_byte(unsigned int address, uint8_t value) {
+    memory_bytes()[mask_address(address)] = value;
+}
+
 unsigned int read_memory_8(unsigned int address) {
-    return ((uint8_t*)memory)[address & 0xFFFFF];
+    return read_byte(address);
 }
 
 unsigned int read_memory_16(unsigned int address) {
-    address &= 0xFFFFF;
-    return (read_memory_8(address) << 8) | read_memory_8(address + 1);
+    return (read_byte(address) << 8) | read_byte(address + 1);
 }
 
 unsigned int read_memory_32(unsigned int address) {
-    address &= 0xFFFFF;
     return (read_memory_16(address) << 16) | read_memory_16(address + 2);
 }
 
 void write_memory_8(unsigned int address, unsigned int value) {
-    ((uint8_t*)memory)[address & 0xFFFFF] = value;
+    write_byte(address, (uint8_t)(value & 0xFF));
 }
 
 void write_memory_16(unsigned int address, unsigned int value) {
-    address &= 0xFFFFF;
-    write_memory_8(address, (value >> 8) & 0xFF);
-    write_memory_8(address + 1, value & 0xFF);
+    write_byte(address, (uint8_t)((value >> 8) & 0xFF));
+    write_byte(address + 1, (uint8_t)(value & 0xFF));
 }
 
 void write_memory_32(unsigned int address, unsigned int value) {
-    address &= 0xFFFFF;
     write_memory_16(address, (value >> 16) & 0xFFFF);
     write_memory_16(address + 2, value & 0xFFFF);
 }
