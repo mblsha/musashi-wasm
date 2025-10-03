@@ -260,5 +260,24 @@ describe('@m68k/memory', () => {
         new Uint8Array([0x4c, 0x6f, 0x6e, 0x00])
       );
     });
+
+    test('should guard against out-of-range reads and writes', () => {
+      const data = new Uint8Array([0x01, 0x02, 0x03]);
+
+      expect(() => DataParser.readUint32BE(data, 0)).toThrow(RangeError);
+      expect(() => DataParser.writeUint16BE(data, 2, 0xffff)).toThrow(
+        RangeError
+      );
+      expect(() => DataParser.readCString(data, 4)).toThrow(RangeError);
+    });
+
+    test('should require capacity for CString terminator', () => {
+      const data = new Uint8Array(2);
+
+      expect(() => DataParser.writeCString(data, 'abc', 0, 0)).toThrow(
+        'CString region must be at least 1 byte to include a terminator'
+      );
+      expect(() => DataParser.writeCString(data, 'abc', 2)).toThrow(RangeError);
+    });
   });
 });
