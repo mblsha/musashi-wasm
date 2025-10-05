@@ -419,8 +419,10 @@ class SystemImpl implements System {
     listeners: Set<MemoryAccessCallback>,
     event: MemoryAccessEvent
   ): void {
-    const payload = event as MemoryAccessEvent & { sequence?: number };
-    payload.sequence = ++this._memSequence;
+    const payload: MemoryAccessEvent = {
+      ...event,
+      sequence: ++this._memSequence,
+    };
 
     if (TRACE_ENABLED) {
       this._maybeTraceMemoryEvent(payload);
