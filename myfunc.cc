@@ -267,7 +267,7 @@ struct Region {
   // Note: Region does not own the memory, caller is responsible for cleanup
 
   std::optional<unsigned int> read(unsigned int addr, int size) {
-    if (addr < start_ || addr + size > start_ + size_) {
+    if (!contains(addr, size)) {
       return std::nullopt;
     }
     unsigned int offset = addr - start_;
@@ -279,7 +279,7 @@ struct Region {
   }
 
   bool write(unsigned int addr, int size, unsigned int value) {
-    if (addr < start_ || addr + size > start_ + size_) {
+    if (!contains(addr, size)) {
       return false;
     }
     unsigned int offset = addr - start_;
@@ -287,6 +287,21 @@ struct Region {
       data_[offset + i] = (value >> ((size - 1 - i) * 8)) & 0xFF;
     }
     return true;
+  }
+
+ private:
+  bool contains(unsigned int addr, int size) const {
+    if (size <= 0) {
+      return false;
+    }
+
+    const uint64_t request_start = static_cast<uint64_t>(addr);
+    const uint64_t request_size = static_cast<uint64_t>(static_cast<unsigned int>(size));
+    const uint64_t request_end = request_start + request_size;
+    const uint64_t region_start = static_cast<uint64_t>(start_);
+    const uint64_t region_end = region_start + static_cast<uint64_t>(size_);
+
+    return request_start >= region_start && request_end <= region_end;
   }
 };
 static std::vector<Region> _regions;
