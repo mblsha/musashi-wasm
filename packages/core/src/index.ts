@@ -44,10 +44,12 @@ export type {
 const normalizeTraceAddress = (value: number): number => (value >>> 0) & 0x00ffffff;
 const formatTraceHex = (value: number): string => `0x${(value >>> 0).toString(16)}`;
 
+const TRUTHY_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
+
 const parseBooleanEnv = (value: string | undefined): boolean => {
   if (!value) return false;
   const normalized = value.trim().toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+  return TRUTHY_ENV_VALUES.has(normalized);
 };
 
 const env = typeof process !== 'undefined' ? process.env : undefined;
@@ -244,10 +246,11 @@ class SystemImpl implements System {
     const one = this._musashi.disassemble(pc);
     if (!one) return null;
     return one.text;
-    }
+  }
+
   getInstructionSize(pc: number): number {
     const one = this._musashi.disassemble(pc >>> 0);
-    return one ? (one.size >>> 0) : 0;
+    return one ? one.size >>> 0 : 0;
   }
   read(address: number, size: 1 | 2 | 4): number {
     return this._musashi.read_memory(address, size);
