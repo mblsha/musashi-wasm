@@ -2,6 +2,8 @@
 
 #include "m68k_test_common.h"
 
+#include <vector>
+
 extern "C" {
     void add_region(unsigned int start, unsigned int size, void* data);
     void clear_regions();
@@ -21,15 +23,14 @@ protected:
 TEST_F(RegionBoundsTest, NoWritePastEndOnWord) {
     // Allocate larger backing to place sentinels after the region
     const size_t backingSize = 64;
-    uint8_t* backing = new uint8_t[backingSize];
-    memset(backing, 0, backingSize);
+    std::vector<uint8_t> backing(backingSize, 0);
 
     // Place a region starting at offset 8 with size 16
     const unsigned int regionBase = 0x2000;
     const unsigned int regionSize = 16; // valid addresses: [0..15]
     // Put sentinels immediately after region end inside the same allocation
     const size_t regionOffset = 8;
-    uint8_t* regionPtr = backing + regionOffset;
+    uint8_t* regionPtr = backing.data() + regionOffset;
     const size_t sentinelIndex = regionOffset + regionSize; // first byte past end
     backing[sentinelIndex] = 0xEE; // sentinel
 
@@ -41,20 +42,17 @@ TEST_F(RegionBoundsTest, NoWritePastEndOnWord) {
 
     // Validate sentinel untouched
     EXPECT_EQ(backing[sentinelIndex], 0xEE) << "word write spilled past region end";
-
-    delete[] backing;
 }
 
 // Writing a 32-bit value near the end must not cross the boundary
 TEST_F(RegionBoundsTest, NoWritePastEndOnLong) {
     const size_t backingSize = 64;
-    uint8_t* backing = new uint8_t[backingSize];
-    memset(backing, 0, backingSize);
+    std::vector<uint8_t> backing(backingSize, 0);
 
     const unsigned int regionBase = 0x3000;
     const unsigned int regionSize = 8; // small region
     const size_t regionOffset = 4;
-    uint8_t* regionPtr = backing + regionOffset;
+    uint8_t* regionPtr = backing.data() + regionOffset;
     const size_t sentinelIndex = regionOffset + regionSize; // first byte past end
     backing[sentinelIndex + 0] = 0xAA;
     backing[sentinelIndex + 1] = 0xBB;
@@ -73,7 +71,5 @@ TEST_F(RegionBoundsTest, NoWritePastEndOnLong) {
     EXPECT_EQ(backing[sentinelIndex + 1], 0xBB);
     EXPECT_EQ(backing[sentinelIndex + 2], 0xCC);
     EXPECT_EQ(backing[sentinelIndex + 3], 0xDD);
-
-    delete[] backing;
 }
 
