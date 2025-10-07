@@ -15,6 +15,7 @@ import type {
 } from './types.js';
 import { M68kRegister } from '@m68k/common';
 import { MusashiWrapper, getModule } from './musashi-wrapper.js';
+import { mask24 } from './address-utils.js';
 
 // Re-export types
 export type {
@@ -41,7 +42,7 @@ export type {
 
 // --- Private Implementation ---
 
-const normalizeTraceAddress = (value: number): number => (value >>> 0) & 0x00ffffff;
+const normalizeTraceAddress = mask24;
 const formatTraceHex = (value: number): string => `0x${(value >>> 0).toString(16)}`;
 
 const TRUTHY_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);

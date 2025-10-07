@@ -5,8 +5,7 @@ type EmscriptenBuffer = number;
 type EmscriptenFunction = number;
 import { M68kRegister } from '@m68k/common';
 import type { MemoryLayout, MemoryTraceSource } from './types.js';
-
-const mask24 = (value: number): number => (value >>> 0) & 0x00ffffff;
+import { mask24 } from './address-utils.js';
 
 type RuntimeTag = 'node' | 'browser';
 
