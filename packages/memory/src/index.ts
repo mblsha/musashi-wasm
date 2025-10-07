@@ -7,6 +7,18 @@ export interface SystemMemoryIO {
 /** A user-defined function that parses a byte buffer into a structured object. */
 export type Parser<T> = (data: Uint8Array) => T;
 
+function assertExactLength(
+  actual: number,
+  expected: number,
+  description: string
+): void {
+  if (actual !== expected) {
+    throw new Error(
+      `Data size (${actual}) does not match ${description} (${expected})`
+    );
+  }
+}
+
 /**
  * Provides structured, type-safe access to a single data structure
  * at a fixed address in the system's memory.
@@ -27,11 +39,7 @@ export class MemoryRegion<T> {
 
   /** Writes raw bytes to the memory region. */
   public setBytes(data: Uint8Array): void {
-    if (data.length !== this.size) {
-      throw new Error(
-        `Data size (${data.length}) does not match region size (${this.size})`
-      );
-    }
+    assertExactLength(data.length, this.size, 'region size');
     this.system.writeBytes(this.address, data);
   }
 }
@@ -57,11 +65,7 @@ export class MemoryArray<T> {
 
   /** Writes raw bytes to the element at the given index. */
   public setAt(index: number, data: Uint8Array): void {
-    if (data.length !== this.stride) {
-      throw new Error(
-        `Data size (${data.length}) does not match stride (${this.stride})`
-      );
-    }
+    assertExactLength(data.length, this.stride, 'stride');
     const address = this.baseAddress + index * this.stride;
     this.system.writeBytes(address, data);
   }
