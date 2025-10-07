@@ -174,18 +174,43 @@ class TracerImpl implements Tracer {
       throw new Error('No active tracing session to stop.');
     }
 
-    // Ensure any open function call slices are closed before exporting
-    this._musashi.perfettoCleanupSlices();
+    let primaryError: unknown | null = null;
+    let traceData: Uint8Array | null = null;
 
-    const traceData = this._musashi.perfettoExportTrace();
+    try {
+      // Ensure any open function call slices are closed before exporting
+      this._musashi.perfettoCleanupSlices();
 
-    // Clean up the session
-    this._musashi.perfettoDestroy();
-    this._musashi.traceEnable(false);
-    this._active = false;
+      traceData = this._musashi.perfettoExportTrace();
+      if (traceData === null) {
+        throw new Error('Failed to export Perfetto trace data.');
+      }
+    } catch (error) {
+      primaryError = error;
+      throw error;
+    } finally {
+      try {
+        this._musashi.perfettoDestroy();
+      } catch (destroyError) {
+        if (primaryError === null) {
+          primaryError = destroyError;
+          throw destroyError;
+        }
+      } finally {
+        try {
+          this._musashi.traceEnable(false);
+        } catch (disableError) {
+          if (primaryError === null) {
+            throw disableError;
+          }
+        } finally {
+          this._active = false;
+        }
+      }
+    }
 
     if (traceData === null) {
-      throw new Error('Failed to export Perfetto trace data.');
+      throw new Error('Perfetto trace data was not captured.');
     }
 
     return traceData;
