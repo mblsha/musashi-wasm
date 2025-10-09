@@ -175,8 +175,9 @@ class TracerImpl implements Tracer {
       throw new Error('No active tracing session to stop.');
     }
 
-    let primaryError: unknown | null = null;
     let traceData: Uint8Array | null = null;
+    let caughtError: unknown | undefined;
+    let cleanupError: unknown | undefined;
 
     try {
       // Ensure any open function call slices are closed before exporting
@@ -187,27 +188,29 @@ class TracerImpl implements Tracer {
         throw new Error('Failed to export Perfetto trace data.');
       }
     } catch (error) {
-      primaryError = error;
-      throw error;
+      caughtError = error;
     } finally {
       try {
         this._musashi.perfettoDestroy();
       } catch (destroyError) {
-        if (primaryError === null) {
-          primaryError = destroyError;
-          throw destroyError;
-        }
-      } finally {
-        try {
-          this._musashi.traceEnable(false);
-        } catch (disableError) {
-          if (primaryError === null) {
-            throw disableError;
-          }
-        } finally {
-          this._active = false;
-        }
+        cleanupError ??= destroyError;
       }
+
+      try {
+        this._musashi.traceEnable(false);
+      } catch (disableError) {
+        cleanupError ??= disableError;
+      }
+
+      this._active = false;
+    }
+
+    if (caughtError) {
+      throw caughtError;
+    }
+
+    if (cleanupError) {
+      throw cleanupError;
     }
 
     if (traceData === null) {
