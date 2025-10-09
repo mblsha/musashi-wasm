@@ -49,6 +49,17 @@ struct m68k_trace_state {
 /* Global trace state */
 static m68k_trace_state g_trace;
 
+template <typename Callback>
+static inline bool should_invoke_trace(bool feature_enabled, Callback callback) noexcept
+{
+    return g_trace.enabled && feature_enabled && callback;
+}
+
+static inline int sanitize_callback_result(int value) noexcept
+{
+    return value < 0 ? 0 : value;
+}
+
 /* ======================================================================== */
 /* ========================== INTERNAL FUNCTIONS ========================= */
 /* ======================================================================== */
@@ -163,16 +174,16 @@ void m68k_reset_total_cycles(void)
 int m68k_trace_instruction_hook(unsigned int pc, uint16_t opcode, int cycles_executed)
 {
     int result = 0;
-    
+
     /* Check all conditions before calling callback */
-    if (g_trace.enabled && g_trace.instr_enabled && g_trace.instr_callback) {
+    if (should_invoke_trace(g_trace.instr_enabled, g_trace.instr_callback)) {
         /* Call callback with protection against exceptions */
         result = g_trace.instr_callback(pc, opcode, g_trace.total_cycles, cycles_executed);
-        
+
         /* Sanitize return value */
-        if (result < 0) result = 0;
+        result = sanitize_callback_result(result);
     }
-    
+
     return result;
 }
 
@@ -188,22 +199,22 @@ int m68k_trace_flow_hook(m68k_trace_flow_type type, uint32_t source_pc,
     }
     
     
-    if (g_trace.enabled && g_trace.flow_enabled && g_trace.flow_callback) {
+    if (should_invoke_trace(g_trace.flow_enabled, g_trace.flow_callback)) {
         /* Get current register state with bounds checking */
         std::array<uint32_t, 8> d_regs;
         std::array<uint32_t, 8> a_regs;
-        
+
         for (int i = 0; i < 8; i++) {
             d_regs[i] = m68k_get_reg(nullptr, static_cast<m68k_register_t>(M68K_REG_D0 + i));
             a_regs[i] = m68k_get_reg(nullptr, static_cast<m68k_register_t>(M68K_REG_A0 + i));
         }
-        
+
         /* Call callback with protection */
         result = g_trace.flow_callback(type, source_pc, dest_pc, return_addr,
                                        d_regs.data(), a_regs.data(), g_trace.total_cycles);
-        
+
         /* Sanitize return value */
-        if (result < 0) result = 0;
+        result = sanitize_callback_result(result);
     }
     
     return result;
@@ -224,14 +235,14 @@ int m68k_trace_mem_hook(m68k_trace_mem_type type, uint32_t pc,
         return 0; /* Invalid size */
     }
     
-    if (g_trace.enabled && g_trace.mem_enabled && g_trace.mem_callback) {
+    if (should_invoke_trace(g_trace.mem_enabled, g_trace.mem_callback)) {
         if (is_address_traced(address)) {
             /* Call callback with protection */
             result = g_trace.mem_callback(type, pc, address, value, size,
                                           g_trace.total_cycles);
-            
+
             /* Sanitize return value */
-            if (result < 0) result = 0;
+            result = sanitize_callback_result(result);
         }
     }
     
