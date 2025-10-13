@@ -7,6 +7,8 @@ import { M68kRegister } from '@m68k/common';
 import type { MemoryLayout, MemoryTraceSource } from './types.js';
 import { mask24 } from './address-utils.js';
 
+const NULL_EMSCRIPTEN_FUNCTION: EmscriptenFunction = 0;
+
 type RuntimeTag = 'node' | 'browser';
 
 const detectRuntime = (): RuntimeTag => {
@@ -324,14 +326,16 @@ export class MusashiWrapper {
     }
     if (this._memTraceFunc) {
       // Clear callback in core before removing to avoid dangling ptr
-      this._module._m68k_set_trace_mem_callback?.(0 as unknown as number);
+      this._module._m68k_set_trace_mem_callback?.(NULL_EMSCRIPTEN_FUNCTION);
       this._module.removeFunction?.(this._memTraceFunc);
-      this._memTraceFunc = 0;
+      this._memTraceFunc = NULL_EMSCRIPTEN_FUNCTION;
       this._memTraceActive = false;
     }
     this._module._clear_regions?.();
     this._module._clear_pc_hook_addrs?.();
-    try { this._module._set_pc_hook_func?.(0 as unknown as number); } catch {}
+    try {
+      this._module._set_pc_hook_func?.(NULL_EMSCRIPTEN_FUNCTION);
+    } catch {}
     this._module._reset_myfunc_state?.();
   }
 
@@ -374,7 +378,7 @@ export class MusashiWrapper {
     this.requireExport('_m68k_call_until_js_stop');
     const callUntil = this._module._m68k_call_until_js_stop!;
     // Defer timeslice to C++ default by passing 0
-    const ret = callUntil(address >>> 0, 0 as unknown as number);
+    const ret = callUntil(address >>> 0, 0);
     return typeof ret === 'bigint' ? Number(ret) >>> 0 : (ret as number) >>> 0;
   }
 
@@ -576,7 +580,7 @@ export class MusashiWrapper {
       this._module._m68k_trace_set_mem_enabled!(1);
       this._memTraceActive = true;
     } else if (!enable && this._memTraceActive) {
-      this._module._m68k_set_trace_mem_callback!(0 as unknown as number);
+      this._module._m68k_set_trace_mem_callback!(NULL_EMSCRIPTEN_FUNCTION);
       this._module._m68k_trace_set_mem_enabled!(0);
       this._memTraceActive = false;
     }
