@@ -444,6 +444,33 @@ export class MusashiWrapper {
     return true;
   }
 
+  private writeByteToMemory(
+    address: number,
+    byte: number,
+    hasWindowsOverride?: boolean,
+    ramBuffer?: Uint8Array
+  ): void {
+    const addr = address >>> 0;
+    const value = byte & 0xff;
+    this._memory[addr] = value;
+
+    const hasWindows = hasWindowsOverride ?? this._ramWindows.length > 0;
+    if (!hasWindows) {
+      return;
+    }
+
+    const window = this.findRamWindowForAddress(addr);
+    if (!window) {
+      return;
+    }
+
+    const ram = ramBuffer ?? this._system.ram;
+    const ramIndex = (window.offset + (addr - window.start)) >>> 0;
+    if (ramIndex < ram.length) {
+      ram[ramIndex] = value;
+    }
+  }
+
   read_memory(address: number, size: 1 | 2 | 4): number {
     const addr = address >>> 0;
     if (!this.isAccessWithinMemory(addr, size)) return 0;
@@ -481,15 +508,7 @@ export class MusashiWrapper {
       const shift = (size - 1 - i) * 8;
       const byte = (maskedValue >> shift) & 0xff;
       const a = (addr + i) >>> 0;
-      this._memory[a] = byte;
-
-      if (!hasWindows) continue;
-      const window = this.findRamWindowForAddress(a);
-      if (!window) continue;
-      const ramIndex = (window.offset + (a - window.start)) >>> 0;
-      if (ramIndex < ram.length) {
-        ram[ramIndex] = byte;
-      }
+      this.writeByteToMemory(a, byte, hasWindows, ram);
     }
 
     if (!this._traceAvailable) {
@@ -512,16 +531,7 @@ export class MusashiWrapper {
       return;
     }
     const byte = value & 0xff;
-    this._memory[addr] = byte;
-
-    const window = this.findRamWindowForAddress(addr);
-    if (!window) {
-      return;
-    }
-    const ramIndex = (window.offset + (addr - window.start)) >>> 0;
-    if (ramIndex < this._system.ram.length) {
-      this._system.ram[ramIndex] = byte;
-    }
+    this.writeByteToMemory(addr, byte);
   }
 
   // --- Memory Trace Hook Bridge ---
