@@ -180,6 +180,42 @@ describe('@m68k/memory', () => {
 
       expect(values).toEqual([100, 200, 300]);
     });
+
+    test('should validate stride and indices', () => {
+      expect(
+        () => new MemoryArray(system, 0x4000, 0, entityParser)
+      ).toThrow(/Stride must be a positive integer/);
+      expect(
+        () => new MemoryArray(system, 0x4000, -2, entityParser)
+      ).toThrow(/Stride must be a positive integer/);
+      expect(
+        () => new MemoryArray(system, 0x4000, 1.5, entityParser)
+      ).toThrow(/Stride must be a positive integer/);
+
+      const array = new MemoryArray(system, 0x7000, 6, entityParser);
+      expect(() => array.at(-1)).toThrow(/Index must be non-negative/);
+      expect(() => array.at(1.2)).toThrow(/Index must be an integer/);
+
+      const payload = new Uint8Array(6);
+      expect(() => array.setAt(-3, payload)).toThrow(/Index must be non-negative/);
+      expect(() => array.setAt(2.5, payload)).toThrow(/Index must be an integer/);
+    });
+
+    test('should validate iteration bounds', () => {
+      const array = new MemoryArray(system, 0x8000, 6, entityParser);
+      expect(() => Array.from(array.iterate(-1, 1))).toThrow(
+        /Start index must be non-negative/
+      );
+      expect(() => Array.from(array.iterate(0, -5))).toThrow(
+        /Count must be non-negative/
+      );
+      expect(() => Array.from(array.iterate(0, 1.2))).toThrow(
+        /Count must be an integer/
+      );
+      expect(() => Array.from(array.iterate(0.5, 1))).toThrow(
+        /Start index must be an integer/
+      );
+    });
   });
 
   describe('DataParser', () => {

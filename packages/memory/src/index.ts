@@ -54,11 +54,32 @@ export class MemoryArray<T> {
     private readonly baseAddress: number,
     private readonly stride: number, // The size of each element in bytes.
     private readonly parser: Parser<T>
-  ) {}
+  ) {
+    if (!Number.isInteger(stride) || stride <= 0) {
+      throw new RangeError(
+        `Stride must be a positive integer (received ${stride})`
+      );
+    }
+  }
+
+  private ensureNonNegativeInteger(value: number, description: string): number {
+    if (!Number.isInteger(value)) {
+      throw new RangeError(`${description} must be an integer (received ${value})`);
+    }
+    if (value < 0) {
+      throw new RangeError(`${description} must be non-negative (received ${value})`);
+    }
+    return value;
+  }
+
+  private resolveAddress(index: number): number {
+    const normalizedIndex = this.ensureNonNegativeInteger(index, 'Index');
+    return this.baseAddress + normalizedIndex * this.stride;
+  }
 
   /** Reads and parses the element at the given index. */
   public at(index: number): T {
-    const address = this.baseAddress + index * this.stride;
+    const address = this.resolveAddress(index);
     const bytes = this.system.readBytes(address, this.stride);
     return this.parser(bytes);
   }
@@ -66,13 +87,16 @@ export class MemoryArray<T> {
   /** Writes raw bytes to the element at the given index. */
   public setAt(index: number, data: Uint8Array): void {
     assertExactLength(data.length, this.stride, 'stride');
-    const address = this.baseAddress + index * this.stride;
+    const address = this.resolveAddress(index);
     this.system.writeBytes(address, data);
   }
 
   /** Creates an iterable over a range of indices. */
   public *iterate(start: number, count: number): IterableIterator<T> {
-    for (let i = start; i < start + count; i++) {
+    const startIndex = this.ensureNonNegativeInteger(start, 'Start index');
+    const total = this.ensureNonNegativeInteger(count, 'Count');
+    const endIndex = startIndex + total;
+    for (let i = startIndex; i < endIndex; i++) {
       yield this.at(i);
     }
   }
