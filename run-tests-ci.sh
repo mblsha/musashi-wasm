@@ -38,8 +38,8 @@ for spec in "${tests[@]}"; do
   run_workspace_ci "${ws}" "${secs}"
 done
 
-echo "Building npm-package bundle for integration smoke test..."
-if ! timeout 60 npm --prefix npm-package run build; then
+echo "Building npm-package bundle for integration smoke test (with Perfetto)..."
+if ! timeout 60 ENABLE_PERFETTO=1 npm --prefix npm-package run build; then
   rc=$?
   if [[ $rc -eq 124 ]]; then
     echo "npm-package build timed out after 60s" >&2

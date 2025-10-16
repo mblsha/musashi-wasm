@@ -90,4 +90,77 @@ test.describe('musashi-wasm browser bundle', () => {
 
     expect(errors).toEqual([]);
   });
+
+  test('createSystem exposes Perfetto tracing in Node-like DOM environments', async () => {
+    const envBackup = { ...process.env };
+    const originalWindow = (globalThis as { window?: unknown }).window;
+    const originalDocument = (globalThis as { document?: unknown }).document;
+    const originalNavigator = (globalThis as { navigator?: unknown }).navigator;
+
+    try {
+      process.env.MUSASHI_REQUIRE_PERFETTO = '1';
+      process.env.MUSASHI_PERFETTO_MODULE = '../../perf.mjs';
+      delete process.env.MUSASHI_DISABLE_PERFETTO;
+      delete process.env.MUSASHI_RUNTIME;
+
+      (globalThis as { window: unknown }).window = {};
+      (globalThis as { document: unknown }).document = {};
+      (globalThis as { navigator: { userAgent: string } }).navigator = {
+        userAgent: 'happy-dom',
+      };
+
+      const { createSystem } = await import('../../lib/core/index.js');
+
+      const rom = new Uint8Array(0x2000);
+      // Reset SP = 0x00100000, PC = 0x00000400
+      rom.set([0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00], 0x0);
+      // Simple program at 0x400: NOP; NOP; RTS
+      rom.set([0x4e, 0x71, 0x4e, 0x71, 0x4e, 0x75], 0x400);
+
+      const system = await createSystem({
+        rom,
+        ramSize: 0x2000,
+      });
+
+      expect(system.tracer.isAvailable()).toBe(true);
+
+      system.tracer.start({ instructions: true });
+      system.run(4);
+      const trace = system.tracer.stop();
+
+      expect(trace).toBeInstanceOf(Uint8Array);
+      expect(trace.length).toBeGreaterThan(0);
+
+      system.cleanup();
+    } finally {
+      for (const key of Object.keys(process.env)) {
+        if (!(key in envBackup)) {
+          delete process.env[key];
+        }
+      }
+      for (const [key, value] of Object.entries(envBackup)) {
+        if (value !== undefined) {
+          process.env[key] = value;
+        }
+      }
+
+      if (originalWindow === undefined) {
+        Reflect.deleteProperty(globalThis, 'window');
+      } else {
+        (globalThis as { window: unknown }).window = originalWindow;
+      }
+
+      if (originalDocument === undefined) {
+        Reflect.deleteProperty(globalThis, 'document');
+      } else {
+        (globalThis as { document: unknown }).document = originalDocument;
+      }
+
+      if (originalNavigator === undefined) {
+        Reflect.deleteProperty(globalThis, 'navigator');
+      } else {
+        (globalThis as { navigator: unknown }).navigator = originalNavigator;
+      }
+    }
+  });
 });

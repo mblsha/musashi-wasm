@@ -11,6 +11,16 @@ const NULL_EMSCRIPTEN_FUNCTION: EmscriptenFunction = 0;
 
 type RuntimeTag = 'node' | 'browser';
 
+const runtimeEnv = typeof process !== 'undefined' ? process.env : undefined;
+
+const normalizeRuntimeOverride = (value: string | undefined): RuntimeTag | null => {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'node') return 'node';
+  if (normalized === 'browser') return 'browser';
+  return null;
+};
+
 const detectRuntime = (): RuntimeTag => {
   const scope = globalThis as typeof globalThis & {
     process?: NodeJS.Process;
@@ -19,6 +29,11 @@ const detectRuntime = (): RuntimeTag => {
     document?: unknown;
     window?: unknown;
   };
+
+  const override = normalizeRuntimeOverride(runtimeEnv?.MUSASHI_RUNTIME);
+  if (override) {
+    return override;
+  }
 
   const isNodeProcess =
     typeof scope.process !== 'undefined' &&
@@ -30,7 +45,15 @@ const detectRuntime = (): RuntimeTag => {
     typeof scope.document === 'object' ||
     typeof scope.window === 'object';
 
-  return isNodeProcess && !isBrowserLike ? 'node' : 'browser';
+  if (isNodeProcess) {
+    return 'node';
+  }
+
+  if (isBrowserLike) {
+    return 'browser';
+  }
+
+  return 'browser';
 };
 
 const TRUTHY_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
@@ -42,8 +65,6 @@ const parseBooleanEnv = (value: string | undefined): boolean => {
 
   return TRUTHY_ENV_VALUES.has(value.trim().toLowerCase());
 };
-
-const runtimeEnv = typeof process !== 'undefined' ? process.env : undefined;
 
 export interface MusashiEmscriptenModule {
   _my_initialize(): boolean;
@@ -785,31 +806,43 @@ export class MusashiWrapper {
 export async function getModule(): Promise<MusashiWrapper> {
   // Environment detection without DOM types
   const runtime = detectRuntime();
-  const isNode = runtime === 'node';
+  const runtimeOverride = normalizeRuntimeOverride(runtimeEnv?.MUSASHI_RUNTIME);
+  const hasNodeProcess =
+    typeof process !== 'undefined' && process.release?.name === 'node';
+  const preferNodeModule =
+    runtime === 'node' || (hasNodeProcess && runtimeOverride !== 'browser');
+
+  const perfettoDisabled = runtimeEnv
+    ? parseBooleanEnv(runtimeEnv.MUSASHI_DISABLE_PERFETTO)
+    : false;
+  const perfettoRequired = runtimeEnv
+    ? parseBooleanEnv(
+        runtimeEnv.MUSASHI_REQUIRE_PERFETTO ?? runtimeEnv.MUSASHI_FORCE_PERFETTO
+      )
+    : false;
+  const perfSpecifierRaw = runtimeEnv?.MUSASHI_PERFETTO_MODULE?.trim();
+  const wantsPerfetto =
+    !perfettoDisabled &&
+    (perfettoRequired || Boolean(perfSpecifierRaw) || preferNodeModule);
+
+  if (!preferNodeModule && perfettoRequired) {
+    throw new Error(
+      'Perfetto tracing requested via MUSASHI_REQUIRE_PERFETTO=1 but Node runtime was not detected.'
+    );
+  }
 
   // Dynamic import based on environment
   let module: unknown;
-  if (isNode) {
-    const perfettoDisabled = runtimeEnv
-      ? parseBooleanEnv(runtimeEnv.MUSASHI_DISABLE_PERFETTO)
-      : false;
-    const perfettoRequired = runtimeEnv
-      ? parseBooleanEnv(
-          runtimeEnv.MUSASHI_REQUIRE_PERFETTO ?? runtimeEnv.MUSASHI_FORCE_PERFETTO
-        )
-      : false;
-
-    const perfSpecifierRaw = runtimeEnv?.MUSASHI_PERFETTO_MODULE;
+  if (preferNodeModule) {
     const perfSpecifier =
-      perfSpecifierRaw && perfSpecifierRaw.trim().length > 0
-        ? perfSpecifierRaw.trim()
+      perfSpecifierRaw && perfSpecifierRaw.length > 0
+        ? perfSpecifierRaw
         : ['..', '..', 'perf.mjs'].join('/');
     let perfLoadError: unknown;
 
-    if (!perfettoDisabled) {
+    if (wantsPerfetto) {
       try {
         const { default: initPerfettoModule } = (await import(
-          // Construct path dynamically so bundlers leave it untouched.
           perfSpecifier
         )) as { default: () => Promise<unknown> };
         const perfCandidate = (await initPerfettoModule()) as MusashiEmscriptenModule;
@@ -834,14 +867,14 @@ export async function getModule(): Promise<MusashiWrapper> {
     }
 
     if (!module) {
-      // For Node.js, fall back to the standard wrapper
+      // For Node.js, use the ESM wrapper
       // @ts-ignore - Dynamic import of .mjs file
       const { default: createMusashiModule } = await import(
         '../wasm/musashi-node-wrapper.mjs'
       );
       module = await createMusashiModule();
 
-      if (perfLoadError && !perfettoDisabled && typeof console !== 'undefined') {
+      if (perfLoadError && wantsPerfetto && typeof console !== 'undefined') {
         console.warn(
           '[musashi-wasm] Perfetto module load failed; using standard build instead:',
           perfLoadError,
