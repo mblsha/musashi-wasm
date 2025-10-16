@@ -683,6 +683,14 @@ if (!nodeJsIn || !nodeWasmIn) {
   throw new Error('Missing musashi-node build artifacts. Run `./build.sh` before packaging.');
 }
 
+const nodeJsSource = fs.readFileSync(nodeJsIn, 'utf8');
+const perfettoSymbol = '_m68k_perfetto_init';
+if (!nodeJsSource.includes(perfettoSymbol)) {
+  throw new Error(
+    'musashi-node.out.mjs does not include Perfetto exports. Rebuild with `ENABLE_PERFETTO=1 ./build.sh` before packaging.'
+  );
+}
+
 fs.copyFileSync(nodeJsIn, loaderOut);
 if (nodeJsIn !== nodeModuleOut) {
   fs.copyFileSync(nodeJsIn, nodeModuleOut);
