@@ -61,6 +61,7 @@
       ]
     },
     "moduleNameMapper": {
+      "^\\./address-utils\\.js$": "<rootDir>/src/address-utils.ts",
       "^\\./types\\.js$": "<rootDir>/src/types.ts",
       "^\\./musashi-wrapper\\.js$": "<rootDir>/src/musashi-wrapper.ts",
       "^\\./index\\.js$": "<rootDir>/src/index.ts",

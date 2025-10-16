@@ -33,6 +33,18 @@ const detectRuntime = (): RuntimeTag => {
   return isNodeProcess && !isBrowserLike ? 'node' : 'browser';
 };
 
+const TRUTHY_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
+
+const parseBooleanEnv = (value: string | undefined): boolean => {
+  if (!value) {
+    return false;
+  }
+
+  return TRUTHY_ENV_VALUES.has(value.trim().toLowerCase());
+};
+
+const runtimeEnv = typeof process !== 'undefined' ? process.env : undefined;
+
 export interface MusashiEmscriptenModule {
   _my_initialize(): boolean;
   _add_pc_hook_addr(addr: number): void;
@@ -778,12 +790,65 @@ export async function getModule(): Promise<MusashiWrapper> {
   // Dynamic import based on environment
   let module: unknown;
   if (isNode) {
-    // For Node.js, use the ESM wrapper
-    // @ts-ignore - Dynamic import of .mjs file
-    const { default: createMusashiModule } = await import(
-      '../wasm/musashi-node-wrapper.mjs'
-    );
-    module = await createMusashiModule();
+    const perfettoDisabled = runtimeEnv
+      ? parseBooleanEnv(runtimeEnv.MUSASHI_DISABLE_PERFETTO)
+      : false;
+    const perfettoRequired = runtimeEnv
+      ? parseBooleanEnv(
+          runtimeEnv.MUSASHI_REQUIRE_PERFETTO ?? runtimeEnv.MUSASHI_FORCE_PERFETTO
+        )
+      : false;
+
+    const perfSpecifierRaw = runtimeEnv?.MUSASHI_PERFETTO_MODULE;
+    const perfSpecifier =
+      perfSpecifierRaw && perfSpecifierRaw.trim().length > 0
+        ? perfSpecifierRaw.trim()
+        : ['..', '..', 'perf.mjs'].join('/');
+    let perfLoadError: unknown;
+
+    if (!perfettoDisabled) {
+      try {
+        const { default: initPerfettoModule } = (await import(
+          // Construct path dynamically so bundlers leave it untouched.
+          perfSpecifier
+        )) as { default: () => Promise<unknown> };
+        const perfCandidate = (await initPerfettoModule()) as MusashiEmscriptenModule;
+
+        if (typeof perfCandidate?._m68k_perfetto_init !== 'function') {
+          throw new Error(
+            'Perfetto module did not expose _m68k_perfetto_init; falling back to standard build.'
+          );
+        }
+
+        module = perfCandidate;
+      } catch (error) {
+        perfLoadError = error;
+        if (perfettoRequired) {
+          const detail =
+            error instanceof Error ? error.message : `Unknown error: ${String(error)}`;
+          throw new Error(
+            `MUSASHI_REQUIRE_PERFETTO=1 but the Perfetto-enabled Musashi module failed to load (${detail}).`
+          );
+        }
+      }
+    }
+
+    if (!module) {
+      // For Node.js, fall back to the standard wrapper
+      // @ts-ignore - Dynamic import of .mjs file
+      const { default: createMusashiModule } = await import(
+        '../wasm/musashi-node-wrapper.mjs'
+      );
+      module = await createMusashiModule();
+
+      if (perfLoadError && !perfettoDisabled && typeof console !== 'undefined') {
+        console.warn(
+          '[musashi-wasm] Perfetto module load failed; using standard build instead:',
+          perfLoadError,
+          `specifier=${perfSpecifier}`
+        );
+      }
+    }
 
     // Runtime validation to catch shape mismatches early
     const modMaybe = module as Partial<MusashiEmscriptenModule> | null | undefined;
