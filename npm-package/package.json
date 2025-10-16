@@ -5,6 +5,8 @@
   "type": "module",
   "files": [
     "dist/**",
+    "dist/musashi-perfetto-loader.mjs",
+    "dist/musashi-perfetto.wasm",
     "lib/**",
     "perf.mjs",
     "musashi.out.mjs",

@@ -144,20 +144,46 @@ const iterValues = Array.from(array.iterate(1, 1));
 assert.deepEqual(iterValues, [0xABCD], 'iterate should yield the written element');
 
 const perfLoaderUrl = new URL('dist/musashi-perfetto-loader.mjs', pkgRoot);
-const perfExists = await import('node:fs/promises')
-  .then(fs => fs
-    .access(perfLoaderUrl)
-    .then(() => true)
-    .catch(() => false));
+const fs = await import('node:fs/promises');
+await fs.access(perfLoaderUrl).catch(() => {
+  throw new Error('Perfetto loader missing from dist/. Rebuild with ENABLE_PERFETTO=1.');
+});
 
-if (perfExists) {
-  const perfEntrypoint = await import(new URL('perf.mjs', pkgRoot));
-  assert.equal(typeof perfEntrypoint.default, 'function', 'perf entry should export default loader');
+const perfEntrypoint = await import(new URL('perf.mjs', pkgRoot));
+assert.equal(typeof perfEntrypoint.default, 'function', 'perf entry should export default loader');
 
-  const perfWrapper = await import(new URL('lib/perfetto.mjs', pkgRoot));
-  assert.equal(typeof perfWrapper.default, 'function', 'perfetto wrapper should export default class');
-} else {
-  console.warn('⚠️  Perfetto artifacts not present; skipping perf exports smoke checks');
+const perfWrapper = await import(new URL('lib/perfetto.mjs', pkgRoot));
+assert.equal(typeof perfWrapper.default, 'function', 'perfetto wrapper should export default class');
+
+const originalEnv = { ...process.env };
+try {
+  process.env.MUSASHI_REQUIRE_PERFETTO = '1';
+  delete process.env.MUSASHI_DISABLE_PERFETTO;
+  delete process.env.MUSASHI_PERFETTO_MODULE;
+
+  const { createSystem } = await import(new URL('lib/core/index.js', pkgRoot));
+  const rom = new Uint8Array(0x2000);
+  rom.set([0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00], 0x0);
+  rom.set([0x4e, 0x71, 0x4e, 0x71, 0x4e, 0x75], 0x400);
+
+  const system = await createSystem({ rom, ramSize: 0x2000 });
+  assert.equal(system.tracer.isAvailable(), true, 'Perfetto tracer should be available');
+
+  system.tracer.start({ instructions: true });
+  system.run(4);
+  const trace = system.tracer.stop();
+  assert.ok(trace instanceof Uint8Array && trace.length > 0, 'Perfetto trace should produce data');
+
+  system.cleanup();
+} finally {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in originalEnv)) {
+      delete process.env[key];
+    }
+  }
+  for (const [key, value] of Object.entries(originalEnv)) {
+    process.env[key] = value;
+  }
 }
 
 const nodeFactory = await import(new URL('musashi-node.out.mjs', pkgRoot));
