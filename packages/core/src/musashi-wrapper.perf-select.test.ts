@@ -38,6 +38,10 @@ const createStubModule = ({ perfetto = false }: StubModuleOptions = {}) => {
 const FALLBACK_MODULE_PATH = '../wasm/musashi-node-wrapper.mjs';
 const PERF_STUB_SPEC = './__fixtures__/perfetto-stub.mjs';
 
+const setGlobal = (key: string, value: unknown) => {
+  Reflect.set(globalThis as Record<string, unknown>, key, value);
+};
+
 const importMusashiWrapper = async () => {
   let exportsRef: typeof import('./musashi-wrapper.js') | undefined;
   await jest.isolateModulesAsync(async () => {
@@ -51,7 +55,7 @@ const importMusashiWrapper = async () => {
   return exportsRef;
 };
 
-describe('musashi-wasm Perfetto module selection (Node)', () => {
+describe('musashi-wasm Perfetto module selection', () => {
   afterEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
@@ -59,6 +63,10 @@ describe('musashi-wasm Perfetto module selection (Node)', () => {
     delete process.env.MUSASHI_FORCE_PERFETTO;
     delete process.env.MUSASHI_DISABLE_PERFETTO;
     delete process.env.MUSASHI_PERFETTO_MODULE;
+    delete process.env.MUSASHI_RUNTIME;
+    Reflect.deleteProperty(globalThis, 'window');
+    Reflect.deleteProperty(globalThis, 'document');
+    Reflect.deleteProperty(globalThis, 'navigator');
   });
 
   it('prefers the Perfetto-enabled module when available', async () => {
@@ -76,7 +84,26 @@ describe('musashi-wasm Perfetto module selection (Node)', () => {
     expect(fallbackFactory).not.toHaveBeenCalled();
   });
 
-  it('falls back to the standard build when Perfetto load fails', async () => {
+  it('treats Node runtime as Perfetto-capable even when DOM globals exist', async () => {
+    process.env.MUSASHI_PERFETTO_MODULE = PERF_STUB_SPEC;
+    const fallbackFactory = jest.fn(async () => createStubModule());
+
+    setGlobal('window', {});
+    setGlobal('document', {});
+    setGlobal('navigator', { userAgent: 'happy-dom' });
+
+    await jest.unstable_mockModule(FALLBACK_MODULE_PATH, () => ({
+      default: fallbackFactory,
+    }));
+
+    const { getModule } = await importMusashiWrapper();
+    const wrapper = await getModule();
+
+    expect(wrapper.isPerfettoAvailable()).toBe(true);
+    expect(fallbackFactory).not.toHaveBeenCalled();
+  });
+
+  it('falls back when the Perfetto module fails to load', async () => {
     process.env.MUSASHI_PERFETTO_MODULE = PERF_STUB_SPEC;
     const baseModule = createStubModule();
     const fallbackFactory = jest.fn(async () => baseModule);
@@ -95,6 +122,7 @@ describe('musashi-wasm Perfetto module selection (Node)', () => {
     try {
       const { getModule } = await importMusashiWrapper();
       const wrapper = await getModule();
+
       expect(wrapper.isPerfettoAvailable()).toBe(false);
       expect(fallbackFactory).toHaveBeenCalledTimes(1);
       expect(warnSpy).toHaveBeenCalled();
@@ -103,7 +131,7 @@ describe('musashi-wasm Perfetto module selection (Node)', () => {
     }
   });
 
-  it('honours MUSASHI_REQUIRE_PERFETTO and surfaces load failures', async () => {
+  it('throws when MUSASHI_REQUIRE_PERFETTO=1 but loading fails', async () => {
     process.env.MUSASHI_REQUIRE_PERFETTO = '1';
     process.env.MUSASHI_PERFETTO_MODULE = PERF_STUB_SPEC;
 

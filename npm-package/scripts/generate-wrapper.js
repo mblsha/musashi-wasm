@@ -707,6 +707,22 @@ if (nodeWasmMapIn) {
   });
 }
 
+const perfLoaderOut = path.join(distDir, 'musashi-perfetto-loader.mjs');
+const perfWasmOut = path.join(distDir, 'musashi-perfetto.wasm');
+if (process.env.ENABLE_PERFETTO === '1') {
+  const perfLoaderSource = fs
+    .readFileSync(nodeJsIn, 'utf8')
+    .replace(/musashi-node\.out\.wasm/g, 'musashi-perfetto.wasm');
+  fs.writeFileSync(perfLoaderOut, perfLoaderSource);
+  fs.copyFileSync(nodeWasmIn, perfWasmOut);
+} else {
+  [perfLoaderOut, perfWasmOut].forEach(target => {
+    if (fs.existsSync(target)) {
+      fs.rmSync(target);
+    }
+  });
+}
+
 const browserJsIn = browserJsCandidates.find(p => fs.existsSync(p));
 const browserWasmIn = browserWasmCandidates.find(p => fs.existsSync(p));
 const browserWasmMapIn = browserWasmMapCandidates.find(p => fs.existsSync(p));
