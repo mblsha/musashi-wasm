@@ -71,4 +71,15 @@ if ! timeout 60 npm --prefix npm-package run test:browser; then
   exit $rc
 fi
 
+echo "Validating packaged npm tarball exposes Perfetto tracing..."
+if ! timeout 120 node npm-package/test/package-consumer.mjs; then
+  rc=$?
+  if [[ $rc -eq 124 ]]; then
+    echo "npm-package consumer verification timed out after 120s" >&2
+  else
+    echo "npm-package consumer verification failed with exit code ${rc}" >&2
+  fi
+  exit $rc
+fi
+
 echo "All tests completed"
