@@ -52,6 +52,30 @@ extern void m68ki_build_opcode_table(void);
 #include "m68kfpu.c"
 #include "m68kmmu.h" // uses some functions from m68kfpu.c which are static !
 
+/* ------------------------------------------------------------------------- */
+/* Helper macros for identifying control-flow opcodes                        */
+/* ------------------------------------------------------------------------- */
+#define OPCODE_RTS                 0x4E75
+#define OPCODE_RTR                 0x4E77
+#define OPCODE_MASK_RTD            0xFFF8
+#define OPCODE_BASE_RTD            0x4E68
+#define OPCODE_MASK_BSR            0xFF00
+#define OPCODE_BASE_BSR            0x6100
+#define OPCODE_MASK_JSR            0xFFC0
+#define OPCODE_BASE_JSR            0x4E80
+#define OPCODE_MASK_BRANCH_COND    0xF000
+#define OPCODE_BASE_BRANCH_COND    0x6000
+#define OPCODE_MASK_JMP            0xFFC0
+#define OPCODE_BASE_JMP            0x4EC0
+
+static inline int opcode_is_rts(uint16_t opcode)      { return opcode == OPCODE_RTS; }
+static inline int opcode_is_rtr(uint16_t opcode)      { return opcode == OPCODE_RTR; }
+static inline int opcode_is_rtd(uint16_t opcode)      { return (opcode & OPCODE_MASK_RTD) == OPCODE_BASE_RTD; }
+static inline int opcode_is_bsr(uint16_t opcode)      { return (opcode & OPCODE_MASK_BSR) == OPCODE_BASE_BSR; }
+static inline int opcode_is_jsr(uint16_t opcode)      { return (opcode & OPCODE_MASK_JSR) == OPCODE_BASE_JSR; }
+static inline int opcode_is_branch(uint16_t opcode)   { return (opcode & OPCODE_MASK_BRANCH_COND) == OPCODE_BASE_BRANCH_COND; }
+static inline int opcode_is_jmp(uint16_t opcode)      { return (opcode & OPCODE_MASK_JMP) == OPCODE_BASE_JMP; }
+
 /* ======================================================================== */
 /* ================================= DATA ================================= */
 /* ======================================================================== */
@@ -995,7 +1019,8 @@ int m68k_execute(int num_cycles)
 
 			/* Read an instruction and call its handler */
 			REG_IR = m68ki_read_imm_16();
-			uint executed_cycles = CYC_INSTRUCTION[REG_IR]; /* Capture cycle cost */
+			const uint16_t opcode = REG_IR; /* Preserve opcode before execution */
+			uint executed_cycles = CYC_INSTRUCTION[opcode]; /* Capture cycle cost */
 			
 			/* Call external hook to peek at CPU */
 			/* Use REG_PPC which contains the actual instruction start address */
@@ -1004,73 +1029,59 @@ int m68k_execute(int num_cycles)
 			}
 			
 			/* Store PC before instruction execution for flow tracing */
+			const uint32_t instr_start_pc = REG_PPC;
 			uint32_t pre_pc = REG_PC;
 			uint32_t post_pc;
 			
-			m68ki_instruction_jump_table[REG_IR]();
+			m68ki_instruction_jump_table[opcode]();
 			USE_CYCLES(executed_cycles);
 			
 			/* Get PC after instruction execution */
 			post_pc = REG_PC;
 			
-			/* FIXED: Use REG_IR which contains the correct opcode */
-			uint16_t opcode = REG_IR;
-			
-			/* Check for RTS instruction regardless of PC change */
-			if (opcode == 0x4E75) {
-				/* Force RTS flow tracing even if PC didn't change in our detection */
-				m68k_trace_flow_hook(M68K_TRACE_FLOW_RETURN, pre_pc, post_pc, 0);
-			}
-			
 			/* Check for control flow instructions and trace them */
-			if (pre_pc != post_pc) {
+			if (pre_pc != post_pc || opcode_is_rts(opcode) || opcode_is_rtr(opcode) || opcode_is_rtd(opcode)) {
 				/* PC changed - check if it's a traceable control flow instruction */
-				/* opcode is already set from REG_IR above */
-				m68k_trace_flow_type flow_type;
+				m68k_trace_flow_type flow_type = M68K_TRACE_FLOW_JUMP;
 				int is_flow_instruction = 0;
 				
 				/* Decode control flow instructions */
-				if ((opcode & 0xFF00) == 0x6100) {
+				if (opcode_is_bsr(opcode)) {
 					/* BSR - Branch to Subroutine */
 					flow_type = M68K_TRACE_FLOW_CALL;
 					is_flow_instruction = 1;
-				} else if ((opcode & 0xFFC0) == 0x4E80) {
+				} else if (opcode_is_jsr(opcode)) {
 					/* JSR - Jump to Subroutine */
 					flow_type = M68K_TRACE_FLOW_CALL;
 					is_flow_instruction = 1;
-				} else if (opcode == 0x4E75) {
+				} else if (opcode_is_rts(opcode)) {
 					/* RTS - Return from Subroutine */
 					flow_type = M68K_TRACE_FLOW_RETURN;
 					is_flow_instruction = 1;
-				} else if (opcode == 0x4E77) {
+				} else if (opcode_is_rtr(opcode)) {
 					/* RTR - Return and Restore Condition Codes */
 					flow_type = M68K_TRACE_FLOW_RETURN;
 					is_flow_instruction = 1;
-				} else if ((opcode & 0xFFF8) == 0x4E68) {
+				} else if (opcode_is_rtd(opcode)) {
 					/* RTD - Return and Deallocate */
 					flow_type = M68K_TRACE_FLOW_RETURN;
 					is_flow_instruction = 1;
-				} else if ((opcode & 0xF000) == 0x6000) {
+				} else if (opcode_is_branch(opcode)) {
 					/* Bcc - Conditional branches (including BRA which is always taken) */
 					/* We only trace taken branches/jumps as requested */
 					flow_type = M68K_TRACE_FLOW_JUMP;  /* Use JUMP for all taken branches */
 					is_flow_instruction = 1;
-				} else if ((opcode & 0xFFC0) == 0x4EC0) {
+				} else if (opcode_is_jmp(opcode)) {
 					/* JMP - Unconditional jump */
 					flow_type = M68K_TRACE_FLOW_JUMP;
 					is_flow_instruction = 1;
 				}
 				
 				if (is_flow_instruction) {
+					const uint32_t return_addr = (flow_type == M68K_TRACE_FLOW_CALL) ? pre_pc : 0;
+
 					/* Call flow tracing hook */
-					if (flow_type == M68K_TRACE_FLOW_CALL) {
-						m68k_trace_flow_hook(flow_type, pre_pc, post_pc, pre_pc + 2);
-					} else if (flow_type == M68K_TRACE_FLOW_RETURN) {
-						m68k_trace_flow_hook(flow_type, pre_pc, post_pc, 0);
-					} else if (flow_type == M68K_TRACE_FLOW_JUMP) {
-						/* Only trace if jump was actually taken (PC changed) */
-						m68k_trace_flow_hook(flow_type, pre_pc, post_pc, 0);
-					}
+					m68k_trace_flow_hook(flow_type, instr_start_pc, post_pc, return_addr);
 				}
 			}
 			
@@ -1307,3 +1318,6 @@ void m68k_state_register(const char *type, int index)
 /* ======================================================================== */
 /* ============================== END OF FILE ============================= */
 /* ======================================================================== */
+/* ------------------------------------------------------------------------- */
+/* Helper macros for identifying control-flow opcodes                        */
+/* ------------------------------------------------------------------------- */

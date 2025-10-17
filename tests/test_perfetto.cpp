@@ -9,6 +9,8 @@
 #include <memory>
 #include <cstdio>
 #include <cstdlib>
+#include <vector>
+#include <set>
 
 /* Forward declarations for myfunc.cc wrapper functions */
 extern "C" {
@@ -28,6 +30,36 @@ extern "C" {
     void register_memory_name(unsigned int address, const char* name);
     void register_memory_range(unsigned int start, unsigned int size, const char* name);
     void clear_registered_names(void);
+}
+
+struct FlowEvent {
+    m68k_trace_flow_type type;
+    uint32_t source_pc;
+    uint32_t dest_pc;
+};
+
+static std::vector<FlowEvent> g_flow_events;
+
+static int CaptureFlowCallback(
+    m68k_trace_flow_type type,
+    uint32_t source_pc,
+    uint32_t dest_pc,
+    uint32_t return_addr,
+    const uint32_t* d_regs,
+    const uint32_t* a_regs,
+    uint64_t cycles
+) {
+    (void)return_addr;
+    (void)d_regs;
+    (void)a_regs;
+    (void)cycles;
+
+    g_flow_events.push_back(FlowEvent{
+        type,
+        source_pc,
+        dest_pc
+    });
+    return 0;
 }
 
 /* Define test class using the minimal base */
@@ -66,6 +98,31 @@ protected:
         /* STOP #$2000 */
         write_word(pc, 0x4E72); pc += 2;
         write_word(pc, 0x2000); pc += 2;
+    }
+    
+    void create_flow_program() {
+        uint32_t pc = 0x400;
+
+        /* MOVEQ #1, D0 */
+        write_word(pc, 0x7001); pc += 2;
+        /* TST.B D0 (sets Z=0) */
+        write_word(pc, 0x4A00); pc += 2;
+        /* BNE.s to skip the next two NOPs (displacement +4 -> target 0x40A) */
+        write_word(pc, 0x6604); pc += 2;
+        /* These NOPs should be skipped if the branch is taken */
+        write_word(pc, 0x4E71); pc += 2; /* 0x406 */
+        write_word(pc, 0x4E71); pc += 2; /* 0x408 */
+        /* BRA.s to jump further down (displacement +4 -> target 0x410) */
+        write_word(pc, 0x6004); pc += 2; /* 0x40A */
+        /* Padding NOPs that should be skipped by BRA */
+        write_word(pc, 0x4E71); pc += 2; /* 0x40C */
+        write_word(pc, 0x4E71); pc += 2; /* 0x40E */
+        /* JMP absolute long to 0x416 */
+        write_word(pc, 0x4EF9); pc += 2; /* 0x410 */
+        write_long(pc, 0x00000416); pc += 4; /* 0x412 */
+        /* STOP to terminate execution */
+        write_word(pc, 0x4E72); pc += 2; /* 0x416 */
+        write_word(pc, 0x2700); pc += 2;
     }
 };
 
@@ -201,6 +258,46 @@ TEST_F(PerfettoTest, SymbolNaming) {
     
     /* Clean up */
     ::clear_registered_names();
+}
+
+TEST_F(PerfettoTest, FlowTracingCapturesJumps) {
+    g_flow_events.clear();
+    m68k_trace_set_flow_enabled(1);
+    m68k_set_trace_flow_callback(CaptureFlowCallback);
+
+    create_flow_program();
+    m68k_pulse_reset();
+
+    m68k_execute(200);
+
+    std::set<uint32_t> jump_destinations;
+    std::set<uint32_t> jump_sources;
+    for (const auto& event : g_flow_events) {
+        if (event.type == M68K_TRACE_FLOW_JUMP) {
+            jump_sources.insert(event.source_pc);
+            jump_destinations.insert(event.dest_pc);
+        }
+    }
+
+    EXPECT_FALSE(jump_destinations.empty())
+        << "No jump flow events captured";
+
+    EXPECT_TRUE(jump_destinations.count(0x40A))
+        << "Missing conditional branch jump event";
+    EXPECT_TRUE(jump_destinations.count(0x410))
+        << "Missing BRA jump event";
+    EXPECT_TRUE(jump_destinations.count(0x416))
+        << "Missing JMP event";
+
+    EXPECT_TRUE(jump_sources.count(0x404))
+        << "Expected BNE at 0x404 to emit a jump event";
+    EXPECT_TRUE(jump_sources.count(0x40A))
+        << "Expected BRA at 0x40A to emit a jump event";
+    EXPECT_TRUE(jump_sources.count(0x410))
+        << "Expected JMP at 0x410 to emit a jump event";
+
+    m68k_set_trace_flow_callback(nullptr);
+    m68k_trace_set_flow_enabled(0);
 }
 
 /* ======================================================================== */
