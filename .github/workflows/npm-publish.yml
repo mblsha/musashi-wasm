@@ -154,6 +154,8 @@ jobs:
             "ci-artifacts/wasm-modules/musashi-universal.out.mjs"
             "ci-artifacts/wasm-perfetto-modules/musashi-universal.out.wasm"
             "ci-artifacts/wasm-perfetto-modules/musashi-universal.out.mjs"
+            "ci-artifacts/wasm-perfetto-modules/musashi-node.out.wasm"
+            "ci-artifacts/wasm-perfetto-modules/musashi-node.out.mjs"
           )
           
           for file in "${REQUIRED_FILES[@]}"; do
@@ -201,13 +203,13 @@ jobs:
           cp ci-artifacts/wasm-perfetto-modules/musashi-universal.out.wasm npm-package/dist/musashi-perfetto.wasm
           cp ci-artifacts/wasm-perfetto-modules/musashi-universal.out.mjs  npm-package/dist/musashi-perfetto-loader.mjs
 
-          # Stage Node-specific build from wasm-modules (Node-targeted ESM)
-          echo "Staging Node-specific WASM build (Node ESM)..."
-          cp ci-artifacts/wasm-modules/musashi-node.out.mjs  npm-package/musashi-node.out.mjs
-          cp ci-artifacts/wasm-modules/musashi-node.out.wasm npm-package/musashi-node.out.wasm
+          # Stage Node-specific build using the Perfetto-enabled artefacts
+          echo "Staging Node-specific WASM build (Perfetto-enabled Node ESM)..."
+          cp ci-artifacts/wasm-perfetto-modules/musashi-node.out.mjs  npm-package/musashi-node.out.mjs
+          cp ci-artifacts/wasm-perfetto-modules/musashi-node.out.wasm npm-package/musashi-node.out.wasm
 
-          if [ -f ci-artifacts/wasm-modules/musashi-node.out.wasm.map ]; then
-            cp ci-artifacts/wasm-modules/musashi-node.out.wasm.map npm-package/musashi-node.out.wasm.map
+          if [ -f ci-artifacts/wasm-perfetto-modules/musashi-node.out.wasm.map ]; then
+            cp ci-artifacts/wasm-perfetto-modules/musashi-node.out.wasm.map npm-package/musashi-node.out.wasm.map
           fi
 
           # Stage browser-targeted universal build expected by packaging script
@@ -262,7 +264,7 @@ jobs:
           done
 
           echo "Rebuilding npm-package wrapper to stage core runtime..."
-          npm --prefix npm-package run build
+          ENABLE_PERFETTO=1 npm --prefix npm-package run build
 
           echo "Validating ESM entrypoints..."
           TOP_LEVEL_FILES=(
