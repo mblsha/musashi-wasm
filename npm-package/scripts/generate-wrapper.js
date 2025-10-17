@@ -717,44 +717,50 @@ if (nodeWasmMapIn) {
 
 const universalJsCandidates = [
   path.join(rootDir, 'musashi-universal.out.mjs'),
-  path.join(altRootDir, 'musashi-universal.out.mjs')
+  path.join(altRootDir, 'musashi-universal.out.mjs'),
+  path.join(rootDir, 'musashi.out.mjs'),
+  path.join(altRootDir, 'musashi.out.mjs')
 ];
 const universalWasmCandidates = [
   path.join(rootDir, 'musashi-universal.out.wasm'),
-  path.join(altRootDir, 'musashi-universal.out.wasm')
+  path.join(altRootDir, 'musashi-universal.out.wasm'),
+  path.join(rootDir, 'musashi.out.wasm'),
+  path.join(altRootDir, 'musashi.out.wasm')
 ];
 const universalWasmMapCandidates = [
   path.join(rootDir, 'musashi-universal.out.wasm.map'),
-  path.join(altRootDir, 'musashi-universal.out.wasm.map')
+  path.join(altRootDir, 'musashi-universal.out.wasm.map'),
+  path.join(rootDir, 'musashi.out.wasm.map'),
+  path.join(altRootDir, 'musashi.out.wasm.map')
 ];
 
 const universalJsIn = universalJsCandidates.find(p => fs.existsSync(p));
 const universalWasmIn = universalWasmCandidates.find(p => fs.existsSync(p));
 const universalWasmMapIn = universalWasmMapCandidates.find(p => fs.existsSync(p));
 
-if (!universalJsIn || !universalWasmIn) {
-  throw new Error('Missing musashi-universal build artifacts. Run `./build.sh` before packaging.');
-}
-
 const perfLoaderOut = path.join(distDir, 'musashi-perfetto-loader.mjs');
 const perfWasmOut = path.join(distDir, 'musashi-perfetto.wasm');
 const perfWasmMapOut = path.join(distDir, 'musashi-perfetto.wasm.map');
 
-const universalJsSource = fs.readFileSync(universalJsIn, 'utf8');
-if (!universalJsSource.includes(perfettoSymbol)) {
-  throw new Error(
-    'musashi-universal.out.mjs does not include Perfetto exports. Rebuild with `ENABLE_PERFETTO=1 ./build.sh` before packaging.'
-  );
-}
+if (universalJsIn && universalWasmIn) {
+  const universalJsSource = fs.readFileSync(universalJsIn, 'utf8');
+  if (!universalJsSource.includes(perfettoSymbol)) {
+    throw new Error(
+      'musashi-universal.out.mjs does not include Perfetto exports. Rebuild with `ENABLE_PERFETTO=1 ./build.sh` before packaging.'
+    );
+  }
 
-const perfLoaderSource = universalJsSource.replace(/musashi-universal\.out\.wasm/g, 'musashi-perfetto.wasm');
-fs.writeFileSync(perfLoaderOut, perfLoaderSource);
-fs.copyFileSync(universalWasmIn, perfWasmOut);
+  const perfLoaderSource = universalJsSource.replace(/musashi(?:-universal)?\.out\.wasm/g, 'musashi-perfetto.wasm');
+  fs.writeFileSync(perfLoaderOut, perfLoaderSource);
+  fs.copyFileSync(universalWasmIn, perfWasmOut);
 
-if (universalWasmMapIn) {
-  fs.copyFileSync(universalWasmMapIn, perfWasmMapOut);
-} else if (fs.existsSync(perfWasmMapOut)) {
-  fs.rmSync(perfWasmMapOut);
+  if (universalWasmMapIn) {
+    fs.copyFileSync(universalWasmMapIn, perfWasmMapOut);
+  } else if (fs.existsSync(perfWasmMapOut)) {
+    fs.rmSync(perfWasmMapOut);
+  }
+} else {
+  throw new Error('Missing universal WebAssembly build artifacts (musashi-universal.out.* or musashi.out.*). Run `./build.sh` with ENABLE_PERFETTO=1 before packaging.');
 }
 
 const browserJsIn = browserJsCandidates.find(p => fs.existsSync(p));
