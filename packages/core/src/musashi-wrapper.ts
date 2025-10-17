@@ -821,85 +821,101 @@ export async function getModule(): Promise<MusashiWrapper> {
       )
     : false;
   const perfSpecifierRaw = runtimeEnv?.MUSASHI_PERFETTO_MODULE?.trim();
-  const wantsPerfetto =
-    !perfettoDisabled &&
-    (perfettoRequired || Boolean(perfSpecifierRaw) || preferNodeModule);
-
-  if (!preferNodeModule && perfettoRequired) {
-    throw new Error(
-      'Perfetto tracing requested via MUSASHI_REQUIRE_PERFETTO=1 but Node runtime was not detected.'
-    );
-  }
+  const wantsPerfetto = perfettoRequired || !perfettoDisabled;
 
   // Dynamic import based on environment
   let module: unknown;
-  if (preferNodeModule) {
-    const perfSpecifier =
-      perfSpecifierRaw && perfSpecifierRaw.length > 0
-        ? perfSpecifierRaw
-        : ['..', '..', 'perf.mjs'].join('/');
-    let perfLoadError: unknown;
+  let perfLoadError: unknown;
+  const perfSpecifierCandidates =
+    perfSpecifierRaw && perfSpecifierRaw.length > 0
+      ? [perfSpecifierRaw]
+      : [
+          ['..', '..', 'perf.mjs'].join('/'),
+          ['..', '..', '..', 'npm-package', 'perf.mjs'].join('/'),
+          'musashi-wasm/perf',
+        ];
+  let resolvedPerfSpecifier: string | undefined;
 
-    if (wantsPerfetto) {
-      try {
-        const { default: initPerfettoModule } = (await import(
-          perfSpecifier
-        )) as { default: () => Promise<unknown> };
-        const perfCandidate = (await initPerfettoModule()) as MusashiEmscriptenModule;
+  if (wantsPerfetto) {
+    try {
+      for (const candidate of perfSpecifierCandidates) {
+        try {
+          const { default: initPerfettoModule } = (await import(candidate)) as {
+            default: () => Promise<unknown>;
+          };
+          const perfCandidate =
+            (await initPerfettoModule()) as MusashiEmscriptenModule;
 
-        if (typeof perfCandidate?._m68k_perfetto_init !== 'function') {
-          throw new Error(
-            'Perfetto module did not expose _m68k_perfetto_init; falling back to standard build.'
-          );
-        }
+          if (typeof perfCandidate?._m68k_perfetto_init !== 'function') {
+            throw new Error(
+              'Perfetto module did not expose _m68k_perfetto_init; falling back to standard build.'
+            );
+          }
 
-        module = perfCandidate;
-      } catch (error) {
-        perfLoadError = error;
-        if (perfettoRequired) {
-          const detail =
-            error instanceof Error ? error.message : `Unknown error: ${String(error)}`;
-          throw new Error(
-            `MUSASHI_REQUIRE_PERFETTO=1 but the Perfetto-enabled Musashi module failed to load (${detail}).`
-          );
+          module = perfCandidate;
+          resolvedPerfSpecifier = candidate;
+          perfLoadError = undefined;
+          break;
+        } catch (candidateError) {
+          perfLoadError = candidateError;
+          resolvedPerfSpecifier = candidate;
         }
       }
+    } catch (error) {
+      perfLoadError = error;
     }
 
-    if (!module) {
+    if (!module && perfettoRequired) {
+      if (perfettoRequired) {
+        const detail =
+          perfLoadError instanceof Error
+            ? perfLoadError.message
+            : `Unknown error: ${String(perfLoadError)}`;
+        throw new Error(
+          `MUSASHI_REQUIRE_PERFETTO=1 but the Perfetto-enabled Musashi module failed to load (${detail}).`
+        );
+      }
+    }
+  }
+
+  if (!module) {
+    if (preferNodeModule) {
       // For Node.js, use the ESM wrapper
       // @ts-ignore - Dynamic import of .mjs file
       const { default: createMusashiModule } = await import(
         '../wasm/musashi-node-wrapper.mjs'
       );
       module = await createMusashiModule();
-
-      if (perfLoadError && wantsPerfetto && typeof console !== 'undefined') {
-        console.warn(
-          '[musashi-wasm] Perfetto module load failed; using standard build instead:',
-          perfLoadError,
-          `specifier=${perfSpecifier}`
-        );
-      }
+    } else {
+      // For browser, import the web ESM version
+      // Use variable specifier to avoid TS2307 compile-time resolution
+      const specifier = '../../../musashi.out.mjs';
+      // @ts-ignore - Dynamic import of .mjs file
+      const mod = await import(/* webpackIgnore: true */ specifier);
+      const moduleFactory = mod.default;
+      module = await moduleFactory();
     }
 
-    // Runtime validation to catch shape mismatches early
-    const modMaybe = module as Partial<MusashiEmscriptenModule> | null | undefined;
-    if (!modMaybe || typeof modMaybe._m68k_init !== 'function') {
-      const keys = module && typeof module === 'object' ? Object.keys(module as Record<string, unknown>).slice(0, 20) : [];
-      throw new Error(
-        'Musashi Module shape unexpected: _m68k_init not found. ' +
-          `Type=${typeof module}, keys=${JSON.stringify(keys)}`
+    if (perfLoadError && wantsPerfetto && typeof console !== 'undefined') {
+      console.warn(
+        '[musashi-wasm] Perfetto module load failed; using standard build instead:',
+        perfLoadError,
+        `specifier=${resolvedPerfSpecifier ?? perfSpecifierCandidates.join(',')}`
       );
     }
-  } else {
-    // For browser, import the web ESM version
-    // Use variable specifier to avoid TS2307 compile-time resolution
-    const specifier = '../../../musashi.out.mjs';
-    // @ts-ignore - Dynamic import of .mjs file
-    const mod = await import(/* webpackIgnore: true */ specifier);
-    const moduleFactory = mod.default;
-    module = await moduleFactory();
+  }
+
+  // Runtime validation to catch shape mismatches early
+  const modMaybe = module as Partial<MusashiEmscriptenModule> | null | undefined;
+  if (!modMaybe || typeof modMaybe._m68k_init !== 'function') {
+    const keys =
+      module && typeof module === 'object'
+        ? Object.keys(module as Record<string, unknown>).slice(0, 20)
+        : [];
+    throw new Error(
+      'Musashi Module shape unexpected: _m68k_init not found. ' +
+        `Type=${typeof module}, keys=${JSON.stringify(keys)}`
+    );
   }
 
   return new MusashiWrapper(module as MusashiEmscriptenModule);

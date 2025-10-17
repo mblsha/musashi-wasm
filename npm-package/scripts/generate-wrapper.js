@@ -715,11 +715,47 @@ if (nodeWasmMapIn) {
   });
 }
 
+const universalJsCandidates = [
+  path.join(rootDir, 'musashi-universal.out.mjs'),
+  path.join(altRootDir, 'musashi-universal.out.mjs')
+];
+const universalWasmCandidates = [
+  path.join(rootDir, 'musashi-universal.out.wasm'),
+  path.join(altRootDir, 'musashi-universal.out.wasm')
+];
+const universalWasmMapCandidates = [
+  path.join(rootDir, 'musashi-universal.out.wasm.map'),
+  path.join(altRootDir, 'musashi-universal.out.wasm.map')
+];
+
+const universalJsIn = universalJsCandidates.find(p => fs.existsSync(p));
+const universalWasmIn = universalWasmCandidates.find(p => fs.existsSync(p));
+const universalWasmMapIn = universalWasmMapCandidates.find(p => fs.existsSync(p));
+
+if (!universalJsIn || !universalWasmIn) {
+  throw new Error('Missing musashi-universal build artifacts. Run `./build.sh` before packaging.');
+}
+
 const perfLoaderOut = path.join(distDir, 'musashi-perfetto-loader.mjs');
 const perfWasmOut = path.join(distDir, 'musashi-perfetto.wasm');
-const perfLoaderSource = nodeJsSource.replace(/musashi-node\.out\.wasm/g, 'musashi-perfetto.wasm');
+const perfWasmMapOut = path.join(distDir, 'musashi-perfetto.wasm.map');
+
+const universalJsSource = fs.readFileSync(universalJsIn, 'utf8');
+if (!universalJsSource.includes(perfettoSymbol)) {
+  throw new Error(
+    'musashi-universal.out.mjs does not include Perfetto exports. Rebuild with `ENABLE_PERFETTO=1 ./build.sh` before packaging.'
+  );
+}
+
+const perfLoaderSource = universalJsSource.replace(/musashi-universal\.out\.wasm/g, 'musashi-perfetto.wasm');
 fs.writeFileSync(perfLoaderOut, perfLoaderSource);
-fs.copyFileSync(nodeWasmIn, perfWasmOut);
+fs.copyFileSync(universalWasmIn, perfWasmOut);
+
+if (universalWasmMapIn) {
+  fs.copyFileSync(universalWasmMapIn, perfWasmMapOut);
+} else if (fs.existsSync(perfWasmMapOut)) {
+  fs.rmSync(perfWasmMapOut);
+}
 
 const browserJsIn = browserJsCandidates.find(p => fs.existsSync(p));
 const browserWasmIn = browserWasmCandidates.find(p => fs.existsSync(p));
@@ -757,15 +793,15 @@ fs.writeFileSync(path.join(libDir, 'index.mjs'), esmWrapper);
 // Generate ESM wrapper for perfetto (Node + Browser; saveTrace only in Node)
 const perfettoEsmWrapper = `const detectRuntime = () => {
   const globalScope = globalThis;
-  const isBrowser =
+  const hasDom =
     typeof globalScope.importScripts === 'function' ||
     typeof globalScope.navigator === 'object' ||
     'document' in globalScope ||
     'window' in globalScope;
-  const isNode =
+  const hasNode =
     typeof globalScope.process !== 'undefined' &&
     globalScope.process?.release?.name === 'node';
-  return isNode && !isBrowser ? 'node' : 'browser';
+  return hasNode ? 'node' : hasDom ? 'browser' : 'browser';
 };
 
 const runtime = detectRuntime();
@@ -787,14 +823,23 @@ async function instantiateNode() {
   });
 }
 
+async function instantiateBrowser() {
+  const { default: createModule } = await import('../dist/musashi-perfetto-loader.mjs');
+  const wasmUrl = new URL('../dist/musashi-perfetto.wasm', import.meta.url);
+  return createModule({
+    locateFile(path) {
+      return path.endsWith('.wasm') ? wasmUrl.href : path;
+    }
+  });
+}
+
 async function loadMusashiPerfetto() {
   if (Module) return Module;
-  if (runtime !== 'node') {
-    throw new Error('MusashiPerfetto is only available in Node.js environments.');
-  }
   if (!modulePromise) {
     modulePromise = (async () => {
-      const instantiatedModule = await instantiateNode();
+      const instantiate =
+        runtime === 'node' ? instantiateNode : instantiateBrowser;
+      const instantiatedModule = await instantiate();
       Module = instantiatedModule;
       return instantiatedModule;
     })();
@@ -867,10 +912,9 @@ export class MusashiPerfetto {
   }
 
   async saveTrace(filename) {
-    const isNode = typeof process !== 'undefined' && !!process.versions?.node;
+    if (runtime !== 'node') return false;
     const traceData = await this.exportTrace();
     if (!traceData) return false;
-    if (!isNode) return false;
     const { writeFileSync } = await import('fs');
     writeFileSync(filename, traceData);
     return true;
