@@ -54,6 +54,9 @@ describe('Unified memory layout (regions + mirrors)', () => {
     expect(system.read(r2Start, 1) & 0xff).toBe(rom[r2Off]);
     expect(system.read(r2Start + 0x7fff, 1) & 0xff).toBe(rom[r2Off + 0x7fff]);
 
+    // Ensure unmapped base addresses remain untouched when layout is provided
+    expect(system.read(0x0010, 1)).toBe(0);
+
     // Mirror checks: 0x210000 mirrors 0x200000
     const mirStart = 0x210000;
     expect(system.read(mirStart, 1) & 0xff).toBe(rom[r2Off]);
