@@ -737,7 +737,6 @@ const universalWasmMapCandidates = [
 const universalJsIn = universalJsCandidates.find(p => fs.existsSync(p));
 const universalWasmIn = universalWasmCandidates.find(p => fs.existsSync(p));
 const universalWasmMapIn = universalWasmMapCandidates.find(p => fs.existsSync(p));
-
 const perfLoaderOut = path.join(distDir, 'musashi-perfetto-loader.mjs');
 const perfWasmOut = path.join(distDir, 'musashi-perfetto.wasm');
 const perfWasmMapOut = path.join(distDir, 'musashi-perfetto.wasm.map');
@@ -760,7 +759,15 @@ if (universalJsIn && universalWasmIn) {
     fs.rmSync(perfWasmMapOut);
   }
 } else {
-  throw new Error('Missing universal WebAssembly build artifacts (musashi-universal.out.* or musashi.out.*). Run `./build.sh` with ENABLE_PERFETTO=1 before packaging.');
+  if (
+    !fs.existsSync(perfLoaderOut) ||
+    !fs.existsSync(perfWasmOut) ||
+    !fs.readFileSync(perfLoaderOut, 'utf8').includes(perfettoSymbol)
+  ) {
+    throw new Error(
+      'Missing universal WebAssembly build artifacts (musashi-universal.out.* or musashi.out.*). Run `./build.sh` with ENABLE_PERFETTO=1 before packaging.'
+    );
+  }
 }
 
 const browserJsIn = browserJsCandidates.find(p => fs.existsSync(p));
