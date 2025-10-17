@@ -715,21 +715,30 @@ if (nodeWasmMapIn) {
   });
 }
 
+const perfArtifactDir = path.join(repoRootDir, 'ci-artifacts', 'wasm-perfetto-modules');
+const standardArtifactDir = path.join(repoRootDir, 'ci-artifacts', 'wasm-modules');
+
 const universalJsCandidates = [
   path.join(rootDir, 'musashi-universal.out.mjs'),
+  path.join(perfArtifactDir, 'musashi-universal.out.mjs'),
   path.join(altRootDir, 'musashi-universal.out.mjs'),
+  path.join(standardArtifactDir, 'musashi-universal.out.mjs'),
   path.join(rootDir, 'musashi.out.mjs'),
   path.join(altRootDir, 'musashi.out.mjs')
 ];
 const universalWasmCandidates = [
   path.join(rootDir, 'musashi-universal.out.wasm'),
+  path.join(perfArtifactDir, 'musashi-universal.out.wasm'),
   path.join(altRootDir, 'musashi-universal.out.wasm'),
+  path.join(standardArtifactDir, 'musashi-universal.out.wasm'),
   path.join(rootDir, 'musashi.out.wasm'),
   path.join(altRootDir, 'musashi.out.wasm')
 ];
 const universalWasmMapCandidates = [
   path.join(rootDir, 'musashi-universal.out.wasm.map'),
+  path.join(perfArtifactDir, 'musashi-universal.out.wasm.map'),
   path.join(altRootDir, 'musashi-universal.out.wasm.map'),
+  path.join(standardArtifactDir, 'musashi-universal.out.wasm.map'),
   path.join(rootDir, 'musashi.out.wasm.map'),
   path.join(altRootDir, 'musashi.out.wasm.map')
 ];
