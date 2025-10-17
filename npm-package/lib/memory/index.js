@@ -3,6 +3,13 @@
 // Regenerate with: npm --prefix npm-package run build
 
 // packages/memory/src/index.ts
+function assertExactLength(actual, expected, description) {
+  if (actual !== expected) {
+    throw new Error(
+      `Data size (${actual}) does not match ${description} (${expected})`
+    );
+  }
+}
 var MemoryRegion = class {
   constructor(system, address, size, parser) {
     this.system = system;
@@ -17,11 +24,7 @@ var MemoryRegion = class {
   }
   /** Writes raw bytes to the memory region. */
   setBytes(data) {
-    if (data.length !== this.size) {
-      throw new Error(
-        `Data size (${data.length}) does not match region size (${this.size})`
-      );
-    }
+    assertExactLength(data.length, this.size, "region size");
     this.system.writeBytes(this.address, data);
   }
 };
@@ -31,41 +34,77 @@ var MemoryArray = class {
     this.baseAddress = baseAddress;
     this.stride = stride;
     this.parser = parser;
+    if (!Number.isInteger(stride) || stride <= 0) {
+      throw new RangeError(
+        `Stride must be a positive integer (received ${stride})`
+      );
+    }
+  }
+  ensureNonNegativeInteger(value, description) {
+    if (!Number.isInteger(value)) {
+      throw new RangeError(`${description} must be an integer (received ${value})`);
+    }
+    if (value < 0) {
+      throw new RangeError(`${description} must be non-negative (received ${value})`);
+    }
+    return value;
+  }
+  resolveAddress(index) {
+    const normalizedIndex = this.ensureNonNegativeInteger(index, "Index");
+    return this.baseAddress + normalizedIndex * this.stride;
   }
   /** Reads and parses the element at the given index. */
   at(index) {
-    const address = this.baseAddress + index * this.stride;
+    const address = this.resolveAddress(index);
     const bytes = this.system.readBytes(address, this.stride);
     return this.parser(bytes);
   }
   /** Writes raw bytes to the element at the given index. */
   setAt(index, data) {
-    if (data.length !== this.stride) {
-      throw new Error(
-        `Data size (${data.length}) does not match stride (${this.stride})`
-      );
-    }
-    const address = this.baseAddress + index * this.stride;
+    assertExactLength(data.length, this.stride, "stride");
+    const address = this.resolveAddress(index);
     this.system.writeBytes(address, data);
   }
   /** Creates an iterable over a range of indices. */
   *iterate(start, count) {
-    for (let i = start; i < start + count; i++) {
+    const startIndex = this.ensureNonNegativeInteger(start, "Start index");
+    const total = this.ensureNonNegativeInteger(count, "Count");
+    const endIndex = startIndex + total;
+    for (let i = startIndex; i < endIndex; i++) {
       yield this.at(i);
     }
   }
 };
 var DataParser = class _DataParser {
+  static ensureAvailable(data, offset, requiredLength) {
+    if (!Number.isInteger(offset)) {
+      throw new RangeError(`Offset ${offset} must be an integer`);
+    }
+    if (offset < 0) {
+      throw new RangeError(`Offset ${offset} is out of bounds for length ${data.length}`);
+    }
+    if (requiredLength < 0) {
+      throw new RangeError("Required length must be non-negative");
+    }
+    if (offset + requiredLength > data.length) {
+      throw new RangeError(
+        `Requested ${requiredLength} byte(s) starting at offset ${offset} exceeds buffer length ${data.length}`
+      );
+    }
+  }
   /** Reads a big-endian 16-bit unsigned integer. */
   static readUint16BE(data, offset = 0) {
+    _DataParser.ensureAvailable(data, offset, 2);
     return data[offset] << 8 | data[offset + 1];
   }
   /** Reads a big-endian 32-bit unsigned integer. */
   static readUint32BE(data, offset = 0) {
+    _DataParser.ensureAvailable(data, offset, 4);
     return (data[offset] << 24 | data[offset + 1] << 16 | data[offset + 2] << 8 | data[offset + 3]) >>> 0;
   }
   /** Reads a big-endian 16-bit signed integer. */
   static readInt16BE(data, offset = 0) {
+    _DataParser.ensureAvailable(data, offset, 2);
     const value = data[offset] << 8 | data[offset + 1];
     return value << 16 >> 16;
   }
@@ -75,11 +114,13 @@ var DataParser = class _DataParser {
   }
   /** Writes a big-endian 16-bit unsigned integer. */
   static writeUint16BE(data, value, offset = 0) {
+    _DataParser.ensureAvailable(data, offset, 2);
     data[offset] = value >> 8 & 255;
     data[offset + 1] = value & 255;
   }
   /** Writes a big-endian 32-bit unsigned integer. */
   static writeUint32BE(data, value, offset = 0) {
+    _DataParser.ensureAvailable(data, offset, 4);
     data[offset] = value >> 24 & 255;
     data[offset + 1] = value >> 16 & 255;
     data[offset + 2] = value >> 8 & 255;
@@ -87,6 +128,7 @@ var DataParser = class _DataParser {
   }
   /** Reads a null-terminated ASCII string. */
   static readCString(data, offset = 0, maxLength) {
+    _DataParser.ensureAvailable(data, offset, 1);
     const end = maxLength ? Math.min(offset + maxLength, data.length) : data.length;
     let result = "";
     for (let i = offset; i < end; i++) {
@@ -97,12 +139,24 @@ var DataParser = class _DataParser {
   }
   /** Writes a null-terminated ASCII string. */
   static writeCString(data, value, offset = 0, maxLength) {
-    const end = maxLength ? Math.min(offset + maxLength - 1, data.length - 1) : data.length - 1;
-    let i = offset;
-    for (; i < end && i - offset < value.length; i++) {
-      data[i] = value.charCodeAt(i - offset);
+    _DataParser.ensureAvailable(data, offset, 1);
+    const available = data.length - offset;
+    if (maxLength !== void 0 && maxLength < 0) {
+      throw new RangeError("CString maxLength must be non-negative");
     }
-    data[i] = 0;
+    const limit = maxLength !== void 0 ? Math.min(maxLength, available) : available;
+    if (limit <= 0) {
+      throw new RangeError("CString region must be at least 1 byte to include a terminator");
+    }
+    const charsToWrite = Math.min(value.length, limit - 1);
+    let i = 0;
+    for (; i < charsToWrite; i++) {
+      data[offset + i] = value.charCodeAt(i);
+    }
+    data[offset + i] = 0;
+    for (let j = i + 1; j < limit; j++) {
+      data[offset + j] = 0;
+    }
   }
 };
 export {

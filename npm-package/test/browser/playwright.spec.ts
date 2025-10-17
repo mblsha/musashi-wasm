@@ -163,4 +163,34 @@ test.describe('musashi-wasm browser bundle', () => {
       }
     }
   });
+
+  test('Perfetto tracing works in a real browser without env overrides', async ({ page }) => {
+    await page.goto(`${baseUrl}/test/browser/index.html`);
+
+    const traceLength = await page.evaluate(async () => {
+      const { createSystem } = await import('../../lib/core/index.js');
+
+      const rom = new Uint8Array(0x2000);
+      rom.set([0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00], 0x0);
+      rom.set([0x4e, 0x71, 0x4e, 0x71, 0x4e, 0x75], 0x400);
+
+      const system = await createSystem({ rom, ramSize: 0x2000 });
+      try {
+        if (!system.tracer.isAvailable()) {
+          throw new Error('Perfetto tracer not available in browser runtime');
+        }
+        system.tracer.start({ instructions: true });
+        system.run(4);
+        const trace = system.tracer.stop();
+        if (!(trace instanceof Uint8Array)) {
+          throw new Error('Trace result is not a Uint8Array');
+        }
+        return trace.length;
+      } finally {
+        system.cleanup();
+      }
+    });
+
+    expect(traceLength).toBeGreaterThan(0);
+  });
 });

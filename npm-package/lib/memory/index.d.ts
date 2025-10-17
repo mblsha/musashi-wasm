@@ -34,6 +34,8 @@ export declare class MemoryArray<T> {
 	private readonly parser;
 	constructor(system: SystemMemoryIO, baseAddress: number, stride: number, // The size of each element in bytes.
 	parser: Parser<T>);
+	private ensureNonNegativeInteger;
+	private resolveAddress;
 	/** Reads and parses the element at the given index. */
 	at(index: number): T;
 	/** Writes raw bytes to the element at the given index. */
@@ -45,6 +47,7 @@ export declare class MemoryArray<T> {
  * Helper utilities for parsing common data types from byte arrays.
  */
 export declare class DataParser {
+	private static ensureAvailable;
 	/** Reads a big-endian 16-bit unsigned integer. */
 	static readUint16BE(data: Uint8Array, offset?: number): number;
 	/** Reads a big-endian 32-bit unsigned integer. */
