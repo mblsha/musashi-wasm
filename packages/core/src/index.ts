@@ -155,6 +155,18 @@ class TracerImpl implements Tracer {
       throw new Error('A tracing session is already active.');
     }
 
+    const wantsInstructionRegisters =
+      !!config.instructions && !!config.instructionsRegisters;
+
+    if (
+      wantsInstructionRegisters &&
+      !this._musashi.hasPerfettoInstructionRegisterSupport()
+    ) {
+      throw new Error(
+        'Perfetto instruction register tracing is not available in this Wasm build.'
+      );
+    }
+
     if (this._musashi.perfettoInit('m68k-ts') !== 0) {
       throw new Error('Failed to initialize Perfetto tracing session.');
     }
@@ -167,7 +179,7 @@ class TracerImpl implements Tracer {
     this._musashi.perfettoEnableMemory(!!config.memory);
     this._musashi.perfettoEnableInstructions(!!config.instructions);
     this._musashi.perfettoEnableInstructionRegisters(
-      !!config.instructions && !!config.instructionsRegisters
+      wantsInstructionRegisters
     );
 
     this._active = true;
