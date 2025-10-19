@@ -689,18 +689,10 @@ TEST_F(PerfettoTest, InstructionTracingCapturesRegistersWhenEnabled) {
             }
 
             register_annotations++;
-            if (!annotation.has_nested_value()) {
-                continue;
-            }
-
-            const auto& nested = annotation.nested_value();
-            const int entries = std::min(nested.dict_keys_size(), nested.dict_values_size());
-            for (int i = 0; i < entries; ++i) {
-                const auto& key = nested.dict_keys(i);
-                const auto& value = nested.dict_values(i);
-                if (key == "d0" && value.has_string_value()) {
+            for (const auto& entry : annotation.dict_entries()) {
+                if (entry.name() == "d0" && entry.has_pointer_value()) {
                     has_d0_entry = true;
-                } else if (key == "a7_sp" && value.has_string_value()) {
+                } else if (entry.name() == "a7_sp" && entry.has_pointer_value()) {
                     has_a7_entry = true;
                 }
             }
