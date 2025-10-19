@@ -680,6 +680,13 @@ export class MusashiWrapper {
     return typeof this._module._m68k_perfetto_init === 'function';
   }
 
+  hasPerfettoInstructionRegisterSupport(): boolean {
+    return (
+      typeof this._module._m68k_perfetto_enable_instruction_registers ===
+      'function'
+    );
+  }
+
   private withHeapString<T>(value: string, fn: (ptr: number) => T): T {
     const malloc = this._module._malloc;
     const free = this._module._free;
@@ -730,7 +737,16 @@ export class MusashiWrapper {
   }
 
   perfettoEnableInstructionRegisters(enable: boolean) {
-    this._module._m68k_perfetto_enable_instruction_registers?.(enable ? 1 : 0);
+    const fn = this._module._m68k_perfetto_enable_instruction_registers;
+    if (!fn) {
+      if (enable) {
+        throw new Error(
+          'Perfetto instruction register tracing is not available in this Wasm build.'
+        );
+      }
+      return;
+    }
+    fn(enable ? 1 : 0);
   }
 
   traceEnable(enable: boolean) {
