@@ -669,6 +669,7 @@ TEST_F(PerfettoTest, InstructionTracingCapturesRegistersWhenEnabled) {
     int register_annotations = 0;
     bool has_d0_entry = false;
     bool has_a7_entry = false;
+    bool has_sr_entry = false;
 
     for (const auto& packet : trace.packet()) {
         if (!packet.has_track_event()) {
@@ -694,6 +695,8 @@ TEST_F(PerfettoTest, InstructionTracingCapturesRegistersWhenEnabled) {
                     has_d0_entry = true;
                 } else if (entry.name() == "a7_sp" && entry.has_pointer_value()) {
                     has_a7_entry = true;
+                } else if (entry.name() == "sr" && entry.has_int_value()) {
+                    has_sr_entry = true;
                 }
             }
         }
@@ -705,6 +708,8 @@ TEST_F(PerfettoTest, InstructionTracingCapturesRegistersWhenEnabled) {
         << "Register annotation should provide D0 value";
     EXPECT_TRUE(has_a7_entry)
         << "Register annotation should provide A7/SP value";
+    EXPECT_TRUE(has_sr_entry)
+        << "Register annotation should provide SR value";
 #endif
 
     if (trace_data) {
