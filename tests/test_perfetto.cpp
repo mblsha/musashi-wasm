@@ -148,6 +148,24 @@ protected:
         write_word(0x500, 0x4E71);
         write_word(0x502, 0x4E75);
     }
+
+    void create_nested_call_program() {
+        /* main entry at 0x400: jsr caller; stop */
+        write_word(0x400, 0x4EB9);
+        write_long(0x402, 0x00000500);
+        write_word(0x406, 0x4E72);
+        write_word(0x408, 0x2000);
+
+        /* caller at 0x500: jsr callee; nop; moveq #0,d0; rts */
+        write_word(0x500, 0x4EB9);
+        write_long(0x502, 0x00000600);
+        write_word(0x506, 0x4E71);
+        write_word(0x508, 0x7000);
+        write_word(0x50A, 0x4E75);
+
+        /* callee at 0x600: rts */
+        write_word(0x600, 0x4E75);
+    }
 };
 
 /* ======================================================================== */
@@ -462,6 +480,141 @@ TEST_F(PerfettoTest, FlowTracingAddsTopLevelSummarySlice) {
     EXPECT_EQ(summary_slice_ends, 1) << "Expected exactly one summary slice end event";
     EXPECT_EQ(call_slice_begins, 1) << "Expected one nested call slice for root_call";
     EXPECT_TRUE(slice_stack.empty()) << "All Flow slices should be balanced";
+#endif
+
+    if (trace_data) {
+        ::perfetto_free_trace_data(trace_data);
+    }
+
+    ::perfetto_enable_flow(0);
+}
+
+TEST_F(PerfettoTest, FlowTracingKeepsCallerSliceOpenAfterCalleeReturns) {
+    if (::perfetto_init("M68K_Nested_Test") != 0) {
+        GTEST_SKIP() << "Perfetto not available, skipping nested return test";
+    }
+
+    ::perfetto_enable_flow(1);
+    ::register_function_name(0x400, "main_entry");
+    ::register_function_name(0x500, "_3draw_sprite_like");
+    ::register_function_name(0x600, "spr_draw_reflection_like");
+
+    create_nested_call_program();
+    m68k_pulse_reset();
+    m68k_execute(500);
+
+    uint8_t* trace_data = nullptr;
+    size_t trace_size = 0;
+    ASSERT_EQ(::perfetto_export_trace(&trace_data, &trace_size), 0);
+
+#ifdef ENABLE_PERFETTO
+    ASSERT_NE(trace_data, nullptr);
+
+    perfetto::protos::Trace trace;
+    ASSERT_TRUE(trace.ParseFromArray(trace_data, static_cast<int>(trace_size)));
+
+    bool flow_track_found = false;
+    uint64_t flow_uuid = 0;
+
+    for (const auto& packet : trace.packet()) {
+        if (!packet.has_track_descriptor()) {
+            continue;
+        }
+        const auto& descriptor = packet.track_descriptor();
+        if (descriptor.has_name() && descriptor.name() == "Flow") {
+            flow_track_found = true;
+            flow_uuid = descriptor.uuid();
+            break;
+        }
+    }
+
+    ASSERT_TRUE(flow_track_found) << "Flow track missing from Perfetto trace";
+
+    struct SliceInfo {
+        std::string name;
+        bool is_summary;
+        uint64_t begin_ts;
+        uint64_t end_ts;
+    };
+
+    std::vector<SliceInfo> stack;
+    std::vector<SliceInfo> completed;
+    std::vector<std::string> begin_sequence;
+    std::vector<std::string> end_sequence;
+
+    for (const auto& packet : trace.packet()) {
+        if (!packet.has_track_event()) {
+            continue;
+        }
+        const auto& event = packet.track_event();
+        if (event.track_uuid() != flow_uuid) {
+            continue;
+        }
+
+        if (event.type() == perfetto::protos::TrackEvent::TYPE_SLICE_BEGIN) {
+            bool is_summary = false;
+            for (const auto& annotation : event.debug_annotations()) {
+                if (annotation.has_name() &&
+                    annotation.name() == "summary" &&
+                    annotation.has_bool_value() &&
+                    annotation.bool_value()) {
+                    is_summary = true;
+                    break;
+                }
+            }
+
+            SliceInfo info{
+                event.name(),
+                is_summary,
+                static_cast<uint64_t>(packet.timestamp()),
+                0
+            };
+            stack.push_back(info);
+            begin_sequence.push_back(is_summary ? std::string("summary") : event.name());
+        } else if (event.type() == perfetto::protos::TrackEvent::TYPE_SLICE_END) {
+            ASSERT_FALSE(stack.empty()) << "Encountered slice end without matching begin";
+            auto info = stack.back();
+            stack.pop_back();
+            info.end_ts = static_cast<uint64_t>(packet.timestamp());
+            completed.push_back(info);
+            end_sequence.push_back(info.is_summary ? std::string("summary") : info.name);
+        }
+    }
+
+    EXPECT_TRUE(stack.empty()) << "Flow track slices should be balanced";
+
+    const SliceInfo* summary_slice = nullptr;
+    const SliceInfo* caller_slice = nullptr;
+    const SliceInfo* callee_slice = nullptr;
+
+    for (const auto& slice : completed) {
+        if (slice.is_summary) {
+            summary_slice = &slice;
+        } else if (slice.name == "_3draw_sprite_like") {
+            caller_slice = &slice;
+        } else if (slice.name == "spr_draw_reflection_like") {
+            callee_slice = &slice;
+        }
+    }
+
+    ASSERT_NE(summary_slice, nullptr) << "Missing summary slice";
+    ASSERT_NE(caller_slice, nullptr) << "Missing caller slice";
+    ASSERT_NE(callee_slice, nullptr) << "Missing callee slice";
+
+    ASSERT_EQ(begin_sequence.size(), 3u) << "Expected exactly three slice begins on Flow track";
+    EXPECT_EQ(begin_sequence[0], "summary");
+    EXPECT_EQ(begin_sequence[1], std::string("_3draw_sprite_like"));
+    EXPECT_EQ(begin_sequence[2], std::string("spr_draw_reflection_like"));
+
+    ASSERT_EQ(end_sequence.size(), 3u) << "Expected exactly three slice ends on Flow track";
+    EXPECT_EQ(end_sequence[0], std::string("spr_draw_reflection_like"));
+    EXPECT_EQ(end_sequence[1], std::string("_3draw_sprite_like"));
+    EXPECT_EQ(end_sequence[2], "summary");
+
+    EXPECT_LT(callee_slice->end_ts, caller_slice->end_ts)
+        << "Caller slice should remain open after callee returns";
+    EXPECT_LE(caller_slice->end_ts, summary_slice->end_ts)
+        << "Summary slice should close at or after caller";
 #endif
 
     if (trace_data) {
