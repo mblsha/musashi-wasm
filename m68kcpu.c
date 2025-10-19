@@ -1077,14 +1077,25 @@ int m68k_execute(int num_cycles)
 					is_flow_instruction = 1;
 				}
 				
-				if (is_flow_instruction) {
-					const uint32_t return_addr = (flow_type == M68K_TRACE_FLOW_CALL) ? pre_pc : 0;
+					if (is_flow_instruction) {
+						const uint32_t return_addr = (flow_type == M68K_TRACE_FLOW_CALL) ? pre_pc : 0;
 
-					/* Call flow tracing hook */
-					m68k_trace_flow_hook(flow_type, instr_start_pc, post_pc, return_addr);
+						/* JSR/BSR already emit M68K_TRACE_FLOW_CALL from their microcode helpers.
+						 * Skip the loop-level hook to avoid double-reporting the same event.
+						 */
+						int emit_from_loop = 1;
+						if (flow_type == M68K_TRACE_FLOW_CALL) {
+							if (opcode_is_jsr(opcode) || opcode_is_bsr(opcode)) {
+								emit_from_loop = 0;
+							}
+						}
+
+						if (emit_from_loop) {
+							m68k_trace_flow_hook(flow_type, instr_start_pc, post_pc, return_addr);
+						}
+					}
 				}
-			}
-			
+
 			/* THIS IS THE KEY FIX: Update the global trace cycle counter */
 			m68k_trace_update_cycles(executed_cycles);
 
