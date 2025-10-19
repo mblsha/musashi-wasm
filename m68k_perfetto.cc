@@ -188,6 +188,7 @@ M68kPerfettoTracer::M68kPerfettoTracer(const std::string& process_name)
     : flow_enabled_(false)
     , memory_enabled_(false)
     , instruction_enabled_(false)
+    , summary_slice_open_(false)
     , total_instructions_(0)
     , total_memory_accesses_(0) {
     
@@ -209,7 +210,7 @@ M68kPerfettoTracer::~M68kPerfettoTracer() {
 
 void M68kPerfettoTracer::cleanup_unclosed_slices() {
     /* Close any remaining open slices to prevent "Did not end" in Perfetto UI */
-    if (!call_stack_.empty()) {
+    if (!call_stack_.empty() || summary_slice_open_) {
         /* Get a reasonable end timestamp (current cycles + small offset) */
         uint64_t cleanup_timestamp_ns = cycles_to_nanoseconds(999999);  /* ~125ms at 8MHz */
         
@@ -219,7 +220,41 @@ void M68kPerfettoTracer::cleanup_unclosed_slices() {
             call_stack_.pop_back();
             cleanup_timestamp_ns += 1000;  /* Small time increment between closes */
         }
+
+        if (summary_slice_open_) {
+            trace_builder_->end_slice(cpu_thread_track_id_, cleanup_timestamp_ns);
+            summary_slice_open_ = false;
+            summary_slice_name_.clear();
+        }
     }
+}
+
+void M68kPerfettoTracer::enable_flow_tracing(bool enable) {
+    if (!enable) {
+        cleanup_unclosed_slices();
+    }
+    flow_enabled_ = enable;
+}
+
+void M68kPerfettoTracer::begin_summary_slice(uint64_t timestamp_ns, uint32_t dest_pc) {
+    if (summary_slice_open_) {
+        return;
+    }
+
+    const char* func_name = get_function_name(dest_pc);
+    summary_slice_name_ = func_name ? std::string(func_name)
+                                    : (std::string("call_") + format_hex(dest_pc));
+
+    auto summary_event = trace_builder_->begin_slice(cpu_thread_track_id_, summary_slice_name_, timestamp_ns)
+        .add_pointer("target_pc", dest_pc);
+
+    if (func_name) {
+        summary_event.add_annotation("func_name", func_name);
+    }
+
+    summary_event.add_annotation("summary", true);
+
+    summary_slice_open_ = true;
 }
 
 int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t source_pc, 
@@ -234,6 +269,12 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
 
     switch (type) {
         case M68K_TRACE_FLOW_CALL: {
+            const bool call_stack_was_empty = call_stack_.empty();
+
+            if (call_stack_was_empty) {
+                begin_summary_slice(timestamp_ns, dest_pc);
+            }
+
             /* Begin a slice for the call and track it on call stack */
             /* Use registered function name if available */
             const char* func_name = get_function_name(dest_pc);
@@ -282,11 +323,14 @@ int M68kPerfettoTracer::handle_flow_event(m68k_trace_flow_type type, uint32_t so
         case M68K_TRACE_FLOW_RETURN: {
             /* End the most recent call slice */
             if (!call_stack_.empty()) {
-                auto& flow_state = call_stack_.back();
-                
-                /* End the slice with proper timestamp */
                 trace_builder_->end_slice(cpu_thread_track_id_, timestamp_ns);
                 call_stack_.pop_back();
+
+                if (call_stack_.empty() && summary_slice_open_) {
+                    trace_builder_->end_slice(cpu_thread_track_id_, timestamp_ns);
+                    summary_slice_open_ = false;
+                    summary_slice_name_.clear();
+                }
             } else {
                 /* Return without matching call - can happen when starting mid-execution */
             }

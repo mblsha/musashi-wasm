@@ -74,7 +74,7 @@ public:
     M68kPerfettoTracer& operator=(M68kPerfettoTracer&&) = delete;
 
     /* Configuration */
-    void enable_flow_tracing(bool enable) { flow_enabled_ = enable; }
+    void enable_flow_tracing(bool enable);
     void enable_memory_tracing(bool enable) { memory_enabled_ = enable; }
     void enable_instruction_tracing(bool enable) { instruction_enabled_ = enable; }
     
@@ -111,6 +111,7 @@ private:
     bool flow_enabled_;
     bool memory_enabled_;
     bool instruction_enabled_;
+    bool summary_slice_open_;
 
     /* Internal state for flow tracking */
     struct FlowState {
@@ -119,6 +120,7 @@ private:
         std::string flow_name;
     };
     std::vector<FlowState> call_stack_;
+    std::string summary_slice_name_;
 
     /* Performance counters */
     uint64_t total_instructions_;
@@ -127,6 +129,7 @@ private:
     /* Utility functions */
     std::string format_hex(uint32_t value) const;
     uint64_t cycles_to_nanoseconds(uint64_t cycles) const;
+    void begin_summary_slice(uint64_t timestamp_ns, uint32_t dest_pc);
 };
 
 } /* namespace m68k_perfetto */
