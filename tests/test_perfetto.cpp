@@ -12,6 +12,10 @@
 #include <vector>
 #include <set>
 
+#ifdef ENABLE_PERFETTO
+#include <perfetto.pb.h>
+#endif
+
 /* Forward declarations for myfunc.cc wrapper functions */
 extern "C" {
     /* Perfetto wrapper functions from myfunc.cc */
@@ -350,6 +354,121 @@ TEST_F(PerfettoTest, FlowTracingEmitsDuplicateCallEventsForJsrs) {
 
     m68k_set_trace_flow_callback(nullptr);
     m68k_trace_set_flow_enabled(0);
+}
+
+TEST_F(PerfettoTest, FlowTracingAddsTopLevelSummarySlice) {
+    if (::perfetto_init("M68K_Summary_Test") != 0) {
+        GTEST_SKIP() << "Perfetto not available, skipping summary slice test";
+    }
+
+    ::perfetto_enable_flow(1);
+    ::register_function_name(0x500, "root_call");
+
+    uint32_t pc = 0x400;
+    /* JSR to root_call */
+    write_word(pc, 0x4EB9); pc += 2;
+    write_long(pc, 0x00000500); pc += 4;
+    /* STOP */
+    write_word(pc, 0x4E72); pc += 2;
+    write_word(pc, 0x2700); pc += 2;
+
+    /* Subroutine implementation */
+    write_word(0x500, 0x4E71); /* NOP */
+    write_word(0x502, 0x4E75); /* RTS */
+
+    m68k_pulse_reset();
+    m68k_execute(200);
+
+    uint8_t* trace_data = nullptr;
+    size_t trace_size = 0;
+    ASSERT_EQ(::perfetto_export_trace(&trace_data, &trace_size), 0);
+
+#ifdef ENABLE_PERFETTO
+    ASSERT_NE(trace_data, nullptr);
+
+    perfetto::protos::Trace trace;
+    ASSERT_TRUE(trace.ParseFromArray(trace_data, static_cast<int>(trace_size)));
+
+    bool flow_track_found = false;
+    uint64_t flow_uuid = 0;
+
+    for (const auto& packet : trace.packet()) {
+        if (!packet.has_track_descriptor()) {
+            continue;
+        }
+        const auto& descriptor = packet.track_descriptor();
+        if (descriptor.has_name() && descriptor.name() == "Flow") {
+            flow_track_found = true;
+            flow_uuid = descriptor.uuid();
+            break;
+        }
+    }
+
+    EXPECT_TRUE(flow_track_found) << "Flow track missing from Perfetto trace";
+
+    int summary_slice_begins = 0;
+    int summary_slice_ends = 0;
+    int call_slice_begins = 0;
+    std::vector<bool> slice_stack;
+
+    if (flow_track_found) {
+        for (const auto& packet : trace.packet()) {
+            if (!packet.has_track_event()) {
+                continue;
+            }
+            const auto& event = packet.track_event();
+            if (event.track_uuid() != flow_uuid) {
+                continue;
+            }
+
+            if (event.type() == perfetto::protos::TrackEvent::TYPE_SLICE_BEGIN) {
+                bool is_summary = false;
+                for (const auto& annotation : event.debug_annotations()) {
+                    if (annotation.has_name() &&
+                        annotation.name() == "summary" &&
+                        annotation.has_bool_value() &&
+                        annotation.bool_value()) {
+                        is_summary = true;
+                        break;
+                    }
+                }
+
+                if (is_summary) {
+                    summary_slice_begins++;
+                    EXPECT_EQ(event.name(), "root_call")
+                        << "Summary slice should resolve to registered function name";
+                    slice_stack.push_back(true);
+                    EXPECT_EQ(slice_stack.size(), 1u) << "Summary slice should be outermost on Flow track";
+                } else if (event.name() == "root_call") {
+                    call_slice_begins++;
+                    slice_stack.push_back(false);
+                    EXPECT_EQ(slice_stack.size(), 2u) << "Call slice should nest beneath summary slice";
+                } else {
+                    slice_stack.push_back(false);
+                }
+            } else if (event.type() == perfetto::protos::TrackEvent::TYPE_SLICE_END) {
+                if (!slice_stack.empty()) {
+                    bool was_summary = slice_stack.back();
+                    slice_stack.pop_back();
+                    if (was_summary) {
+                        summary_slice_ends++;
+                    }
+                }
+            }
+        }
+    }
+
+    EXPECT_EQ(summary_slice_begins, 1) << "Expected exactly one summary slice begin event";
+    EXPECT_EQ(summary_slice_ends, 1) << "Expected exactly one summary slice end event";
+    EXPECT_EQ(call_slice_begins, 1) << "Expected one nested call slice for root_call";
+    EXPECT_TRUE(slice_stack.empty()) << "All Flow slices should be balanced";
+#endif
+
+    if (trace_data) {
+        ::perfetto_free_trace_data(trace_data);
+    }
+
+    ::perfetto_enable_flow(0);
 }
 
 /* ======================================================================== */
