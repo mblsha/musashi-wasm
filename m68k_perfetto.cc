@@ -466,6 +466,8 @@ int M68kPerfettoTracer::handle_instruction_event(uint32_t pc, uint16_t opcode, u
             a_regs[i] = m68k_get_reg(nullptr, static_cast<m68k_register_t>(M68K_REG_A0 + i));
         }
 
+        const uint32_t sr = m68k_get_reg(nullptr, M68K_REG_SR);
+
         auto reg_annotation = instr_event.annotation("r");
         reg_annotation.pointer("d0", d_regs[0])
             .pointer("d1", d_regs[1])
@@ -482,7 +484,8 @@ int M68kPerfettoTracer::handle_instruction_event(uint32_t pc, uint16_t opcode, u
             .pointer("a4", a_regs[4])
             .pointer("a5", a_regs[5])
             .pointer("a6", a_regs[6])
-            .pointer("a7_sp", a_regs[7]);
+            .pointer("a7_sp", a_regs[7])
+            .integer("sr", static_cast<int64_t>(sr));
     }
 
     trace_builder_->end_slice(instr_thread_track_id_, end_ns);
