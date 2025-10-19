@@ -585,6 +585,10 @@ class MusashiPerfetto {
   enableInstructionTracing(enable) {
     this.module._m68k_perfetto_enable_instructions(enable ? 1 : 0);
   }
+
+  enableInstructionRegisters(enable) {
+    this.module._m68k_perfetto_enable_instruction_registers?.(enable ? 1 : 0);
+  }
   
   enableMemoryTracing(enable) {
     this.module._m68k_perfetto_enable_memory(enable ? 1 : 0);
@@ -912,6 +916,7 @@ export class MusashiPerfetto {
   // Perfetto-specific methods
   enableFlowTracing(enable) { this.module._m68k_perfetto_enable_flow(enable ? 1 : 0); }
   enableInstructionTracing(enable) { this.module._m68k_perfetto_enable_instructions(enable ? 1 : 0); }
+  enableInstructionRegisters(enable) { this.module._m68k_perfetto_enable_instruction_registers?.(enable ? 1 : 0); }
   enableMemoryTracing(enable) { this.module._m68k_perfetto_enable_memory(enable ? 1 : 0); }
   enableInterruptTracing(enable) { this.module._m68k_perfetto_enable_interrupts(enable ? 1 : 0); }
 

@@ -41,6 +41,7 @@ void m68k_perfetto_cleanup_slices(void);
 void m68k_perfetto_enable_flow(int enable);
 void m68k_perfetto_enable_memory(int enable);
 void m68k_perfetto_enable_instructions(int enable);
+void m68k_perfetto_enable_instruction_registers(int enable);
 
 /* Export trace data (critical for WASM) */
 int m68k_perfetto_export_trace(uint8_t** data_out, size_t* size_out);
@@ -76,7 +77,8 @@ public:
     /* Configuration */
     void enable_flow_tracing(bool enable);
     void enable_memory_tracing(bool enable) { memory_enabled_ = enable; }
-    void enable_instruction_tracing(bool enable) { instruction_enabled_ = enable; }
+    void enable_instruction_tracing(bool enable);
+    void enable_instruction_registers(bool enable) { instruction_regs_enabled_ = enable; }
     
     /* Force cleanup of unclosed slices */
     void cleanup_unclosed_slices();
@@ -112,6 +114,7 @@ private:
     bool memory_enabled_;
     bool instruction_enabled_;
     bool summary_slice_open_;
+    bool instruction_regs_enabled_;
 
     /* Internal state for flow tracking */
     struct FlowState {
@@ -152,6 +155,7 @@ static inline void m68k_perfetto_destroy(void) {}
 static inline void m68k_perfetto_enable_flow(int enable) { (void)enable; }
 static inline void m68k_perfetto_enable_memory(int enable) { (void)enable; }
 static inline void m68k_perfetto_enable_instructions(int enable) { (void)enable; }
+static inline void m68k_perfetto_enable_instruction_registers(int enable) { (void)enable; }
 static inline int m68k_perfetto_export_trace(uint8_t** data_out, size_t* size_out) { 
     (void)data_out; (void)size_out; return -1; 
 }

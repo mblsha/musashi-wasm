@@ -106,6 +106,7 @@ if [[ "$ENABLE_PERFETTO_FLAG" == "1" ]]; then
     _m68k_perfetto_destroy
     _m68k_perfetto_enable_flow
     _m68k_perfetto_enable_instructions
+    _m68k_perfetto_enable_instruction_registers
     _m68k_perfetto_enable_memory
     _m68k_perfetto_export_trace
     _m68k_perfetto_free_trace_data

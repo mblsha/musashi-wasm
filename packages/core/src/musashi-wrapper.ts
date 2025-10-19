@@ -100,6 +100,7 @@ export interface MusashiEmscriptenModule {
   _m68k_perfetto_enable_flow?(enable: number): void;
   _m68k_perfetto_enable_memory?(enable: number): void;
   _m68k_perfetto_enable_instructions?(enable: number): void;
+  _m68k_perfetto_enable_instruction_registers?(enable: number): void;
   _m68k_perfetto_export_trace?(
     data_out: EmscriptenBuffer,
     size_out: EmscriptenBuffer
@@ -726,6 +727,10 @@ export class MusashiWrapper {
 
   perfettoEnableInstructions(enable: boolean) {
     this._module._m68k_perfetto_enable_instructions?.(enable ? 1 : 0);
+  }
+
+  perfettoEnableInstructionRegisters(enable: boolean) {
+    this._module._m68k_perfetto_enable_instruction_registers?.(enable ? 1 : 0);
   }
 
   traceEnable(enable: boolean) {

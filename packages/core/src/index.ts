@@ -166,6 +166,9 @@ class TracerImpl implements Tracer {
     this._musashi.perfettoEnableFlow(!!config.flow);
     this._musashi.perfettoEnableMemory(!!config.memory);
     this._musashi.perfettoEnableInstructions(!!config.instructions);
+    this._musashi.perfettoEnableInstructionRegisters(
+      !!config.instructions && !!config.instructionsRegisters
+    );
 
     this._active = true;
   }
