@@ -124,6 +124,26 @@ protected:
         write_word(pc, 0x4E72); pc += 2; /* 0x416 */
         write_word(pc, 0x2700); pc += 2;
     }
+
+    void create_duplicate_jsr_program() {
+        uint32_t pc = 0x400;
+
+        /* First JSR to 0x500 */
+        write_word(pc, 0x4EB9); pc += 2;
+        write_long(pc, 0x00000500); pc += 4;
+
+        /* Second JSR to the same subroutine */
+        write_word(pc, 0x4EB9); pc += 2;
+        write_long(pc, 0x00000500); pc += 4;
+
+        /* STOP to terminate execution */
+        write_word(pc, 0x4E72); pc += 2;
+        write_word(pc, 0x2700); pc += 2;
+
+        /* Subroutine body: NOP; RTS */
+        write_word(0x500, 0x4E71);
+        write_word(0x502, 0x4E75);
+    }
 };
 
 /* ======================================================================== */
@@ -295,6 +315,38 @@ TEST_F(PerfettoTest, FlowTracingCapturesJumps) {
         << "Expected BRA at 0x40A to emit a jump event";
     EXPECT_TRUE(jump_sources.count(0x410))
         << "Expected JMP at 0x410 to emit a jump event";
+
+    m68k_set_trace_flow_callback(nullptr);
+    m68k_trace_set_flow_enabled(0);
+}
+
+TEST_F(PerfettoTest, FlowTracingEmitsDuplicateCallEventsForJsrs) {
+    g_flow_events.clear();
+    m68k_trace_set_flow_enabled(1);
+    m68k_set_trace_flow_callback(CaptureFlowCallback);
+
+    create_duplicate_jsr_program();
+    m68k_pulse_reset();
+
+    /* Execute until STOP */
+    m68k_execute(200);
+
+    std::vector<FlowEvent> call_events;
+    for (const auto& event : g_flow_events) {
+        if (event.type == M68K_TRACE_FLOW_CALL) {
+            call_events.push_back(event);
+        }
+    }
+
+    std::set<std::pair<uint32_t, uint32_t>> unique_calls;
+    for (const auto& event : call_events) {
+        unique_calls.emplace(event.source_pc, event.dest_pc);
+    }
+
+    EXPECT_EQ(call_events.size(), unique_calls.size())
+        << "Duplicate call flow events detected for identical (source,dest) pairs";
+    EXPECT_EQ(unique_calls.size(), 2u)
+        << "Expected exactly two distinct call events for the back-to-back JSRs";
 
     m68k_set_trace_flow_callback(nullptr);
     m68k_trace_set_flow_enabled(0);
