@@ -1077,27 +1077,32 @@ int m68k_execute(int num_cycles)
 					is_flow_instruction = 1;
 				}
 				
-					if (is_flow_instruction) {
-						const uint32_t return_addr = (flow_type == M68K_TRACE_FLOW_CALL) ? pre_pc : 0;
+                    if (is_flow_instruction) {
+                        const uint32_t return_addr = (flow_type == M68K_TRACE_FLOW_CALL) ? pre_pc : 0;
 
-						/* JSR/BSR already emit M68K_TRACE_FLOW_CALL from their microcode helpers.
-						 * Skip the loop-level hook to avoid double-reporting the same event.
-						 */
-						int emit_from_loop = 1;
-						if (flow_type == M68K_TRACE_FLOW_CALL) {
-							if (opcode_is_jsr(opcode) || opcode_is_bsr(opcode)) {
-								emit_from_loop = 0;
-							}
-						}
+                        /* JSR/BSR already emit M68K_TRACE_FLOW_CALL from their microcode helpers.
+                         * RTS microcode also emits the return event. Skip the loop-level hook in these cases
+                         * to avoid double-reporting the same control-flow transition.
+                         */
+                        int emit_from_loop = 1;
+                        if (flow_type == M68K_TRACE_FLOW_CALL) {
+                            if (opcode_is_jsr(opcode) || opcode_is_bsr(opcode)) {
+                                emit_from_loop = 0;
+                            }
+                        } else if (flow_type == M68K_TRACE_FLOW_RETURN) {
+                            if (opcode_is_rts(opcode)) {
+                                emit_from_loop = 0;
+                            }
+                        }
 
-						if (emit_from_loop) {
-							m68k_trace_flow_hook(flow_type, instr_start_pc, post_pc, return_addr);
-						}
-					}
-				}
+                        if (emit_from_loop) {
+                            m68k_trace_flow_hook(flow_type, instr_start_pc, post_pc, return_addr);
+                        }
+                    }
+                }
 
-			/* THIS IS THE KEY FIX: Update the global trace cycle counter */
-			m68k_trace_update_cycles(executed_cycles);
+            /* THIS IS THE KEY FIX: Update the global trace cycle counter */
+            m68k_trace_update_cycles(executed_cycles);
 
 			/* Trace m68k_exception, if necessary */
 			m68ki_exception_if_trace(); /* auto-disable (see m68kcpu.h) */
