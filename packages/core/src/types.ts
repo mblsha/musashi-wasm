@@ -64,6 +64,11 @@ export interface SystemConfig {
 export interface TraceConfig {
   /** Trace instruction execution slices. Defaults to false. */
   instructions?: boolean;
+  /**
+   * Include full D/A register snapshots on every instruction slice.
+   * Ignored unless `instructions` tracing is enabled. Defaults to false.
+   */
+  instructionsRegisters?: boolean;
   /** Trace function calls, returns, and jumps. Defaults to false. */
   flow?: boolean;
   /** Trace memory write operations. Defaults to false. */

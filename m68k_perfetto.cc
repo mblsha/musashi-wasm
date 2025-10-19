@@ -9,6 +9,7 @@
 #include <retrobus/retrobus_perfetto.hpp>
 
 #include <algorithm>
+#include <array>
 #include <iomanip>
 #include <sstream>
 #include <cassert>
@@ -124,6 +125,12 @@ void m68k_perfetto_enable_instructions(int enable) {
     }
 }
 
+void m68k_perfetto_enable_instruction_registers(int enable) {
+    if (g_tracer) {
+        g_tracer->enable_instruction_registers(enable != 0);
+    }
+}
+
 int m68k_perfetto_export_trace(uint8_t** data_out, size_t* size_out) {
     if (!g_tracer || !data_out || !size_out) {
         return -1;
@@ -189,6 +196,7 @@ M68kPerfettoTracer::M68kPerfettoTracer(const std::string& process_name)
     , memory_enabled_(false)
     , instruction_enabled_(false)
     , summary_slice_open_(false)
+    , instruction_regs_enabled_(false)
     , total_instructions_(0)
     , total_memory_accesses_(0) {
     
@@ -234,6 +242,13 @@ void M68kPerfettoTracer::enable_flow_tracing(bool enable) {
         cleanup_unclosed_slices();
     }
     flow_enabled_ = enable;
+}
+
+void M68kPerfettoTracer::enable_instruction_tracing(bool enable) {
+    instruction_enabled_ = enable;
+    if (!enable) {
+        instruction_regs_enabled_ = false;
+    }
 }
 
 void M68kPerfettoTracer::begin_summary_slice(uint64_t timestamp_ns, uint32_t dest_pc) {
@@ -439,8 +454,36 @@ int M68kPerfettoTracer::handle_instruction_event(uint32_t pc, uint16_t opcode, u
     m68k_disassemble(disasm_buf, pc, M68K_CPU_TYPE_68000);
 
     /* Create slice for instruction execution on its own track */
-    trace_builder_->begin_slice(instr_thread_track_id_, disasm_buf, start_ns)
-        .add_pointer("pc", pc);
+    auto instr_event = trace_builder_->begin_slice(instr_thread_track_id_, disasm_buf, start_ns);
+    instr_event.add_pointer("pc", pc);
+
+    if (instruction_regs_enabled_) {
+        std::array<uint32_t, 8> d_regs{};
+        std::array<uint32_t, 8> a_regs{};
+
+        for (int i = 0; i < 8; ++i) {
+            d_regs[i] = m68k_get_reg(nullptr, static_cast<m68k_register_t>(M68K_REG_D0 + i));
+            a_regs[i] = m68k_get_reg(nullptr, static_cast<m68k_register_t>(M68K_REG_A0 + i));
+        }
+
+        auto reg_annotation = instr_event.annotation("r");
+        reg_annotation.pointer("d0", d_regs[0])
+            .pointer("d1", d_regs[1])
+            .pointer("d2", d_regs[2])
+            .pointer("d3", d_regs[3])
+            .pointer("d4", d_regs[4])
+            .pointer("d5", d_regs[5])
+            .pointer("d6", d_regs[6])
+            .pointer("d7", d_regs[7])
+            .pointer("a0", a_regs[0])
+            .pointer("a1", a_regs[1])
+            .pointer("a2", a_regs[2])
+            .pointer("a3", a_regs[3])
+            .pointer("a4", a_regs[4])
+            .pointer("a5", a_regs[5])
+            .pointer("a6", a_regs[6])
+            .pointer("a7_sp", a_regs[7]);
+    }
 
     trace_builder_->end_slice(instr_thread_track_id_, end_ns);
 

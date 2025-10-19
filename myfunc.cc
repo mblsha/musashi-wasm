@@ -862,6 +862,12 @@ extern "C" {
       printf("perfetto_enable_instructions: %d\n", enable);
     m68k_perfetto_enable_instructions(enable);
   }
+
+  void perfetto_enable_instruction_registers(int enable) {
+    if (_enable_printf_logging)
+      printf("perfetto_enable_instruction_registers: %d\n", enable);
+    m68k_perfetto_enable_instruction_registers(enable);
+  }
   
   /* Export trace data (critical for WASM) */
   int perfetto_export_trace(uint8_t** data_out, size_t* size_out) {

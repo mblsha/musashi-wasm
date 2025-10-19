@@ -24,6 +24,7 @@ extern "C" {
     void perfetto_enable_flow(int enable);
     void perfetto_enable_memory(int enable);
     void perfetto_enable_instructions(int enable);
+    void perfetto_enable_instruction_registers(int enable);
     int perfetto_export_trace(uint8_t** data_out, size_t* size_out);
     void perfetto_free_trace_data(uint8_t* data);
     int perfetto_save_trace(const char* filename);
@@ -486,7 +487,8 @@ TEST_F(PerfettoTest, FlowTracingAddsTopLevelSummarySlice) {
         ::perfetto_free_trace_data(trace_data);
     }
 
-    ::perfetto_enable_flow(0);
+    ::perfetto_enable_instruction_registers(0);
+    ::perfetto_enable_instructions(0);
 }
 
 TEST_F(PerfettoTest, FlowTracingKeepsCallerSliceOpenAfterCalleeReturns) {
@@ -621,7 +623,104 @@ TEST_F(PerfettoTest, FlowTracingKeepsCallerSliceOpenAfterCalleeReturns) {
         ::perfetto_free_trace_data(trace_data);
     }
 
-    ::perfetto_enable_flow(0);
+    ::perfetto_enable_instruction_registers(0);
+    ::perfetto_enable_instructions(0);
+}
+
+TEST_F(PerfettoTest, InstructionTracingCapturesRegistersWhenEnabled) {
+    if (::perfetto_init("M68K_Instr_Regs_Test") != 0) {
+        GTEST_SKIP() << "Perfetto not available, skipping instruction register test";
+    }
+
+    ::perfetto_enable_instructions(1);
+    ::perfetto_enable_instruction_registers(1);
+
+    create_simple_program();
+    m68k_pulse_reset();
+    m68k_execute(200);
+
+    uint8_t* trace_data = nullptr;
+    size_t trace_size = 0;
+    ASSERT_EQ(::perfetto_export_trace(&trace_data, &trace_size), 0);
+
+#ifdef ENABLE_PERFETTO
+    ASSERT_NE(trace_data, nullptr);
+
+    perfetto::protos::Trace trace;
+    ASSERT_TRUE(trace.ParseFromArray(trace_data, static_cast<int>(trace_size)));
+
+    bool instructions_track_found = false;
+    uint64_t instructions_uuid = 0;
+
+    for (const auto& packet : trace.packet()) {
+        if (!packet.has_track_descriptor()) {
+            continue;
+        }
+        const auto& descriptor = packet.track_descriptor();
+        if (descriptor.has_name() && descriptor.name() == "Instructions") {
+            instructions_track_found = true;
+            instructions_uuid = descriptor.uuid();
+            break;
+        }
+    }
+
+    ASSERT_TRUE(instructions_track_found) << "Instructions track missing from Perfetto trace";
+
+    int register_annotations = 0;
+    bool has_d0_entry = false;
+    bool has_a7_entry = false;
+
+    for (const auto& packet : trace.packet()) {
+        if (!packet.has_track_event()) {
+            continue;
+        }
+        const auto& event = packet.track_event();
+        if (event.track_uuid() != instructions_uuid) {
+            continue;
+        }
+
+        if (event.type() != perfetto::protos::TrackEvent::TYPE_SLICE_BEGIN) {
+            continue;
+        }
+
+        for (const auto& annotation : event.debug_annotations()) {
+            if (!annotation.has_name() || annotation.name() != "r") {
+                continue;
+            }
+
+            register_annotations++;
+            if (!annotation.has_nested_value()) {
+                continue;
+            }
+
+            const auto& nested = annotation.nested_value();
+            const int entries = std::min(nested.dict_keys_size(), nested.dict_values_size());
+            for (int i = 0; i < entries; ++i) {
+                const auto& key = nested.dict_keys(i);
+                const auto& value = nested.dict_values(i);
+                if (key == "d0" && value.has_string_value()) {
+                    has_d0_entry = true;
+                } else if (key == "a7_sp" && value.has_string_value()) {
+                    has_a7_entry = true;
+                }
+            }
+        }
+    }
+
+    EXPECT_GT(register_annotations, 0)
+        << "Instruction slices should include register annotations when enabled";
+    EXPECT_TRUE(has_d0_entry)
+        << "Register annotation should provide D0 value";
+    EXPECT_TRUE(has_a7_entry)
+        << "Register annotation should provide A7/SP value";
+#endif
+
+    if (trace_data) {
+        ::perfetto_free_trace_data(trace_data);
+    }
+
+    ::perfetto_enable_instruction_registers(0);
+    ::perfetto_enable_instructions(0);
 }
 
 /* ======================================================================== */
