@@ -216,7 +216,7 @@ const mapCpuFault = (record: NativeCpuFault, cause: unknown): FaultContext => {
     sp: record.sp >>> 0,
     sr: record.sr >>> 0,
     opcode: record.opcode >>> 0,
-    address: record.address ? record.address >>> 0 : undefined,
+    address: record.address !== undefined ? record.address >>> 0 : undefined,
     size,
     vector: record.vector || undefined,
     cause,
