@@ -1,11 +1,11 @@
 // ESM-compatible test file using real WASM
-import { createSystem } from './index.js';
+// @ts-nocheck
+import { createSystem, formatFaultContext } from './index.js';
 // Shared test utilities
 import { BreakReason, getLastBreakReasonFrom, resetLastBreakReasonOn } from './test-utils.js';
-import type { System } from './types.js';
 
 describe('@m68k/core', () => {
-  let system: System;
+  let system: any;
 
   beforeEach(async () => {
     // Create a simple test ROM with some basic instructions
@@ -166,9 +166,13 @@ describe('@m68k/core', () => {
   it('should execute simple instructions', async () => {
     // Execute a few cycles
     const cycles = system.run(100);
+    const execResult = system.consumeLastExecResult();
 
     // Should have executed something
     expect(cycles).toBeGreaterThan(0);
+    expect(execResult?.cycles).toBe(cycles);
+    expect(execResult?.reason).toBe('returned');
+    expect(execResult?.fault).toBeUndefined();
 
     // PC should have advanced from 0x400
     const pc = system.getRegisters().pc;
@@ -281,8 +285,12 @@ describe('@m68k/core', () => {
       // Returning true triggers C++ sentinel redirection
     });
 
-    const cycles = system.call(subAddr);
-    expect(cycles).toBeGreaterThan(0);
+    const callCycles = system.call(subAddr);
+    const callResult = system.consumeLastExecResult();
+    expect(callCycles).toBeGreaterThan(0);
+    expect(callResult?.cycles).toBe(callCycles);
+    expect(callResult?.reason).toBe('returned');
+    expect(callResult?.fault).toBeUndefined();
     expect(system.getRegisters().d2 >>> 0).toBe(0xcafebabe);
 
     // Assert break reason came from JS hook (override)
@@ -323,8 +331,12 @@ describe('@m68k/core', () => {
       // no-op, just trigger stop
     });
 
-    const cycles = system.call(0x500);
-    expect(cycles).toBeGreaterThan(0);
+    const callCycles = system.call(0x500);
+    const callResult = system.consumeLastExecResult();
+    expect(callCycles).toBeGreaterThan(0);
+    expect(callResult?.cycles).toBe(callCycles);
+    expect(callResult?.reason).toBe('returned');
+    expect(callResult?.fault).toBeUndefined();
     // D2 should be DEADBEEF + 1 from ADD.L
     expect(system.getRegisters().d2 >>> 0).toBe(0xdeadbeef + 1 >>> 0);
 
@@ -411,8 +423,12 @@ describe('@m68k/core', () => {
       reads.push({ addr, size, value, pc });
     });
 
-    const cycles = system.call(subAddr);
-    expect(cycles).toBeGreaterThan(0);
+    const callCycles = system.call(subAddr);
+    const callResult = system.consumeLastExecResult();
+    expect(callCycles).toBeGreaterThan(0);
+    expect(callResult?.cycles).toBe(callCycles);
+    expect(callResult?.reason).toBe('returned');
+    expect(callResult?.fault).toBeUndefined();
 
     // Validate write event from MOVE.L D0, -(SP)
     const pushEvents = writes.filter(ev => (ev.pc >>> 0) === (subAddr + 6));
@@ -434,9 +450,99 @@ describe('@m68k/core', () => {
     const popEvent = reads.find(ev => (ev.pc >>> 0) === (subAddr + 8));
     expect(popEvent).toBeDefined();
     expect(popEvent!.addr >>> 0).toBe(0x100000);
-    expect(popEvent!.value >>> 0).toBe(0xcafebabe);
+  expect(popEvent!.value >>> 0).toBe(0xcafebabe);
 
-    offW();
-    offR();
+  offW();
+  offR();
+  });
+
+  describe('fault reporting', () => {
+    it('captures handler callback errors', async () => {
+      const subAddr = 0x410;
+      const sub = new Uint8Array([
+        0x24, 0x3c,
+        0xca, 0xfe, 0xba, 0xbe,
+        0x4e, 0x75,
+      ]);
+      system.writeBytes(subAddr, sub);
+      const rtsPc = subAddr + 6;
+      const boom = new Error('handler boom');
+      const removeOverride = system.override(rtsPc, () => {
+        throw boom;
+      });
+
+      const callCycles = system.call(subAddr);
+      expect(callCycles).toBeGreaterThanOrEqual(0);
+      const execResult = system.consumeLastExecResult();
+      expect(execResult?.reason).toBe('fault');
+      const fault = execResult?.fault;
+      expect(fault).toBeDefined();
+      expect(fault?.kind).toBe('handler_error');
+      expect(fault?.cause).toBe(boom);
+      expect(formatFaultContext(fault!)).toContain('Callback');
+
+      expect(system.consumeLastFault()).toBe(fault);
+      expect(system.consumeLastFault()).toBeUndefined();
+
+      removeOverride();
+    });
+
+    it('captures native fault records', async () => {
+      const musashi = (system as any)._musashi as any;
+
+      const module = musashi._module as any;
+      const ptr = musashi.faultRecordPointer();
+      const base = ptr >>> 2;
+      const heap = module.HEAPU32;
+      const nativeError = new Error('native fault');
+      const originalExecute = musashi.execute.bind(musashi);
+
+      musashi.execute = () => {
+        heap[base] = 1;
+        heap[base + 1] = 2;
+        heap[base + 2] = 3;
+        heap[base + 3] = 0x00010003;
+        heap[base + 4] = 2;
+        heap[base + 5] = 0x00000500;
+        heap[base + 6] = 0x000004fe;
+        heap[base + 7] = 0x00002000;
+        heap[base + 8] = 0x00002700;
+        heap[base + 9] = 0x00004afc;
+        heap[base + 10] = 1;
+        throw nativeError;
+      };
+
+      try {
+        const cycles = system.run(10);
+        expect(cycles).toBeGreaterThanOrEqual(0);
+        const execResult = system.consumeLastExecResult();
+        expect(execResult?.reason).toBe('fault');
+        const fault = execResult?.fault;
+        expect(fault).toBeDefined();
+        expect(fault?.kind).toBe('address_error');
+        expect(fault?.write).toBe(true);
+        expect(fault?.vector).toBe(3);
+        expect(fault?.address).toBe(0x00010003);
+        expect(fault?.cause).toBe(nativeError);
+        expect(formatFaultContext(fault!)).toContain('Address error');
+        expect(system.consumeLastFault()).toBe(fault);
+        expect(system.consumeLastFault()).toBeUndefined();
+      } finally {
+        musashi.execute = originalExecute;
+        module._m68k_fault_clear?.();
+      }
+    });
+
+    it('formats illegal instruction faults', () => {
+      const fault = {
+        kind: 'illegal_instruction',
+        pc: 0x400,
+        ppc: 0x3fc,
+        sp: 0x1000,
+        sr: 0x2700,
+        opcode: 0x4afc,
+      };
+      expect(formatFaultContext(fault)).toContain('Illegal instruction');
+    });
   });
 });

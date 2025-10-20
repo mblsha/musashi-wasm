@@ -138,8 +138,13 @@ async function main() {
   console.log('\nExecuting program...');
   system.reset();
   
-  const cycles = system.run(10000);
-  console.log(`\nExecution completed in ${cycles} cycles`);
+  const runCycles = system.run(10000);
+  const runResult = system.consumeLastExecResult();
+  const runReason = runResult?.reason ?? 'returned';
+  console.log(`\nExecution completed in ${runCycles} cycles (${runReason})`);
+  if (runResult?.fault) {
+    console.warn('Fault:', runResult.fault.message);
+  }
   
   // Read the result from RAM
   const resultAddr = 0x100000;
