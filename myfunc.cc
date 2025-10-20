@@ -319,6 +319,21 @@ struct MemoryRangeName {
 static std::vector<MemoryRangeName> _memory_ranges;
 static std::unordered_map<unsigned int, std::string> _memory_range_cache;
 
+static void invalidate_memory_range_cache(unsigned int start, unsigned int end) {
+  if (_memory_range_cache.empty() || start > end) {
+    return;
+  }
+
+  for (auto it = _memory_range_cache.begin(); it != _memory_range_cache.end();) {
+    const unsigned int addr = it->first;
+    if (addr >= start && addr <= end) {
+      it = _memory_range_cache.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
 extern "C" {
   int my_initialize() {
     int result = _initialized;
@@ -478,14 +493,7 @@ extern "C" {
     bool replaced = false;
     for (auto& existing : _memory_ranges) {
       if (existing.start == range.start) {
-        for (auto it = _memory_range_cache.begin(); it != _memory_range_cache.end();) {
-          const unsigned int addr = it->first;
-          if (addr >= existing.start && addr <= existing.end) {
-            it = _memory_range_cache.erase(it);
-          } else {
-            ++it;
-          }
-        }
+        invalidate_memory_range_cache(existing.start, existing.end);
         existing = range;
         replaced = true;
         break;
@@ -495,14 +503,7 @@ extern "C" {
       _memory_ranges.push_back(range);
     }
 
-    for (auto it = _memory_range_cache.begin(); it != _memory_range_cache.end();) {
-      const unsigned int addr = it->first;
-      if (addr >= range.start && addr <= range.end) {
-        it = _memory_range_cache.erase(it);
-      } else {
-        ++it;
-      }
-    }
+    invalidate_memory_range_cache(range.start, range.end);
 
     _memory_names[range.start] = range.decorated_label;
 
