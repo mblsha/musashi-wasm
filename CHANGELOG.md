@@ -201,3 +201,12 @@ Version 0.1.1 represents a significant architectural milestone with the complete
 - **Documentation**: Updated all file references and cleaned up outdated information
 
 This release maintains full backward compatibility for the WebAssembly API while modernizing the underlying build and packaging infrastructure.
+## [Unreleased]
+
+### ✨ Features
+
+- **Fault reporting**: `system.run` and `system.call` now return enriched execution results that include completion reasons and structured `FaultContext` payloads for failures. The new `formatFaultContext(fault)` helper turns those payloads into human-readable diagnostics.
+
+### 🧪 Tests
+
+- Added regression coverage for handler exceptions and native fault propagation, including Perfetto stub updates reflecting the new exports.

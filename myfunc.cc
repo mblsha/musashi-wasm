@@ -2,6 +2,7 @@
 #include "m68k.h"
 #include "m68ktrace.h"
 #include "m68k_perfetto.h"
+#include "musashi_fault.h"
 
 #include <cstdint>
 #include <unordered_set>
@@ -113,6 +114,34 @@ class SentinelSession {
   }
 };
 static SentinelSession _exec_session;
+
+static musashi_fault_record_t g_fault_record = {};
+
+extern "C" void m68k_fault_clear(void) {
+  g_fault_record.active = 0;
+}
+
+extern "C" musashi_fault_record_t* m68k_fault_record_ptr(void) {
+  return &g_fault_record;
+}
+
+extern "C" void m68k_fault_capture(musashi_fault_kind_t kind,
+                                   uint32_t vector,
+                                   uint32_t address,
+                                   uint32_t size,
+                                   uint32_t extra) {
+  g_fault_record.active = 1;
+  g_fault_record.kind = kind;
+  g_fault_record.vector = vector;
+  g_fault_record.address = address;
+  g_fault_record.size = size;
+  g_fault_record.pc = m68k_get_reg(nullptr, M68K_REG_PC);
+  g_fault_record.ppc = m68k_get_reg(nullptr, M68K_REG_PPC);
+  g_fault_record.sp = m68k_get_reg(nullptr, M68K_REG_SP);
+  g_fault_record.sr = m68k_get_reg(nullptr, M68K_REG_SR);
+  g_fault_record.opcode = m68k_get_reg(nullptr, M68K_REG_IR);
+  g_fault_record.extra = extra;
+}
 
 // Helper to detect if current PC equals the active session's sentinel.
 // (removed free is_sentinel_pc; use _exec_session.isSentinelPc)
@@ -432,6 +461,7 @@ extern "C" {
     _memory_ranges.clear();
     _memory_range_cache.clear();
     _exec_session = SentinelSession{};
+    m68k_fault_clear();
   }
   
   /* ======================================================================== */

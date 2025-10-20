@@ -39,6 +39,7 @@ extern "C" {
 
 #include "m68k.h"
 #include "m68ktrace.h"
+#include "musashi_fault.h"
 
 #include <limits.h>
 
@@ -1990,6 +1991,12 @@ static inline void m68ki_exception_privilege_violation(void)
 {
 	uint sr = m68ki_init_exception();
 
+	m68k_fault_capture(MUSASHI_FAULT_KIND_PRIVILEGE_VIOLATION,
+	                   EXCEPTION_PRIVILEGE_VIOLATION,
+	                   REG_PPC,
+	                   0,
+	                   0);
+
 	#if M68K_EMULATE_ADDRESS_ERROR == OPT_ON
 	if(CPU_TYPE_IS_000(CPU_TYPE))
 	{
@@ -2035,6 +2042,12 @@ static inline void m68ki_exception_bus_error(void)
 
 	uint sr = m68ki_init_exception();
 
+	m68k_fault_capture(MUSASHI_FAULT_KIND_BUS_ERROR,
+	                   EXCEPTION_BUS_ERROR,
+	                   REG_PPC,
+	                   0,
+	                   0);
+
 	/* Note: This is implemented for 68010 only! */
 	m68ki_stack_frame_1000(REG_PPC, sr, EXCEPTION_BUS_ERROR);
 
@@ -2058,6 +2071,11 @@ static inline void m68ki_exception_1010(void)
 #endif
 
 	sr = m68ki_init_exception();
+	m68k_fault_capture(MUSASHI_FAULT_KIND_TRAP,
+	                   EXCEPTION_1010,
+	                   REG_PPC,
+	                   0,
+	                   0);
 	m68ki_stack_frame_0000(REG_PPC, sr, EXCEPTION_1010);
 	m68ki_jump_vector(EXCEPTION_1010);
 
@@ -2077,6 +2095,11 @@ static inline void m68ki_exception_1111(void)
 #endif
 
 	sr = m68ki_init_exception();
+	m68k_fault_capture(MUSASHI_FAULT_KIND_TRAP,
+	                   EXCEPTION_1111,
+	                   REG_PPC,
+	                   0,
+	                   0);
 	m68ki_stack_frame_0000(REG_PPC, sr, EXCEPTION_1111);
 	m68ki_jump_vector(EXCEPTION_1111);
 
@@ -2100,6 +2123,12 @@ static inline void m68ki_exception_illegal(void)
 	    return;
 
 	sr = m68ki_init_exception();
+
+	m68k_fault_capture(MUSASHI_FAULT_KIND_ILLEGAL_INSTRUCTION,
+	                   EXCEPTION_ILLEGAL_INSTRUCTION,
+	                   REG_PPC,
+	                   0,
+	                   0);
 
 	#if M68K_EMULATE_ADDRESS_ERROR == OPT_ON
 	if(CPU_TYPE_IS_000(CPU_TYPE))
@@ -2133,6 +2162,12 @@ static inline void m68ki_exception_format_error(void)
 static inline void m68ki_exception_address_error(void)
 {
 	uint sr = m68ki_init_exception();
+
+	m68k_fault_capture(MUSASHI_FAULT_KIND_ADDRESS_ERROR,
+	                   EXCEPTION_ADDRESS_ERROR,
+	                   m68ki_aerr_address,
+	                   0,
+	                   m68ki_aerr_write_mode);
 
 	/* If we were processing a bus error, address error, or reset,
 	 * while writing the stack frame, this is a catastrophic failure.

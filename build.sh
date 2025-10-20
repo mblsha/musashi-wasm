@@ -66,6 +66,8 @@ exported_functions=(
   _m68k_disassemble
   _m68k_end_timeslice
   _m68k_execute
+  _m68k_fault_clear
+  _m68k_fault_record_ptr
   _m68k_get_last_break_reason
   _m68k_get_reg
   _m68k_get_total_cycles

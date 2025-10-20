@@ -71,6 +71,7 @@ export interface MusashiEmscriptenModule {
   _add_pc_hook_addr(addr: number): void;
   _add_region(start: number, len: number, buf: EmscriptenBuffer): void;
   _m68k_execute(cycles: number): number;
+  _m68k_cycles_run?(): number;
   _m68k_step_one(): number;
   _m68k_get_reg(context: number, index: number): number;
   _m68k_init(): void;
@@ -92,6 +93,7 @@ export interface MusashiEmscriptenModule {
   // Heap access
   HEAPU8: Uint8Array;
   HEAP32: Int32Array;
+  HEAPU32: Uint32Array;
 
   // Optional Perfetto functions
   _m68k_perfetto_init?(process_name: EmscriptenBuffer): number;
@@ -116,6 +118,9 @@ export interface MusashiEmscriptenModule {
   _m68k_trace_set_mem_enabled?(enable: number): void;
   _m68k_trace_add_mem_region?(start: number, end: number): number;
   _m68k_trace_clear_mem_regions?(): void;
+
+  _m68k_fault_clear?(): void;
+  _m68k_fault_record_ptr?(): number;
 
   // New callback system
   _set_read8_callback?(f: EmscriptenFunction): void;
@@ -150,6 +155,41 @@ interface SystemBridge {
   _handleMemoryWrite?(addr: number, size: 1 | 2 | 4, value: number, pc: number, ppc?: number, source?: MemoryTraceSource): void;
 }
 
+type HandlerFaultSource =
+  | 'read'
+  | 'write'
+  | 'probe'
+  | 'pcHook'
+  | 'memReadTrace'
+  | 'memWriteTrace';
+
+interface CpuSnapshot {
+  pc: number;
+  ppc: number;
+  sp: number;
+  sr: number;
+  opcode: number;
+}
+
+interface PendingHandlerFault extends CpuSnapshot {
+  source: HandlerFaultSource;
+  address?: number;
+  size?: 1 | 2 | 4;
+}
+
+interface NativeFaultRecord {
+  kind: number;
+  vector: number;
+  address: number;
+  size: number;
+  pc: number;
+  ppc: number;
+  sp: number;
+  sr: number;
+  opcode: number;
+  extra: number;
+}
+
 export class MusashiWrapper {
   private _module: MusashiEmscriptenModule;
   private _system!: SystemBridge; // Reference to SystemImpl
@@ -161,6 +201,8 @@ export class MusashiWrapper {
   private _memTraceFunc: EmscriptenFunction = 0;
   private _memTraceActive = false;
   private readonly _traceAvailable: boolean;
+  private _faultRecordPtr = 0;
+  private _pendingHandlerFault: PendingHandlerFault | null = null;
   // No JS sentinel state; C++ session owns sentinel behavior.
   // CPU type for disassembler (68000)
   private readonly CPU_68000 = 0;
@@ -374,19 +416,40 @@ export class MusashiWrapper {
   }
 
   readHandler(address: number, size: 1 | 2 | 4): number {
-    // The regions should handle most reads, but this is a fallback
-    return this._system.read(address, size);
+    try {
+      // The regions should handle most reads, but this is a fallback
+      return this._system.read(address, size);
+    } catch (error) {
+      if (!this._pendingHandlerFault) {
+        this.recordHandlerFault('read', address, size);
+      }
+      throw error;
+    }
   }
 
   writeHandler(address: number, size: 1 | 2 | 4, value: number): void {
-    // The regions should handle most writes, but this is a fallback
-    this._system.write(address, size, value);
+    try {
+      // The regions should handle most writes, but this is a fallback
+      this._system.write(address, size, value);
+    } catch (error) {
+      if (!this._pendingHandlerFault) {
+        this.recordHandlerFault('write', address, size);
+      }
+      throw error;
+    }
   }
 
   pcHookHandler(pc: number): number {
-    // Delegate stop/continue decision to SystemImpl. The C++ session will
-    // handle vectoring to the sentinel when we return non-zero here.
-    return this._system._handlePCHook(pc) ? 1 : 0;
+    try {
+      // Delegate stop/continue decision to SystemImpl. The C++ session will
+      // handle vectoring to the sentinel when we return non-zero here.
+      return this._system._handlePCHook(pc) ? 1 : 0;
+    } catch (error) {
+      if (!this._pendingHandlerFault) {
+        this.recordHandlerFault('pcHook', pc, undefined, pc);
+      }
+      throw error;
+    }
   }
 
   execute(cycles: number): number {
@@ -468,6 +531,150 @@ export class MusashiWrapper {
       }
     }
     return { pc, ppc };
+  }
+
+  faultClear(): void {
+    this._pendingHandlerFault = null;
+    try {
+      this._module._m68k_fault_clear?.();
+    } catch {
+      // ignore missing export
+    }
+  }
+
+  cycles_run(): number {
+    const fn = this._module._m68k_cycles_run;
+    if (typeof fn !== 'function') {
+      return 0;
+    }
+    const value = fn();
+    if (typeof value === 'bigint') {
+      return Number(value) >>> 0;
+    }
+    return Number(value) >>> 0;
+  }
+
+  consumeHandlerFault(): PendingHandlerFault | null {
+    const pending = this._pendingHandlerFault;
+    this._pendingHandlerFault = null;
+    return pending;
+  }
+
+  consumeCpuFaultRecord(): {
+    kind: number;
+    vector: number;
+    address: number;
+    size: number;
+    pc: number;
+    ppc: number;
+    sp: number;
+    sr: number;
+    opcode: number;
+    extra: number;
+  } | null {
+    const record = this.readNativeFaultRecord();
+    if (record) {
+      this._module._m68k_fault_clear?.();
+    }
+    return record;
+  }
+
+  faultRecordPointer(): number {
+    if (typeof this._module._m68k_fault_record_ptr !== 'function') {
+      return 0;
+    }
+    if (this._faultRecordPtr === 0) {
+      this._faultRecordPtr = this._module._m68k_fault_record_ptr() >>> 0;
+    }
+    return this._faultRecordPtr;
+  }
+
+  noteHandlerFault(
+    source: HandlerFaultSource,
+    address?: number,
+    size?: 1 | 2 | 4,
+    fallbackPc?: number
+  ): void {
+    if (this._pendingHandlerFault) {
+      return;
+    }
+    this.recordHandlerFault(source, address, size, fallbackPc);
+  }
+
+  snapshotCpuState(): CpuSnapshot {
+    return this.captureCpuSnapshot();
+  }
+
+  private readNativeFaultRecord(): NativeFaultRecord | null {
+    if (typeof this._module._m68k_fault_record_ptr !== 'function') {
+      return null;
+    }
+    const ptr = this.faultRecordPointer();
+    const heap = this._module.HEAPU32;
+    if (!heap) {
+      return null;
+    }
+    const base = ptr >>> 2;
+    if ((heap[base] >>> 0) === 0) {
+      return null;
+    }
+    return {
+      kind: heap[base + 1] >>> 0,
+      vector: heap[base + 2] >>> 0,
+      address: heap[base + 3] >>> 0,
+      size: heap[base + 4] >>> 0,
+      pc: heap[base + 5] >>> 0,
+      ppc: heap[base + 6] >>> 0,
+      sp: heap[base + 7] >>> 0,
+      sr: heap[base + 8] >>> 0,
+      opcode: heap[base + 9] >>> 0,
+      extra: heap[base + 10] >>> 0,
+    };
+  }
+
+  private captureCpuSnapshot(options?: { fallbackPc?: number }): CpuSnapshot {
+    const { pc, ppc } = this.getTraceRegisters(options);
+    const sp = this._module._m68k_get_reg(0, M68kRegister.A7) >>> 0;
+    const sr = this._module._m68k_get_reg(0, M68kRegister.SR) >>> 0;
+    let opcode = 0;
+    try {
+      opcode = this._module._m68k_get_reg(0, M68kRegister.IR) >>> 0;
+    } catch {
+      opcode = 0;
+    }
+    return { pc, ppc, sp, sr, opcode };
+  }
+
+  private recordHandlerFault(
+    source: HandlerFaultSource,
+    address?: number,
+    size?: 1 | 2 | 4,
+    fallbackPc?: number
+  ): void {
+    if (this._pendingHandlerFault) {
+      return;
+    }
+    try {
+      const snapshot = this.captureCpuSnapshot({ fallbackPc });
+      this._pendingHandlerFault = {
+        source,
+        address,
+        size,
+        ...snapshot,
+      };
+    } catch {
+      const pc = fallbackPc !== undefined ? fallbackPc >>> 0 : 0;
+      this._pendingHandlerFault = {
+        source,
+        address,
+        size,
+        pc,
+        ppc: pc,
+        sp: 0,
+        sr: 0,
+        opcode: 0,
+      };
+    }
   }
 
   private isAccessWithinMemory(address: number, size: 1 | 2 | 4): boolean {
@@ -870,6 +1077,15 @@ export async function getModule(): Promise<MusashiWrapper> {
           if (typeof perfCandidate?._m68k_perfetto_init !== 'function') {
             throw new Error(
               'Perfetto module did not expose _m68k_perfetto_init; falling back to standard build.'
+            );
+          }
+
+          if (
+            typeof perfCandidate._m68k_fault_clear !== 'function' ||
+            typeof perfCandidate._m68k_fault_record_ptr !== 'function'
+          ) {
+            throw new Error(
+              'Perfetto module did not expose fault reporting exports; falling back to standard build.'
             );
           }
 
