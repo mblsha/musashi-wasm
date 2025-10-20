@@ -204,6 +204,15 @@ namespace M68kTestUtils {
             printf("\n");
         }
     }
+
+    inline bool IsSubroutineCallOpcode(uint16_t opcode) {
+        // Detects BSR and JSR (absolute or register variants share the high bits).
+        return ((opcode & 0xFF00u) == 0x6100u) || ((opcode & 0xFFC0u) == 0x4E80u);
+    }
+
+    inline bool IsSubroutineReturnOpcode(uint16_t opcode) {
+        return opcode == 0x4E75u; // RTS
+    }
     // Convenience C++ wrapper returning the disassembly text and size as a pair.
     // This avoids manual buffer management at call sites and makes test
     // expectations concise via std::make_pair.
