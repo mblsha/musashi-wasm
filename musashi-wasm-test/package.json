@@ -10,7 +10,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "jest": "^29.7.0",
+    "jest": "^30.2.0",
     "jest-junit": "^16.0.0"
   },
   "type": "module",
@@ -26,5 +26,8 @@
     "classNameTemplate": "{classname}",
     "titleTemplate": "{title}",
     "ancestorSeparator": " › "
+  },
+  "overrides": {
+    "test-exclude": "^7.0.1"
   }
 }
