@@ -38,6 +38,11 @@ const system = await createSystem({
 // Execute code
 system.reset();
 const cycles = system.run(1000);
+const runResult = system.consumeLastExecResult();
+console.log(`Executed ${cycles} cycles (${runResult?.reason ?? 'returned'})`);
+if (runResult?.fault) {
+  console.warn('Fault:', runResult.fault.message);
+}
 
 // Access registers
 const regs = system.getRegisters();

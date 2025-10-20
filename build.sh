@@ -66,6 +66,8 @@ exported_functions=(
   _m68k_disassemble
   _m68k_end_timeslice
   _m68k_execute
+  _m68k_fault_clear
+  _m68k_fault_record_ptr
   _m68k_get_last_break_reason
   _m68k_get_reg
   _m68k_get_total_cycles
@@ -144,7 +146,7 @@ EXPORTED_FUNCTIONS_LIST=$(to_ems_list "${exported_functions[@]}")
 DEFAULT_LIBS_LIST=$(to_ems_list "${default_lib_funcs[@]}")
 RUNTIME_METHODS_LIST=$(to_ems_list "${runtime_methods[@]}")
 
-object_files=(m68kcpu.o m68kops.o myfunc.o m68k_memory_bridge.o m68ktrace.o m68kdasm.o)
+object_files=(m68kcpu.o m68kops.o musashi_fault.o myfunc.o m68k_memory_bridge.o m68ktrace.o m68kdasm.o)
 if [[ "$ENABLE_PERFETTO_FLAG" == "1" ]]; then
   object_files+=(m68k_perfetto.o third_party/retrobus-perfetto/cpp/proto/perfetto.pb.o)
 fi

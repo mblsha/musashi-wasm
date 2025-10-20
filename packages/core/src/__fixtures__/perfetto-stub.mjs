@@ -1,6 +1,7 @@
 export default async function initPerfettoStub() {
   const heapU8 = new Uint8Array(0);
   const heap32 = new Int32Array(0);
+  const heapU32 = new Uint32Array(0);
 
   return {
     _m68k_init() {},
@@ -26,7 +27,12 @@ export default async function initPerfettoStub() {
     removeFunction() {},
     HEAPU8: heapU8,
     HEAP32: heap32,
+    HEAPU32: heapU32,
     _m68k_perfetto_init() {
+      return 0;
+    },
+    _m68k_fault_clear() {},
+    _m68k_fault_record_ptr() {
       return 0;
     },
   };

@@ -2,6 +2,7 @@
 #include "m68k.h"
 #include "m68ktrace.h"
 #include "m68k_perfetto.h"
+#include "musashi_fault.h"
 
 #include <cstdint>
 #include <unordered_set>
@@ -432,6 +433,7 @@ extern "C" {
     _memory_ranges.clear();
     _memory_range_cache.clear();
     _exec_session = SentinelSession{};
+    m68k_fault_clear();
   }
   
   /* ======================================================================== */

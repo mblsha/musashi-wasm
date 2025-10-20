@@ -112,6 +112,54 @@ export type MemoryLayout = {
   minimumCapacity?: number;
 };
 
+/** High-level classification for execution faults reported by the core. */
+export type FaultKind =
+  | 'bus_error'
+  | 'address_error'
+  | 'illegal_instruction'
+  | 'core_trap'
+  | 'privilege_violation'
+  | 'handler_error'
+  | 'guard_hit'
+  | 'unknown';
+
+/** Describes why execution stopped. */
+export type ExecReason = 'returned' | 'timeout' | 'guard_exceeded' | 'fault';
+
+/** Detailed payload describing the most recent execution fault. */
+export interface FaultContext {
+  kind: FaultKind;
+  message?: string;
+  pc: number;
+  ppc: number;
+  sp: number;
+  sr: number;
+  opcode?: number;
+  address?: number;
+  size?: 1 | 2 | 4;
+  vector?: number;
+  write?: boolean;
+  details?: Record<string, unknown>;
+  cause?: unknown;
+}
+
+/** Result metadata describing the most recent run()/call() invocation. */
+export interface ExecResult {
+  cycles: number;
+  reason: ExecReason;
+  fault?: FaultContext;
+}
+
+/** Result payload returned by step(). */
+export interface StepResult {
+  cycles: number;
+  startPc: number;
+  endPc: number;
+  ppc?: number;
+  reason: ExecReason;
+  fault?: FaultContext;
+}
+
 /**
  * Interface for controlling and capturing Perfetto performance traces.
  * This functionality is only available if the core is built with Perfetto support.
@@ -187,25 +235,31 @@ export interface System {
   /**
    * Executes a native subroutine at the given address and returns when the
    * subroutine completes (e.g., via an RTS instruction).
-   * @returns The number of CPU cycles executed.
+   * @returns The number of cycles executed.
    */
   call(address: number): number;
 
   /**
    * Runs the emulator for a specified number of CPU cycles.
-   * @returns The number of CPU cycles actually executed.
+   * @returns The number of cycles executed (may be less than the budget).
    */
   run(cycles: number): number;
 
   /**
    * Executes exactly one instruction and stops before the next one.
    * Returns execution metadata for the instruction.
-   * - cycles: CPU cycles consumed by the instruction
-   * - startPc: PC at instruction start
-   * - endPc: PC after instruction completes
-   * - ppc: optional previous PC reported by the core (usually equals startPc)
    */
-  step(): { cycles: number; startPc: number; endPc: number; ppc?: number };
+  step(): StepResult;
+
+  /**
+   * Returns the most recent fault (if any) and clears the stored reference.
+   */
+  consumeLastFault(): FaultContext | undefined;
+
+  /**
+   * Returns execution metadata for the most recent run()/call() invocation and clears it.
+   */
+  consumeLastExecResult(): ExecResult | undefined;
 
   /** Resets the CPU to its initial state. */
   reset(): void;

@@ -99,6 +99,7 @@ set(MUSASHI_CORE_SOURCES
     m68kdasm.c
     m68ktrace.cc
     m68k_memory_bridge.cc
+    musashi_fault.c
     softfloat/softfloat.c
     ${CMAKE_CURRENT_BINARY_DIR}/m68kops.c
 )

@@ -12,6 +12,11 @@ import type {
   MemoryLayout,
   MemoryRegion,
   MirrorRegion,
+  FaultContext,
+  ExecResult,
+  ExecReason,
+  StepResult,
+  FaultKind,
 } from './types.js';
 import { M68kRegister } from '@m68k/common';
 import { MusashiWrapper, getModule } from './musashi-wrapper.js';
@@ -32,6 +37,11 @@ export type {
   MemoryLayout,
   MemoryRegion,
   MirrorRegion,
+  FaultContext,
+  ExecResult,
+  ExecReason,
+  StepResult,
+  FaultKind,
 };
 export { M68kRegister } from '@m68k/common';
 export type {
@@ -109,6 +119,123 @@ const TRACE_LOGGER: (payload: unknown) => void = (() => {
     }
   };
 })();
+
+const CPU_FAULT_KIND_MAP: Record<number, FaultKind> = {
+  1: 'bus_error',
+  2: 'address_error',
+  3: 'illegal_instruction',
+  4: 'core_trap',
+  5: 'privilege_violation',
+};
+
+type NativeCpuFault = {
+  kind: number;
+  vector: number;
+  address: number;
+  size: number;
+  pc: number;
+  ppc: number;
+  sp: number;
+  sr: number;
+  opcode: number;
+  extra: number;
+};
+
+const formatHex = (value: number | undefined, width = 8): string =>
+  value === undefined ? 'unknown' : `0x${(value >>> 0).toString(16).padStart(width, '0')}`;
+
+const formatOpcode = (value: number | undefined): string =>
+  value === undefined ? 'unknown' : `0x${(value >>> 0).toString(16).padStart(4, '0')}`;
+
+const normalizeSize = (value: number): 1 | 2 | 4 | undefined => {
+  if (value === 1 || value === 2 || value === 4) {
+    return value;
+  }
+  return undefined;
+};
+
+const createExecResult = (cycles: number, reason: ExecReason, fault?: FaultContext): ExecResult => {
+  const normalizedCycles = cycles >>> 0;
+  const result: ExecResult = {
+    cycles: normalizedCycles,
+    reason,
+  };
+  if (fault) {
+    result.fault = fault;
+  }
+  return result;
+};
+
+export const formatFaultContext = (fault: FaultContext): string => {
+    if (fault.message) {
+      return fault.message;
+    }
+    const pc = formatHex(fault.pc);
+    switch (fault.kind) {
+      case 'bus_error': {
+        const addr = formatHex(fault.address);
+        const vector = fault.vector !== undefined ? ` (vector #${fault.vector})` : '';
+        return `Bus error at ${addr}${vector} (PC ${pc})`;
+      }
+      case 'address_error': {
+        const addr = formatHex(fault.address);
+        const mode = fault.write ? 'write' : 'read';
+        const size = fault.size ? `${fault.size * 8}-bit` : 'unknown size';
+        return `Address error during ${mode} (${size}) at ${addr} (PC ${pc})`;
+      }
+      case 'illegal_instruction': {
+        const opcode = formatOpcode(fault.opcode);
+        return `Illegal instruction ${opcode} at PC ${pc}`;
+      }
+      case 'core_trap': {
+        const vector = fault.vector !== undefined ? `vector #${fault.vector}` : 'trap';
+        return `Trap (${vector}) at PC ${pc}`;
+      }
+      case 'privilege_violation':
+        return `Privilege violation at PC ${pc}`;
+      case 'handler_error': {
+        const source = typeof fault.details?.source === 'string' ? fault.details.source : 'handler';
+        return `Callback '${source}' threw at PC ${pc}`;
+      }
+      case 'guard_hit': {
+        const guardName = typeof fault.details?.guard === 'string' ? ` (${fault.details.guard})` : '';
+        return `Guardrail hit${guardName} at PC ${pc}`;
+      }
+      default:
+        return `Unknown fault at PC ${pc}`;
+    }
+};
+
+const mapCpuFault = (record: NativeCpuFault, cause: unknown): FaultContext => {
+  const kind = CPU_FAULT_KIND_MAP[record.kind] ?? 'unknown';
+  const size = normalizeSize(record.size);
+  const context: FaultContext = {
+    kind,
+    pc: mask24(record.pc),
+    ppc: mask24(record.ppc),
+    sp: record.sp >>> 0,
+    sr: record.sr >>> 0,
+    opcode: record.opcode >>> 0,
+    address: record.address !== undefined ? record.address >>> 0 : undefined,
+    size,
+    vector: record.vector || undefined,
+    cause,
+  };
+  if (kind === 'address_error') {
+    context.write = record.extra !== 0;
+  }
+  if (kind === 'bus_error' && context.address === undefined) {
+    context.address = context.pc;
+  }
+  return context;
+};
+
+const annotateFault = (fault: FaultContext): FaultContext => {
+  if (!fault.message) {
+    fault.message = formatFaultContext(fault);
+  }
+  return fault;
+};
 
 // A map from register names to their numeric index in Musashi.
 const REGISTER_MAP: { [K in keyof CpuRegisters]: M68kRegister } = {
@@ -272,6 +399,8 @@ class SystemImpl implements System {
   private _memWrites = new Set<MemoryAccessCallback>();
   private _memSequence = 0;
   readonly tracer: Tracer;
+  private _lastFault: FaultContext | undefined;
+  private _lastExecResult: ExecResult | undefined;
 
   constructor(musashi: MusashiWrapper, config: SystemConfig) {
     this._musashi = musashi;
@@ -280,6 +409,62 @@ class SystemImpl implements System {
 
     // Initialize Musashi with memory regions and hooks
     this._musashi.init(this, config.rom, this.ram, config.memoryLayout);
+  }
+
+  private executeWithFaultHandling(invoke: () => number): number {
+    this._musashi.faultClear();
+    try {
+      const raw = invoke();
+      const cycles = Number(raw) >>> 0;
+      const result = createExecResult(cycles, 'returned');
+      this._lastExecResult = result;
+      this._lastFault = undefined;
+      return result.cycles;
+    } catch (error) {
+      const fault = this.captureFault(error);
+      this._lastFault = fault;
+      const cycles = Number(this._musashi.cycles_run()) >>> 0;
+      const result = createExecResult(cycles, 'fault', fault);
+      this._lastExecResult = result;
+      return result.cycles;
+    }
+  }
+
+  private captureFault(error: unknown): FaultContext {
+    const handlerFault = this._musashi.consumeHandlerFault();
+    if (handlerFault) {
+      const size = normalizeSize(handlerFault.size ?? 0);
+      const context: FaultContext = {
+        kind: 'handler_error',
+        pc: handlerFault.pc,
+        ppc: handlerFault.ppc,
+        sp: handlerFault.sp,
+        sr: handlerFault.sr,
+        opcode: handlerFault.opcode,
+        address: handlerFault.address,
+        size,
+        details: { source: handlerFault.source },
+        cause: error,
+      };
+      return annotateFault(context);
+    }
+
+    const cpuFault = this._musashi.consumeCpuFaultRecord();
+    if (cpuFault) {
+      return annotateFault(mapCpuFault(cpuFault as NativeCpuFault, error));
+    }
+
+    const snapshot = this._musashi.snapshotCpuState();
+    const context: FaultContext = {
+      kind: 'unknown',
+      pc: snapshot.pc,
+      ppc: snapshot.ppc,
+      sp: snapshot.sp,
+      sr: snapshot.sr,
+      opcode: snapshot.opcode,
+      cause: error,
+    };
+    return annotateFault(context);
   }
 
   // (no fusion-specific instrumentation helpers)
@@ -343,43 +528,67 @@ class SystemImpl implements System {
   }
 
   call(address: number): number {
-    return this._musashi.call(address);
+    const target = address >>> 0;
+    return this.executeWithFaultHandling(() => this._musashi.call(target));
   }
 
   run(cycles: number): number {
-    return this._musashi.execute(cycles);
+    const budget = cycles >>> 0;
+    return this.executeWithFaultHandling(() => this._musashi.execute(budget));
   }
 
-  step(): { cycles: number; startPc: number; endPc: number; ppc?: number } {
+  step(): StepResult {
+    this._musashi.faultClear();
     const startPc = this._musashi.get_reg(M68kRegister.PC) >>> 0; // PC before executing
     const initialSp = this._musashi.get_reg(M68kRegister.A7) >>> 0;
 
-    // musashi.step() may return an unsigned long long (BigInt with WASM_BIGINT)
-    // Normalize to Number before masking to avoid BigInt/Number mixing.
-    const cyclesRaw = this._musashi.step();
-    const totalCycles = Number(cyclesRaw) >>> 0;
+    try {
+      // musashi.step() may return an unsigned long long (BigInt with WASM_BIGINT)
+      // Normalize to Number before masking to avoid BigInt/Number mixing.
+      const cyclesRaw = this._musashi.step();
+      const totalCycles = Number(cyclesRaw) >>> 0;
 
-    const afterPc = this._musashi.get_reg(M68kRegister.PC) >>> 0;
-    const ppc = this._musashi.get_reg(M68kRegister.PPC) >>> 0;
-    const spNow = this._musashi.get_reg(M68kRegister.A7) >>> 0;
-    const spDelta = initialSp >= spNow ? (initialSp - spNow) >>> 0 : 0;
+      const afterPc = this._musashi.get_reg(M68kRegister.PC) >>> 0;
+      const ppc = this._musashi.get_reg(M68kRegister.PPC) >>> 0;
+      const spNow = this._musashi.get_reg(M68kRegister.A7) >>> 0;
+      const spDelta = initialSp >= spNow ? (initialSp - spNow) >>> 0 : 0;
 
-    const grewStack = spNow < initialSp && spDelta >= 6;
-    const instSize = this.getInstructionSize(startPc) >>> 0;
-    const sequentialPc = instSize ? ((startPc + instSize) >>> 0) : startPc;
-    const exceptionDetected = grewStack && afterPc !== sequentialPc;
+      const grewStack = spNow < initialSp && spDelta >= 6;
+      const instSize = this.getInstructionSize(startPc) >>> 0;
+      const sequentialPc = instSize ? ((startPc + instSize) >>> 0) : startPc;
+      const exceptionDetected = grewStack && afterPc !== sequentialPc;
 
-    let finalPc = afterPc >>> 0;
-    let finalPpc = ppc >>> 0;
+      let finalPc = afterPc >>> 0;
+      let finalPpc = ppc >>> 0;
 
-    if (exceptionDetected) {
-      finalPc = afterPc >>> 0;
-      finalPpc = startPc >>> 0;
-      this._musashi.set_reg(M68kRegister.PC, finalPc);
-      this._musashi.set_reg(M68kRegister.PPC, finalPpc);
+      if (exceptionDetected) {
+        finalPc = afterPc >>> 0;
+        finalPpc = startPc >>> 0;
+        this._musashi.set_reg(M68kRegister.PC, finalPc);
+        this._musashi.set_reg(M68kRegister.PPC, finalPpc);
+      }
+
+      this._lastFault = undefined;
+      return {
+        cycles: totalCycles >>> 0,
+        startPc,
+        endPc: finalPc >>> 0,
+        ppc: finalPpc,
+        reason: 'returned',
+      };
+    } catch (error) {
+      const fault = this.captureFault(error);
+      this._lastFault = fault;
+      const cycles = this._musashi.cycles_run() >>> 0;
+      return {
+        cycles,
+        startPc,
+        endPc: fault.pc,
+        ppc: fault.ppc,
+        reason: 'fault',
+        fault,
+      };
     }
-
-    return { cycles: totalCycles >>> 0, startPc, endPc: finalPc >>> 0, ppc: finalPpc };
   }
 
   reset(): void {
@@ -404,7 +613,12 @@ class SystemImpl implements System {
 
     const override = this._hooks.overrides.get(pc);
     if (override) {
-      override(this);
+      try {
+        override(this);
+      } catch (error) {
+        this._musashi.noteHandlerFault('pcHook', pc, undefined, pc);
+        throw error;
+      }
       return true; // Stop and execute RTS
     }
 
@@ -413,6 +627,20 @@ class SystemImpl implements System {
 
   cleanup(): void {
     this._musashi.cleanup();
+    this._lastFault = undefined;
+    this._lastExecResult = undefined;
+  }
+
+  consumeLastFault(): FaultContext | undefined {
+    const fault = this._lastFault;
+    this._lastFault = undefined;
+    return fault;
+  }
+
+  consumeLastExecResult(): ExecResult | undefined {
+    const result = this._lastExecResult;
+    this._lastExecResult = undefined;
+    return result;
   }
 
   // --- Memory Trace (read/write) ---
