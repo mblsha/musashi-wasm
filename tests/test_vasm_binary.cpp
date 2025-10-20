@@ -43,7 +43,7 @@ TEST_F(VasmBinaryTest, LoadAndValidateBinary) {
 
 TEST_F(VasmBinaryTest, ExecuteBinaryWithPerfettoTrace) {
     /* Load the assembled binary */
-    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));;
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));
     
     /* Enable M68K tracing */
     m68k_trace_enable(1);
@@ -89,14 +89,11 @@ TEST_F(VasmBinaryTest, ExecuteBinaryWithPerfettoTrace) {
     for (auto pc : pc_hooks) {
         uint16_t opcode = read_word(pc);
         m68k_disassemble(disasm_buf, pc, M68K_CPU_TYPE_68000);
-        
-        /* Check for subroutine call patterns */
-        if ((opcode & 0xFF00) == 0x6100 || /* BSR */
-            (opcode & 0xFFC0) == 0x4E80) {  /* JSR */
+
+        if (M68kTestUtils::IsSubroutineCallOpcode(opcode)) {
             subroutine_calls++;
         }
-        /* Check for RTS */
-        if (opcode == 0x4E75) {
+        if (M68kTestUtils::IsSubroutineReturnOpcode(opcode)) {
             subroutine_returns++;
         }
     }
@@ -123,7 +120,7 @@ TEST_F(VasmBinaryTest, ExecuteBinaryWithPerfettoTrace) {
 
 TEST_F(VasmBinaryTest, ValidateProgramStructure) {
     /* Load the assembled binary */
-    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));;
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));
     
     /* Define a magic completion marker address */
     const uint32_t COMPLETION_FLAG_ADDR = 0x500;
@@ -190,7 +187,7 @@ TEST_F(VasmBinaryTest, ValidateProgramStructure) {
 
 TEST_F(VasmBinaryTest, ExecuteWithRecursionDetection) {
     /* Load the assembled binary */
-    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));;
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));
     
     /* Execute program and track call depth */
     pc_hooks.clear();
@@ -202,11 +199,8 @@ TEST_F(VasmBinaryTest, ExecuteWithRecursionDetection) {
     
     for (auto pc : pc_hooks) {
         uint16_t opcode = read_word(last_pc);
-        
-        /* If last instruction was BSR/JSR, current PC is a function entry */
-        if (last_pc != 0 && 
-            ((opcode & 0xFF00) == 0x6100 || /* BSR */
-             (opcode & 0xFFC0) == 0x4E80)) { /* JSR */
+
+        if (last_pc != 0 && M68kTestUtils::IsSubroutineCallOpcode(opcode)) {
             function_entry_counts[pc]++;
         }
         last_pc = pc;
@@ -226,7 +220,7 @@ TEST_F(VasmBinaryTest, ExecuteWithRecursionDetection) {
 
 TEST_F(VasmBinaryTest, VerifyDataSorting) {
     /* Load the assembled binary */
-    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));;
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_program.bin"), 0x400));
     
     /* Find data section by looking for non-instruction patterns */
     uint32_t data_start = 0;
@@ -281,7 +275,7 @@ TEST_F(VasmBinaryTest, VerifyDataSorting) {
 
 TEST_F(VasmBinaryTest, MergeSortCorrectness) {
     /* Load the assembled merge sort binary */
-    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_mergesort.bin"), 0x400));;
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_mergesort.bin"), 0x400));
     
     /* Record initial array state */
     std::vector<uint16_t> initial_array;
@@ -354,7 +348,7 @@ TEST_F(VasmBinaryTest, MergeSortCorrectness) {
 
 TEST_F(VasmBinaryTest, MergeSortRecursionDepth) {
     /* Load the assembled merge sort binary */
-    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_mergesort.bin"), 0x400));;
+    ASSERT_TRUE(LoadBinaryFile(FindTestFile("test_mergesort.bin"), 0x400));
     
     /* Execute merge sort */
     pc_hooks.clear();
@@ -372,7 +366,7 @@ TEST_F(VasmBinaryTest, MergeSortRecursionDepth) {
         std::string instr(disasm_buf);
         
         /* BSR instruction increases depth */
-        if ((opcode & 0xFF00) == 0x6100) {
+        if (M68kTestUtils::IsSubroutineCallOpcode(opcode)) {
             current_depth++;
             depth_counts[current_depth]++;
             if (current_depth > max_depth) {
@@ -380,7 +374,7 @@ TEST_F(VasmBinaryTest, MergeSortRecursionDepth) {
             }
         }
         /* RTS instruction decreases depth */
-        else if (opcode == 0x4E75) {
+        else if (M68kTestUtils::IsSubroutineReturnOpcode(opcode)) {
             if (current_depth > 0) current_depth--;
         }
     }
