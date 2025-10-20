@@ -151,7 +151,7 @@ jobs:
           export PATH="$__filtered_path"
           cd musashi-wasm-test
           npm ci
-          npm run test:ci || true
+          npm run test:ci
 
       # Run TypeScript tests (once per matrix entry, toggled by PERFETTO_ENABLED)
       - name: Run TypeScript tests
@@ -178,7 +178,7 @@ jobs:
           npm ci
           npm ci --workspaces
           npm run build
-          npm run test:core || true
+          npm run test:core
 
       # Upload WASM artifacts with stable names used by npm-publish.yml
       - name: Upload WASM artifacts (standard)
