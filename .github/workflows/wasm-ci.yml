@@ -134,7 +134,21 @@ jobs:
         timeout-minutes: 3
         run: |
           # Remove EMSDK node from PATH to use setup-node's Node.js
-          export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "emsdk-cache" | tr '\n' ':')
+          IFS=':' read -ra __path_parts <<< "$PATH"
+          __filtered_path=""
+          for __part in "${__path_parts[@]}"; do
+            [[ -z "$__part" ]] && continue
+            [[ "$__part" == *"emsdk-cache"* ]] && continue
+            if [[ -z "$__filtered_path" ]]; then
+              __filtered_path="$__part"
+            else
+              __filtered_path="${__filtered_path}:$__part"
+            fi
+          done
+          if [[ -z "$__filtered_path" ]]; then
+            __filtered_path="/usr/local/bin:/usr/bin"
+          fi
+          export PATH="$__filtered_path"
           cd musashi-wasm-test
           npm ci
           npm run test:ci || true
@@ -146,7 +160,21 @@ jobs:
           PERFETTO_ENABLED: ${{ matrix.perfetto && '1' || '0' }}
         run: |
           # Remove EMSDK node from PATH to use setup-node's Node.js
-          export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "emsdk-cache" | tr '\n' ':')
+          IFS=':' read -ra __path_parts <<< "$PATH"
+          __filtered_path=""
+          for __part in "${__path_parts[@]}"; do
+            [[ -z "$__part" ]] && continue
+            [[ "$__part" == *"emsdk-cache"* ]] && continue
+            if [[ -z "$__filtered_path" ]]; then
+              __filtered_path="$__part"
+            else
+              __filtered_path="${__filtered_path}:$__part"
+            fi
+          done
+          if [[ -z "$__filtered_path" ]]; then
+            __filtered_path="/usr/local/bin:/usr/bin"
+          fi
+          export PATH="$__filtered_path"
           npm ci
           npm ci --workspaces
           npm run build
