@@ -13,7 +13,7 @@ WARNINGS  = -Wall -Wextra -pedantic
 CFLAGS    = $(WARNINGS) -O3 -frtti -fexceptions -std=c++17
 LFLAGS    = $(WARNINGS) -O3 -frtti -fexceptions -std=c++17
 
-MUSASHIFILES     = m68kcpu.c myfunc.cc m68k_memory_bridge.cc m68kdasm.c m68ktrace.cc softfloat/softfloat.c
+MUSASHIFILES     = m68kcpu.c musashi_fault.c myfunc.cc m68k_memory_bridge.cc m68kdasm.c m68ktrace.cc softfloat/softfloat.c
 
 # Add Perfetto files if enabled
 ifeq ($(ENABLE_PERFETTO),1)
