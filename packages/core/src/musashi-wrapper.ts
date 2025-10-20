@@ -369,7 +369,9 @@ export class MusashiWrapper {
     this._module._clear_pc_hook_addrs?.();
     try {
       this._module._set_pc_hook_func?.(NULL_EMSCRIPTEN_FUNCTION);
-    } catch {}
+    } catch {
+      // Ignore errors when clearing PC hook function
+    }
     this._module._reset_myfunc_state?.();
   }
 
