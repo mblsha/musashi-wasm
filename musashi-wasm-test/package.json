@@ -26,5 +26,8 @@
     "classNameTemplate": "{classname}",
     "titleTemplate": "{title}",
     "ancestorSeparator": " › "
+  },
+  "overrides": {
+    "test-exclude": "^7.0.1"
   }
 }
