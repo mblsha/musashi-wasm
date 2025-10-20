@@ -133,6 +133,8 @@ jobs:
       - name: Run Node.js integration tests
         timeout-minutes: 3
         run: |
+          # Remove EMSDK node from PATH to use setup-node's Node.js
+          export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "emsdk-cache" | tr '\n' ':')
           cd musashi-wasm-test
           npm ci
           npm run test:ci || true
@@ -143,6 +145,8 @@ jobs:
         env:
           PERFETTO_ENABLED: ${{ matrix.perfetto && '1' || '0' }}
         run: |
+          # Remove EMSDK node from PATH to use setup-node's Node.js
+          export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "emsdk-cache" | tr '\n' ':')
           npm ci
           npm ci --workspaces
           npm run build
