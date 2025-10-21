@@ -49,7 +49,7 @@ describe('Universal Build Compatibility', () => {
     
     // Check for dynamic environment detection instead of hardcoded values
     const hasProperNodeDetection = /typeof\s+process\s*==\s*['"`]object['"`]/.test(content) &&
-                                   /typeof\s+process\.versions\s*==\s*['"`]object['"`]/.test(content);
+      (/typeof\s+process\.versions\s*==\s*['"`]object['"`]/.test(content) || /process\??\.versions\??\.node/.test(content));
     const hasProperWebDetection = /typeof\s+window\s*==\s*['"`]object['"`]/.test(content);
     const hasProperWorkerDetection = /typeof\s+WorkerGlobalScope\s*!==?\s*['"`]undefined['"`]/.test(content) ||
       /typeof\s+importScripts\s*==\s*['"`]function['"`]/.test(content);
