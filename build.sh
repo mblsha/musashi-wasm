@@ -99,6 +99,9 @@ exported_functions=(
   _set_pc_hook_func
   _set_read_mem_func
   _set_write_mem_func
+  _set_read8_callback
+  _set_write8_callback
+  _set_probe_callback
 )
 
 # Add Perfetto-only exports when enabled (parity with Fish)
@@ -127,7 +130,7 @@ default_lib_funcs=(
 runtime_methods=(
   HEAP8 HEAPU8 HEAP16 HEAPU16 HEAP32 HEAPU32 HEAPF32 HEAPF64
   addFunction removeFunction getValue setValue UTF8ToString
-  stringToUTF8 writeArrayToMemory
+  stringToUTF8 writeArrayToMemory ccall
 )
 
 to_ems_list() {

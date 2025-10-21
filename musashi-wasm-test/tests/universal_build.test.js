@@ -48,10 +48,11 @@ describe('Universal Build Compatibility', () => {
     const content = readFileSync(universalPath, 'utf-8');
     
     // Check for dynamic environment detection instead of hardcoded values
-    const hasProperNodeDetection = content.includes('typeof process == \'object\'') && 
-                                   content.includes('typeof process.versions == \'object\'');
-    const hasProperWebDetection = content.includes('typeof window == \'object\'');
-    const hasProperWorkerDetection = content.includes('typeof WorkerGlobalScope != \'undefined\'');
+    const hasProperNodeDetection = /typeof\s+process\s*==\s*['"`]object['"`]/.test(content) &&
+      (/typeof\s+process\.versions\s*==\s*['"`]object['"`]/.test(content) || /process\??\.versions\??\.node/.test(content));
+    const hasProperWebDetection = /typeof\s+window\s*==\s*['"`]object['"`]/.test(content);
+    const hasProperWorkerDetection = /typeof\s+WorkerGlobalScope\s*!==?\s*['"`]undefined['"`]/.test(content) ||
+      /typeof\s+importScripts\s*==\s*['"`]function['"`]/.test(content);
     
     // Should NOT have hardcoded environment values like these:
     const hasHardcodedNode = content.includes('var ENVIRONMENT_IS_NODE = true;');
