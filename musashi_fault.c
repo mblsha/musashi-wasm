@@ -1,10 +1,12 @@
 #include "musashi_fault.h"
 #include "m68kcpu.h"
 
+#include <string.h>
+
 static musashi_fault_record_t g_fault_record;
 
 void m68k_fault_clear(void) {
-  g_fault_record.active = 0;
+  memset(&g_fault_record, 0, sizeof(g_fault_record));
 }
 
 musashi_fault_record_t* m68k_fault_record_ptr(void) {
