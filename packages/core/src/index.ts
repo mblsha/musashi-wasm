@@ -21,6 +21,7 @@ import type {
 import { M68kRegister } from '@m68k/common';
 import { MusashiWrapper, getModule } from './musashi-wrapper.js';
 import { mask24 } from './address-utils.js';
+import { parseBooleanEnv } from './env-utils.js';
 
 // Re-export types
 export type {
@@ -54,14 +55,6 @@ export type {
 
 const normalizeTraceAddress = mask24;
 const formatTraceHex = (value: number): string => `0x${(value >>> 0).toString(16)}`;
-
-const TRUTHY_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
-
-const parseBooleanEnv = (value: string | undefined): boolean => {
-  if (!value) return false;
-  const normalized = value.trim().toLowerCase();
-  return TRUTHY_ENV_VALUES.has(normalized);
-};
 
 const env = typeof process !== 'undefined' ? process.env : undefined;
 

@@ -6,6 +6,7 @@ type EmscriptenFunction = number;
 import { M68kRegister } from '@m68k/common';
 import type { MemoryLayout, MemoryTraceSource } from './types.js';
 import { mask24 } from './address-utils.js';
+import { parseBooleanEnv } from './env-utils.js';
 
 const NULL_EMSCRIPTEN_FUNCTION: EmscriptenFunction = 0;
 
@@ -54,16 +55,6 @@ const detectRuntime = (): RuntimeTag => {
   }
 
   return 'browser';
-};
-
-const TRUTHY_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
-
-const parseBooleanEnv = (value: string | undefined): boolean => {
-  if (!value) {
-    return false;
-  }
-
-  return TRUTHY_ENV_VALUES.has(value.trim().toLowerCase());
 };
 
 export interface MusashiEmscriptenModule {
