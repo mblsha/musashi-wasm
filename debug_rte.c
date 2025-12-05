@@ -75,25 +75,33 @@ int main() {
     
     /* Execute with debug output */
     printf("Initial state:\n");
-    printf("  PC: 0x%08X\n", m68k_get_reg(NULL, M68K_REG_PC));
-    printf("  SP: 0x%08X\n", m68k_get_reg(NULL, M68K_REG_SP));
-    printf("  SR: 0x%04X (S=%d)\n", m68k_get_reg(NULL, M68K_REG_SR),
-           (m68k_get_reg(NULL, M68K_REG_SR) & 0x2000) ? 1 : 0);
-    printf("  D0: 0x%08X\n", m68k_get_reg(NULL, M68K_REG_D0));
+    const uint32_t initial_pc = m68k_get_reg(NULL, M68K_REG_PC);
+    const uint32_t initial_sp = m68k_get_reg(NULL, M68K_REG_SP);
+    const uint32_t initial_sr = m68k_get_reg(NULL, M68K_REG_SR);
+    const uint32_t initial_d0 = m68k_get_reg(NULL, M68K_REG_D0);
+
+    printf("  PC: 0x%08X\n", initial_pc);
+    printf("  SP: 0x%08X\n", initial_sp);
+    printf("  SR: 0x%04X (S=%d)\n", initial_sr, (initial_sr & 0x2000) ? 1 : 0);
+    printf("  D0: 0x%08X\n", initial_d0);
     
     printf("\nExecuting (should hit illegal instruction)...\n");
     m68k_execute(100);
-    
+
     printf("\nAfter execution:\n");
-    printf("  PC: 0x%08X\n", m68k_get_reg(NULL, M68K_REG_PC));
-    printf("  SP: 0x%08X\n", m68k_get_reg(NULL, M68K_REG_SP));
-    printf("  SR: 0x%04X (S=%d)\n", m68k_get_reg(NULL, M68K_REG_SR),
-           (m68k_get_reg(NULL, M68K_REG_SR) & 0x2000) ? 1 : 0);
-    printf("  D0: 0x%08X\n", m68k_get_reg(NULL, M68K_REG_D0));
-    
+    const uint32_t final_pc = m68k_get_reg(NULL, M68K_REG_PC);
+    const uint32_t final_sp = m68k_get_reg(NULL, M68K_REG_SP);
+    const uint32_t final_sr = m68k_get_reg(NULL, M68K_REG_SR);
+    const uint32_t final_d0 = m68k_get_reg(NULL, M68K_REG_D0);
+
+    printf("  PC: 0x%08X\n", final_pc);
+    printf("  SP: 0x%08X\n", final_sp);
+    printf("  SR: 0x%04X (S=%d)\n", final_sr, (final_sr & 0x2000) ? 1 : 0);
+    printf("  D0: 0x%08X\n", final_d0);
+
     /* Check stack contents */
-    uint32_t sp = m68k_get_reg(NULL, M68K_REG_SP);
-    printf("\nStack contents at SP (0x%08X):\n", sp);
+    uint32_t sp = final_sp;
+    printf("\nStack contents at SP (0x%08X):\n", final_sp);
     for (int i = 0; i < 16; i += 2) {
         printf("  [SP+%d]: 0x%04X\n", i, read_memory_16(sp + i));
     }
